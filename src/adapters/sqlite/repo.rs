@@ -352,6 +352,11 @@ impl IndexRepository for SqliteIndexRepository {
             "term_postings",
             "doc_meta",
             "image_cache",
+            "content_hashes",
+            "pdf_pages",
+            "pdf_pages_fts",
+            "embedding_vectors",
+            "model_jobs",
         ];
 
         let mut affected = 0usize;
@@ -403,6 +408,11 @@ impl IndexRepository for SqliteIndexRepository {
             "term_postings",
             "doc_meta",
             "image_cache",
+            "content_hashes",
+            "pdf_pages",
+            "pdf_pages_fts",
+            "embedding_vectors",
+            "model_jobs",
         ];
 
         let mut deleted = 0usize;
@@ -437,6 +447,11 @@ impl IndexRepository for SqliteIndexRepository {
             "term_postings",
             "doc_meta",
             "image_cache",
+            "content_hashes",
+            "pdf_pages",
+            "pdf_pages_fts",
+            "embedding_vectors",
+            "model_jobs",
         ];
         for tbl in tables {
             let mut stmt = tx.prepare(&format!("DELETE FROM {tbl} WHERE path = ?1"))?;
