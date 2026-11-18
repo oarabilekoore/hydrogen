@@ -33,7 +33,7 @@ pub enum OcrAction {
         #[arg(long, default_value = "")]
         window: String,
         /// Recognition engine: auto/math for equations, handwriting for handwritten notes, rapid for legacy OCR
-        #[arg(long, value_enum, default_value_t = OcrEngine::Auto)]
+        #[arg(long, value_enum, default_value = "auto")]
         engine: OcrEngine,
     },
 }
