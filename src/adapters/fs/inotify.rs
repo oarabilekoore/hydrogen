@@ -67,6 +67,15 @@ impl LinuxInotifyWatcher {
         !self.pending_cookies.is_empty()
     }
 
+    /// Re-add watches for roots and directories that appeared after daemon startup.
+    /// Existing watches are left untouched.
+    pub fn reconcile_watches(&mut self) {
+        let roots = self.roots.clone();
+        for root in roots {
+            self.add_watch_tree(&root);
+        }
+    }
+
     fn is_under_ignored(&self, path: &Path) -> bool {
         for root in &self.roots {
             if let Ok(rel) = path.strip_prefix(root) {
@@ -276,8 +285,13 @@ impl LinuxInotifyWatcher {
                             is_dir,
                         });
                     } else if (mask & libc::IN_CREATE) != 0 {
-                        if is_dir && !self.is_under_ignored(&full_path) {
-                            self.add_watch_tree(&full_path);
+                        if !self.is_under_ignored(&full_path) {
+                            if is_dir {
+                                self.add_watch_tree(&full_path);
+                            }
+                            // IN_CREATE is important for empty files and applications that
+                            // keep a newly-created file open without immediately writing it.
+                            // IN_CLOSE_WRITE will trigger a second sync after content arrives.
                             out.push(FsChangeEvent::Modified);
                         }
                     } else if (mask & libc::IN_CLOSE_WRITE) != 0

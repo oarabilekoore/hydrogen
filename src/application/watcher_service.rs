@@ -10,6 +10,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 const DEBOUNCE_WINDOW: Duration = Duration::from_millis(350);
+const RECONCILE_INTERVAL: Duration = Duration::from_secs(60);
 
 pub struct WatcherService<'a> {
     cfg: &'a AppConfig,
@@ -37,8 +38,9 @@ impl<'a> WatcherService<'a> {
     }
 
     pub fn serve_forever(&mut self, running: Arc<AtomicBool>) -> Result<()> {
-        // Initial startup sync ensures DB & inode_map match disk
-        let _ = self.sync_service.sync(self.spawn_images)?;
+        // Initial startup sync ensures DB & inode_map match disk.
+        self.sync_service.sync(self.spawn_images)?;
+        let mut last_reconcile_at = Instant::now();
 
         let mut pending_renames: Vec<(PathBuf, PathBuf, bool)> = Vec::new();
         let mut pending_deletes: HashSet<(PathBuf, bool)> = HashSet::new();
@@ -47,6 +49,15 @@ impl<'a> WatcherService<'a> {
 
         while running.load(Ordering::SeqCst) {
             let events = self.watcher.poll_events(150)?;
+
+            // inotify is a fast path, not a source of truth. Reconcile periodically to
+            // recover from queue overflow, missed events, unavailable roots at startup,
+            // and directories created while the daemon was not watching them.
+            if last_reconcile_at.elapsed() >= RECONCILE_INTERVAL {
+                self.watcher.reconcile_watches();
+                self.sync_service.sync(self.spawn_images)?;
+                last_reconcile_at = Instant::now();
+            }
             if !events.is_empty() {
                 last_event_at = Some(Instant::now());
                 for ev in events {
@@ -94,7 +105,7 @@ impl<'a> WatcherService<'a> {
                 if has_dirty || mutated {
                     // `sync` updates filename TF-IDF weights for renamed files, indexes created/modified
                     // files, rebuilds sparse IDF/postings if needed, and updates `file-index.txt` + `index.rev`.
-                    let _ = self.sync_service.sync(self.spawn_images)?;
+                    self.sync_service.sync(self.spawn_images)?;
                 } else {
                     rewrite_compat_from_db(&self.cfg.cache_txt, &self.cfg.rev_file, self.repo)?;
                 }
