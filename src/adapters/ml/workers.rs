@@ -8,11 +8,36 @@ use std::process::{Command, Stdio};
 
 pub struct RapidOcrWorker {
     python_bin: PathBuf,
+    document_python: Option<PathBuf>,
+    worker_script: Option<PathBuf>,
+    engine: String,
 }
 
 impl RapidOcrWorker {
+    /// Worker used by background image indexing. Keeps the lightweight RapidOCR venv.
     pub fn new(python_bin: PathBuf) -> Self {
-        Self { python_bin }
+        Self {
+            python_bin,
+            document_python: None,
+            worker_script: None,
+            engine: "rapid".into(),
+        }
+    }
+
+    /// Worker used for interactive OCR. The selected engine is loaded on demand
+    /// and runs in its own CPU-only environment.
+    pub fn new_document(
+        rapid_python: PathBuf,
+        document_python: PathBuf,
+        worker_script: PathBuf,
+        engine: String,
+    ) -> Self {
+        Self {
+            python_bin: rapid_python,
+            document_python: Some(document_python),
+            worker_script: Some(worker_script),
+            engine,
+        }
     }
 }
 
@@ -63,6 +88,41 @@ print(json.dumps(out))
     }
 
     fn ocr_boxes(&self, image_path: &Path) -> Result<Vec<OcrBox>> {
+        if let (Some(python), Some(script)) =
+            (self.document_python.as_ref(), self.worker_script.as_ref())
+        {
+            if !python.is_file() {
+                return Err(HydrogenError::ExternalTool(format!(
+                    "Hydrogen OCR environment missing at {}. Run make ocr-deps in the Hydrogen repository.",
+                    python.display()
+                )));
+            }
+            if !script.is_file() {
+                return Err(HydrogenError::ExternalTool(format!(
+                    "Hydrogen OCR worker missing at {}. Reinstall Hydrogen with make install.",
+                    script.display()
+                )));
+            }
+
+            let output = Command::new(python)
+                .arg(script)
+                .args(["--engine", self.engine.as_str(), "--image"])
+                .arg(image_path)
+                .output()?;
+
+            if !output.status.success() {
+                let err = String::from_utf8_lossy(&output.stderr).trim().to_string();
+                return Err(HydrogenError::ExternalTool(if err.is_empty() {
+                    "Hydrogen OCR worker failed".into()
+                } else {
+                    err
+                }));
+            }
+
+            return Ok(serde_json::from_slice(&output.stdout)?);
+        }
+
+        // Compatibility path for callers that only construct the legacy worker.
         if !self.python_bin.is_file() {
             return Err(HydrogenError::ExternalTool(format!(
                 "RapidOCR venv missing at {}",
