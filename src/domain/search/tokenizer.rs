@@ -14,7 +14,7 @@ const STOPWORDS: &[&str] = &[
 ];
 
 /// Unicode-aware tokenization for Greek variables, accented words and
-/// non-Latin scripts. Mathematical operators are handled by math.rs.
+/// non-Latin scripts. Mathematical operators are normalized into stable terms.
 pub fn extract_raw_tokens(text: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut buf = String::new();
@@ -45,7 +45,11 @@ fn is_combining_mark(ch: char) -> bool {
 }
 
 pub fn tokenize_content(text: &str) -> Vec<String> {
-    let raw = extract_raw_tokens(text);
+    let mut raw = extract_raw_tokens(text);
+    raw.extend(super::math::extract_math_tokens(text));
+    let mut seen = std::collections::HashSet::new();
+    raw.retain(|token| seen.insert(token.clone()));
+
     let filtered: Vec<String> = raw.iter()
         .filter(|t| !STOPWORDS.contains(&t.as_str()))
         .cloned()
@@ -76,5 +80,15 @@ mod tests {
         assert!(toks.contains(&"εξίσωση".to_string()));
         assert!(toks.contains(&"résumé".to_string()));
         assert!(toks.contains(&"12".to_string()));
+    }
+
+    #[test]
+    fn includes_math_features_in_regular_search_tokens() {
+        let toks = tokenize_content(r"Find \int_0^1 \frac{\alpha}{\sqrt{x}}");
+        assert!(toks.contains(&"math:int".to_string()));
+        assert!(toks.contains(&"math:frac".to_string()));
+        assert!(toks.contains(&"math:alpha".to_string()));
+        assert!(toks.contains(&"op:integral".to_string()));
+        assert!(toks.contains(&"op:superscript".to_string()));
     }
 }
