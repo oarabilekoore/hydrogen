@@ -37,10 +37,11 @@ def run_math(image_path: Path) -> str:
     # page pipeline also loads a layout detector that is unnecessary for a
     # single mixed text/formula crop and wastes RAM on this machine.
     import torch
-    from pix2text.text_formula_ocr import TextFormulaOCR
 
     torch.set_num_threads(max(1, min(4, os.cpu_count() or 1)))
     torch.set_num_interop_threads(1)
+
+    from pix2text.text_formula_ocr import TextFormulaOCR
     recognizer = TextFormulaOCR.from_config(
         None, enable_formula=True, device="cpu"
     )
@@ -64,7 +65,7 @@ def _line_regions(image):
     # A simple global threshold is predictable on clean scans and screenshots.
     ink = gray < 210
     row_ink = ink.sum(axis=1)
-    active = row_ink >= max(2, int(gray.shape[1] * 0.001))
+    active = row_ink >= max(6, int(gray.shape[1] * 0.003))
     indices = np.flatnonzero(active)
     if indices.size == 0:
         return []
@@ -108,11 +109,12 @@ def _line_regions(image):
 
 def run_handwriting(image_path: Path) -> str:
     import torch
-    from PIL import Image
-    from transformers import TrOCRProcessor, VisionEncoderDecoderModel
 
     torch.set_num_threads(max(1, min(4, os.cpu_count() or 1)))
     torch.set_num_interop_threads(1)
+
+    from PIL import Image
+    from transformers import TrOCRProcessor, VisionEncoderDecoderModel
     model_name = os.environ.get(
         "HYDROGEN_TROCR_MODEL", "microsoft/trocr-small-handwritten"
     )
