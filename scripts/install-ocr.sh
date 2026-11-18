@@ -12,7 +12,7 @@ fi
 
 "$PYTHON" -m venv "$VENV"
 "$VENV/bin/python" -m pip install --upgrade pip wheel
-"$VENV/bin/python" -m pip install 'pix2text>=1.1.4' 'transformers>=4.38,<5'
+"$VENV/bin/python" -m pip install 'pix2text>=1.1.4' 'transformers>=4.38,<5' 'rapidocr_onnxruntime'
 
 printf '\nHydrogen OCR dependencies installed.\n'
 printf 'Pix2Text and TrOCR model weights are downloaded on first use.\n'
