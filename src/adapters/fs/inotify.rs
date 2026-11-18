@@ -265,7 +265,7 @@ impl LinuxInotifyWatcher {
                             if is_dir {
                                 self.add_watch_tree(&full_path);
                             }
-                            out.push(FsChangeEvent::Modified { path: full_path });
+                            out.push(FsChangeEvent::Modified);
                         }
                     } else if (mask & (libc::IN_DELETE | libc::IN_DELETE_SELF)) != 0 {
                         if is_dir {
@@ -278,13 +278,13 @@ impl LinuxInotifyWatcher {
                     } else if (mask & libc::IN_CREATE) != 0 {
                         if is_dir && !self.is_under_ignored(&full_path) {
                             self.add_watch_tree(&full_path);
-                            out.push(FsChangeEvent::Modified { path: full_path });
+                            out.push(FsChangeEvent::Modified);
                         }
                     } else if (mask & libc::IN_CLOSE_WRITE) != 0
                         && !is_dir
                         && !self.is_under_ignored(&full_path)
                     {
-                        out.push(FsChangeEvent::Modified { path: full_path });
+                        out.push(FsChangeEvent::Modified);
                     }
                 }
             }
