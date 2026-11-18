@@ -405,6 +405,9 @@ impl IndexRepository for SqliteIndexRepository {
             }
         }
         tx.commit()?;
+        if deleted > 0 {
+            self.rebuild_sparse_index_if_needed(true)?;
+        }
         Ok(deleted)
     }
 
@@ -427,6 +430,9 @@ impl IndexRepository for SqliteIndexRepository {
             }
         }
         tx.commit()?;
+        if !paths.is_empty() {
+            self.rebuild_sparse_index_if_needed(true)?;
+        }
         Ok(())
     }
 
