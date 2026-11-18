@@ -61,9 +61,9 @@ impl<'a> WatcherService<'a> {
                         FsChangeEvent::Deleted { path, is_dir } => {
                             pending_deletes.insert((path, is_dir));
                         }
-                        FsChangeEvent::Modified { .. } => {
-                            has_dirty = true;
-                        }
+                        FsChangeEvent::Modified | FsChangeEvent::Overflow => {
+    has_dirty = true;
+}
                         FsChangeEvent::Overflow => {
                             has_dirty = true;
                         }

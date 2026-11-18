@@ -30,9 +30,7 @@ pub enum FsChangeEvent {
         path: PathBuf,
         is_dir: bool,
     },
-    Modified {
-        path: PathBuf,
-    },
+    Modified,
     Overflow,
 }
 
