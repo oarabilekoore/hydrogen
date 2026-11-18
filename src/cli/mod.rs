@@ -27,7 +27,7 @@ pub enum Commands {
     Query(query_cmd::QueryArgs),
     /// Run real-time Linux inotify file watcher & incremental indexer
     Daemon(daemon_cmd::DaemonArgs),
-    /// Extract Markdown text from clipboard or image file via RapidOCR
+    /// Extract Markdown with Pix2Text, TrOCR, or legacy RapidOCR
     Ocr(ocr_cmd::OcrArgs),
     /// List, create, or launch desktop calendar events
     Calendar(calendar_cmd::CalendarArgs),
