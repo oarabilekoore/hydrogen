@@ -11,7 +11,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const SCHEMA_VERSION: i32 = 5;
+const SCHEMA_VERSION: i32 = 6;
 
 pub struct SqliteIndexRepository {
     db_path: PathBuf,
@@ -42,20 +42,9 @@ impl SqliteIndexRepository {
 
     fn init_schema(&self, conn: &Connection) -> Result<()> {
         let ver: i32 = conn.query_row("PRAGMA user_version;", [], |r| r.get(0))?;
-        if ver != SCHEMA_VERSION {
-            // Preserve `image_cache` across schema upgrades so OCR & VLM captions are never lost.
-            conn.execute_batch(&format!(
-                "DROP TABLE IF EXISTS files;
-                 DROP TABLE IF EXISTS inode_map;
-                 DROP TABLE IF EXISTS files_fts;
-                 DROP TABLE IF EXISTS file_vectors;
-                 DROP TABLE IF EXISTS doc_features;
-                 DROP TABLE IF EXISTS doc_terms;
-                 DROP TABLE IF EXISTS term_postings;
-                 DROP TABLE IF EXISTS idf_stats;
-                 DROP TABLE IF EXISTS doc_meta;
-                 PRAGMA user_version = {SCHEMA_VERSION};"
-            ))?;
+        if ver < SCHEMA_VERSION {
+            // Additive migrations preserve the user's existing index and OCR cache.
+            conn.execute_batch(&format!("PRAGMA user_version = {SCHEMA_VERSION};"))?;
         }
 
         conn.execute_batch(
@@ -103,7 +92,33 @@ impl SqliteIndexRepository {
                 size INTEGER NOT NULL,
                 ocr_text TEXT NOT NULL DEFAULT '',
                 caption_text TEXT NOT NULL DEFAULT ''
-            );",
+            );
+            CREATE TABLE IF NOT EXISTS content_hashes (
+                path TEXT PRIMARY KEY, content_hash TEXT NOT NULL,
+                size INTEGER NOT NULL, mtime INTEGER NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS pdf_pages (
+                path TEXT NOT NULL, page_no INTEGER NOT NULL,
+                content_hash TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '',
+                preview_path TEXT NOT NULL DEFAULT '', PRIMARY KEY(path, page_no)
+            );
+            CREATE VIRTUAL TABLE IF NOT EXISTS pdf_pages_fts USING fts5(
+                path UNINDEXED, page_no UNINDEXED, body, tokenize='unicode61'
+            );
+            CREATE TABLE IF NOT EXISTS embedding_vectors (
+                path TEXT NOT NULL, model_id TEXT NOT NULL, modality TEXT NOT NULL,
+                dimensions INTEGER NOT NULL, vector BLOB NOT NULL,
+                content_hash TEXT NOT NULL, updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
+                PRIMARY KEY(path, model_id, modality)
+            );
+            CREATE INDEX IF NOT EXISTS idx_embedding_model_modality
+                ON embedding_vectors(model_id, modality);
+            CREATE TABLE IF NOT EXISTS model_jobs (
+                job_id INTEGER PRIMARY KEY, path TEXT NOT NULL, task TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'queued', attempts INTEGER NOT NULL DEFAULT 0,
+                updated_at INTEGER NOT NULL DEFAULT (unixepoch()), UNIQUE(path, task)
+            );
+            CREATE INDEX IF NOT EXISTS idx_model_jobs_status ON model_jobs(status, updated_at);",
         )?;
         Ok(())
     }
