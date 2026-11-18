@@ -43,7 +43,7 @@ def run_math(image_path: Path) -> str:
 
     from pix2text.text_formula_ocr import TextFormulaOCR
     recognizer = TextFormulaOCR.from_config(
-        None, enable_formula=True, device="cpu"
+        None, enable_formula=True, enable_spell_checker=False, device="cpu"
     )
     result = recognizer.recognize(
         str(image_path),
