@@ -12,6 +12,9 @@ fi
 
 "$PYTHON" -m venv "$VENV"
 "$VENV/bin/python" -m pip install --upgrade pip wheel
+# Install CPU-only PyTorch first. This avoids pulling a CUDA build onto the
+# user's Intel-integrated-graphics laptop.
+"$VENV/bin/python" -m pip install --index-url https://download.pytorch.org/whl/cpu torch torchvision
 "$VENV/bin/python" -m pip install 'pix2text>=1.1.4' 'transformers>=4.38,<5' 'rapidocr_onnxruntime'
 
 printf '\nHydrogen OCR dependencies installed.\n'
