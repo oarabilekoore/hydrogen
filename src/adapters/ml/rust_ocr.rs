@@ -3,7 +3,6 @@
 //! PP-OCR is loaded lazily from models/ppocr/{det,rec}; Texo is loaded lazily
 //! from models/texo-distill-f16.gguf. No Python, subprocess, or network access
 //! is used at inference time.
-use crate::adapters::fs::image_header::get_image_dimensions;
 use crate::domain::ocr::layout::OcrBox;
 use crate::error::{HydrogenError, Result};
 use crate::ports::extractor::{CaptionProvider, OcrProvider};
@@ -20,7 +19,11 @@ pub struct RustOcrProvider {
 
 impl RustOcrProvider {
     pub fn new(models_dir: PathBuf) -> Self {
-        Self { models_dir, printed: OnceLock::new(), formula: OnceLock::new() }
+        Self {
+            models_dir,
+            printed: OnceLock::new(),
+            formula: OnceLock::new(),
+        }
     }
 
     fn printed_engine(&self) -> Result<Arc<OcrEngine>> {
@@ -28,7 +31,11 @@ impl RustOcrProvider {
             let det = self.models_dir.join("ppocr/det");
             let rec = self.models_dir.join("ppocr/rec");
             if !det.is_dir() || !rec.is_dir() {
-                return Err(format!("PP-OCR models missing. Expected {} and {}", det.display(), rec.display()));
+                return Err(format!(
+                    "PP-OCR models missing. Expected {} and {}",
+                    det.display(),
+                    rec.display()
+                ));
             }
             pure_onnx_ocr::OcrEngineBuilder::new()
                 .det_model_dir(det)
@@ -63,14 +70,29 @@ impl RustOcrProvider {
 
     fn run_printed(&self, path: &Path) -> Result<Vec<OcrBox>> {
         let engine = self.printed_engine()?;
-        let results = engine.run_from_path(path)
+        let results = engine
+            .run_from_path(path)
             .map_err(|e| HydrogenError::ExternalTool(e.to_string()))?;
-        Ok(results.into_iter().filter_map(|item| {
-            let points = item.bounding_box.exterior().0.iter()
-                .map(|p| [p.x, p.y]).collect::<Vec<_>>();
-            if item.text.trim().is_empty() || points.is_empty() { return None; }
-            Some(OcrBox { box_pts: points, text: item.text, score: f64::from(item.confidence) })
-        }).collect())
+        Ok(results
+            .into_iter()
+            .filter_map(|item| {
+                let points = item
+                    .bounding_box
+                    .exterior()
+                    .0
+                    .iter()
+                    .map(|p| [p.x, p.y])
+                    .collect::<Vec<_>>();
+                if item.text.trim().is_empty() || points.is_empty() {
+                    return None;
+                }
+                Some(OcrBox {
+                    box_pts: points,
+                    text: item.text,
+                    score: f64::from(item.confidence),
+                })
+            })
+            .collect())
     }
 }
 
@@ -81,7 +103,9 @@ impl OcrProvider for RustOcrProvider {
             let p = Path::new(path);
             if let Ok(boxes) = self.run_printed(p) {
                 let text = boxes.into_iter().map(|b| b.text).collect::<Vec<_>>().join("\n");
-                if !text.is_empty() { out.insert(path.clone(), text); }
+                if !text.is_empty() {
+                    out.insert(path.clone(), text);
+                }
             }
         }
         out
