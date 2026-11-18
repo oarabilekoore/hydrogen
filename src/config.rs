@@ -9,6 +9,8 @@ pub struct AppConfig {
     pub rev_file: PathBuf,
     pub img_lock_path: PathBuf,
     pub rapidocr_python: PathBuf,
+    pub ocr_python: PathBuf,
+    pub ocr_worker_script: PathBuf,
     pub caption_python: PathBuf,
     pub caption_script: PathBuf,
     pub search_roots: Vec<PathBuf>,
@@ -40,6 +42,8 @@ impl AppConfig {
             rev_file: state_dir.join("index.rev"),
             img_lock_path: state_dir.join("image-sync.pid"),
             rapidocr_python: home.join(".local/share/rapidocr-venv/bin/python"),
+            ocr_python: home.join(".local/share/hydrogen-ocr-venv/bin/python"),
+            ocr_worker_script: home.join(".local/share/hydrogen/ocr_worker.py"),
             caption_python: home.join(".local/share/caption-venv/bin/python"),
             caption_script: home.join(".config/quickshell/scripts/image_caption.py"),
             search_roots: vec![
