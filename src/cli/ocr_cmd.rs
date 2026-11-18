@@ -1,9 +1,9 @@
-use crate::adapters::ml::workers::RapidOcrWorker;
+use crate::adapters::ml::rust_ocr::RustOcrProvider;
 use crate::adapters::wayland::hyprland::HyprlandDesktop;
 use crate::application::ocr_service::OcrService;
 use crate::config::AppConfig;
 use crate::error::Result;
-use clap::{Args, Subcommand, ValueEnum};
+use clap::{Args, Subcommand};
 use std::path::PathBuf;
 
 #[derive(Args, Debug)]
@@ -14,74 +14,38 @@ pub struct OcrArgs {
 
 #[derive(Subcommand, Debug)]
 pub enum OcrAction {
-    /// Decode a cliphist entry ID, run OCR, copy Markdown, and optionally paste
+    /// OCR a cliphist image and paste recognised text
     Clip {
-        /// cliphist entry ID
         clip_id: String,
-        /// Optional Hyprland window address to focus and paste into
         #[arg(long, default_value = "")]
         window: String,
-        /// Recognition engine: auto/math for equations, handwriting for handwritten notes, rapid for legacy OCR
-        #[arg(long, value_enum, default_value = "auto")]
-        engine: OcrEngine,
+        /// Use the dedicated formula recognizer and return LaTeX
+        #[arg(long)]
+        math: bool,
     },
-    /// Run OCR on an image file, copy Markdown, and optionally paste
+    /// OCR an image file and paste recognised text
     File {
-        /// Path to image file
         path: PathBuf,
-        /// Optional Hyprland window address to focus and paste into
         #[arg(long, default_value = "")]
         window: String,
-        /// Recognition engine: auto/math for equations, handwriting for handwritten notes, rapid for legacy OCR
-        #[arg(long, value_enum, default_value = "auto")]
-        engine: OcrEngine,
+        /// Use the dedicated formula recognizer and return LaTeX
+        #[arg(long)]
+        math: bool,
     },
-}
-
-#[derive(Debug, Clone, Copy, ValueEnum)]
-pub enum OcrEngine {
-    /// Mixed text and mathematical formula recognition with LaTeX output
-    Auto,
-    /// Mixed text and mathematical formula recognition with LaTeX output
-    Math,
-    /// Handwritten English line recognition
-    Handwriting,
-    /// Original RapidOCR detector/recognizer
-    Rapid,
-}
-
-impl OcrEngine {
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::Auto => "auto",
-            Self::Math => "math",
-            Self::Handwriting => "handwriting",
-            Self::Rapid => "rapid",
-        }
-    }
 }
 
 pub fn run(args: OcrArgs, cfg: &AppConfig) -> Result<()> {
     let desktop = HyprlandDesktop;
-
+    let ocr = RustOcrProvider::new(cfg.models_dir.clone());
+    let service = OcrService::new(&ocr, &desktop);
     match args.action {
-        OcrAction::Clip { clip_id, window, engine } => {
-            let ocr = RapidOcrWorker::new_document(
-                cfg.rapidocr_python.clone(),
-                cfg.ocr_python.clone(),
-                cfg.ocr_worker_script.clone(),
-                engine.as_str().into(),
-            );
-            OcrService::new(&ocr, &desktop).ocr_clipboard(&clip_id, &window)
+        OcrAction::Clip { clip_id, window, math } => {
+            if math { service.ocr_clipboard_math(&clip_id, &window) }
+            else { service.ocr_clipboard(&clip_id, &window) }
         }
-        OcrAction::File { path, window, engine } => {
-            let ocr = RapidOcrWorker::new_document(
-                cfg.rapidocr_python.clone(),
-                cfg.ocr_python.clone(),
-                cfg.ocr_worker_script.clone(),
-                engine.as_str().into(),
-            );
-            OcrService::new(&ocr, &desktop).ocr_file(&path, &window)
+        OcrAction::File { path, window, math } => {
+            if math { service.ocr_file_math(&path, &window) }
+            else { service.ocr_file(&path, &window) }
         }
     }
 }
