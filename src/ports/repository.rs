@@ -1,0 +1,25 @@
+use crate::domain::document::{CachedImage, FileEntry, IndexStats, SearchHit};
+use crate::error::Result;
+use std::collections::HashMap;
+
+pub trait IndexRepository {
+    fn load_file_records(&self) -> Result<HashMap<String, (i64, u64)>>;
+    fn load_image_cache(&self) -> Result<HashMap<String, CachedImage>>;
+    fn find_by_inode(&self, dev: u64, ino: u64) -> Result<Option<String>>;
+    fn upsert_document(
+        &self,
+        entry: &FileEntry,
+        title: &str,
+        body: &str,
+        has_body: bool,
+        terms: &[(String, f64)],
+    ) -> Result<()>;
+    fn upsert_image_cache(&self, img: &CachedImage) -> Result<()>;
+    fn rename_path(&self, old_path: &str, new_path: &str, is_dir: bool) -> Result<usize>;
+    fn delete_path(&self, target: &str, is_dir: bool) -> Result<usize>;
+    fn remove_paths(&self, paths: &[String]) -> Result<()>;
+    fn rebuild_sparse_index_if_needed(&self, force: bool) -> Result<()>;
+    fn search(&self, query: &str, limit: usize, mode: &str) -> Result<Vec<SearchHit>>;
+    fn stats(&self, image_sync_running: bool) -> Result<IndexStats>;
+    fn all_indexed_paths(&self) -> Result<Vec<(String, bool)>>;
+}

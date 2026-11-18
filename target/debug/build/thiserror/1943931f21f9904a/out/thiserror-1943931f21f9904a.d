@@ -1,0 +1,14 @@
+/home/oarabile/Projects/hydrogen/target/debug/build/thiserror/1943931f21f9904a/out/thiserror-1943931f21f9904a.d: /home/oarabile/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.21/src/lib.rs /home/oarabile/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.21/src/aserror.rs /home/oarabile/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.21/src/display.rs /home/oarabile/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.21/src/var.rs /home/oarabile/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.21/src/private.rs /home/oarabile/Projects/hydrogen/target/debug/build/thiserror/ffbc04eee34fe0c9/out/private.rs
+
+/home/oarabile/Projects/hydrogen/target/debug/build/thiserror/1943931f21f9904a/out/libthiserror-1943931f21f9904a.rlib: /home/oarabile/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.21/src/lib.rs /home/oarabile/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.21/src/aserror.rs /home/oarabile/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.21/src/display.rs /home/oarabile/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.21/src/var.rs /home/oarabile/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.21/src/private.rs /home/oarabile/Projects/hydrogen/target/debug/build/thiserror/ffbc04eee34fe0c9/out/private.rs
+
+/home/oarabile/Projects/hydrogen/target/debug/build/thiserror/1943931f21f9904a/out/libthiserror-1943931f21f9904a.rmeta: /home/oarabile/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.21/src/lib.rs /home/oarabile/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.21/src/aserror.rs /home/oarabile/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.21/src/display.rs /home/oarabile/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.21/src/var.rs /home/oarabile/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.21/src/private.rs /home/oarabile/Projects/hydrogen/target/debug/build/thiserror/ffbc04eee34fe0c9/out/private.rs
+
+/home/oarabile/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.21/src/lib.rs:
+/home/oarabile/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.21/src/aserror.rs:
+/home/oarabile/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.21/src/display.rs:
+/home/oarabile/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.21/src/var.rs:
+/home/oarabile/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.21/src/private.rs:
+/home/oarabile/Projects/hydrogen/target/debug/build/thiserror/ffbc04eee34fe0c9/out/private.rs:
+
+# env-dep:OUT_DIR=/home/oarabile/Projects/hydrogen/target/debug/build/thiserror/ffbc04eee34fe0c9/out

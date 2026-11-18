@@ -1,0 +1,66 @@
+use std::env;
+use std::path::PathBuf;
+
+#[derive(Debug, Clone)]
+pub struct AppConfig {
+    pub state_dir: PathBuf,
+    pub db_path: PathBuf,
+    pub cache_txt: PathBuf,
+    pub rev_file: PathBuf,
+    pub img_lock_path: PathBuf,
+    pub rapidocr_python: PathBuf,
+    pub caption_python: PathBuf,
+    pub caption_script: PathBuf,
+    pub search_roots: Vec<PathBuf>,
+    pub ics_globs: Vec<String>,
+    pub evolution_db_globs: Vec<String>,
+    pub default_event_duration_mins: i64,
+}
+
+impl AppConfig {
+    pub fn load() -> Self {
+        let home = env::var("HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| PathBuf::from("/tmp"));
+        let home_str = home.to_string_lossy();
+
+        let state_dir = env::var("HYDROGEN_STATE_DIR")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| home.join(".local/state/quickshell-launcher"));
+
+        let default_event_duration_mins = env::var("DURATION")
+            .ok()
+            .and_then(|v| v.parse::<i64>().ok())
+            .filter(|&d| d > 0)
+            .unwrap_or(60);
+
+        Self {
+            db_path: state_dir.join("content-index.db"),
+            cache_txt: state_dir.join("file-index.txt"),
+            rev_file: state_dir.join("index.rev"),
+            img_lock_path: state_dir.join("image-sync.pid"),
+            rapidocr_python: home.join(".local/share/rapidocr-venv/bin/python"),
+            caption_python: home.join(".local/share/caption-venv/bin/python"),
+            caption_script: home.join(".config/quickshell/scripts/image_caption.py"),
+            search_roots: vec![
+                home.join("Documents"),
+                home.join("Downloads"),
+                home.join("Pictures"),
+                home.join("Videos"),
+                home.join("Projects"),
+            ],
+            ics_globs: vec![
+                format!("{home_str}/.local/share/evolution/calendar/*/calendar.ics"),
+                format!("{home_str}/.calendars/**/*.ics"),
+                format!("{home_str}/.local/share/vdirsyncer/**/*.ics"),
+                format!("{home_str}/.local/share/khal/**/*.ics"),
+                format!("{home_str}/.config/quickshell/calendars/**/*.ics"),
+            ],
+            evolution_db_globs: vec![format!(
+                "{home_str}/.cache/evolution/calendar/*/cache.db"
+            )],
+            state_dir,
+            default_event_duration_mins,
+        }
+    }
+}
