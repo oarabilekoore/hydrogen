@@ -21,7 +21,7 @@ The project uses a layered Rust structure:
 - `src/adapters/` contains the concrete ML, filesystem, SQLite, calendar, and Wayland adapters.
 - `src/cli/` exposes the command-line interface.
 
-OCR is deliberately invoked through a Python worker so the Rust application can keep a small dependency footprint. The current worker uses RapidOCR from a dedicated virtual environment. The OCR result is converted into Markdown and copied with `wl-copy`.
+OCR is invoked through an on-demand Python worker, separate from the Rust daemon and the background image-indexing worker. Interactive OCR now has three engines: Pix2Text for mixed text and mathematical formulas (including LaTeX), TrOCR Small Handwritten for handwritten English lines, and RapidOCR as a legacy fallback. Models are loaded only for the OCR request and run on CPU; they are not kept resident by the Hydrogen daemon. Background image indexing continues to use the existing lightweight RapidOCR environment.
 
 ## Requirements
 
@@ -29,7 +29,8 @@ OCR is deliberately invoked through a Python worker so the Rust application can 
 - Rust toolchain and Cargo
 - SQLite (bundled through the Rust dependency)
 - `cliphist`, `wl-copy`, `wtype`, `hyprctl`, and `notify-send` for the full clipboard-to-paste workflow
-- Python 3 and the RapidOCR runtime environment for OCR
+- Python 3 and pip/venv for installing the optional interactive OCR environment
+- The existing RapidOCR environment for background image indexing
 
 ## Build and install
 
@@ -80,7 +81,90 @@ To paste the result into a specific Hyprland window, provide its address:
 hydrogen ocr file ~/Pictures/notes.png --window WINDOW_ADDRESS
 ```
 
-OCR output is copied as plain-text Markdown. When a window address is supplied, Hydrogen focuses that window and sends Ctrl+V.
+OCR output is copied as plain-text Markdown. Mathematical regions are represented as LaTeX (`$...# Hydrogen
+
+Hydrogen is the native Rust backend for the Quickshell desktop environment. It provides the command-line services used by the launcher: file indexing, content search, image indexing, OCR, and calendar integration.
+
+## Features
+
+- **File indexing:** scans configured user directories and maintains a searchable local index.
+- **Content search:** combines SQLite FTS5 text search with a lightweight vector index.
+- **Image indexing:** supports OCR text and image-caption metadata for image search.
+- **Clipboard and file OCR:** reads image entries from `cliphist` or an image path, extracts text, copies Markdown to the Wayland clipboard, and can paste into the previously focused Hyprland window.
+- **Calendar:** lists, creates, and launches desktop calendar events.
+- **Daemon:** runs the background watcher and incremental indexer.
+
+## Architecture
+
+The project uses a layered Rust structure:
+
+- `src/domain/` contains domain models and OCR layout formatting.
+- `src/application/` contains application services, including OCR orchestration.
+- `src/ports/` defines interfaces for OCR, desktop integration, storage, and extraction.
+- `src/adapters/` contains the concrete ML, filesystem, SQLite, calendar, and Wayland adapters.
+- `src/cli/` exposes the command-line interface.
+
+OCR is invoked through an on-demand Python worker, separate from the Rust daemon and the background image-indexing worker. Interactive OCR now has three engines: Pix2Text for mixed text and mathematical formulas (including LaTeX), TrOCR Small Handwritten for handwritten English lines, and RapidOCR as a legacy fallback. Models are loaded only for the OCR request and run on CPU; they are not kept resident by the Hydrogen daemon. Background image indexing continues to use the existing lightweight RapidOCR environment.
+
+## Requirements
+
+- Linux with a Wayland session
+- Rust toolchain and Cargo
+- SQLite (bundled through the Rust dependency)
+- `cliphist`, `wl-copy`, `wtype`, `hyprctl`, and `notify-send` for the full clipboard-to-paste workflow
+- Python 3 and pip/venv for installing the optional interactive OCR environment
+- The existing RapidOCR environment for background image indexing
+
+## Build and install
+
+Clone and build:
+
+```sh
+git clone https://github.com/oarabilekoore/hydrogen.git
+cd hydrogen
+make build
+make install
+```
+
+The default install prefix is `~/.local`, so the binary is installed to `~/.local/bin/hydrogen`. Ensure that directory is on your `PATH`.
+
+Run the test suite:
+
+```sh
+make test
+```
+
+## OCR runtime
+
+The current configuration expects the RapidOCR Python interpreter at:
+
+```text
+~/.local/share/rapidocr-venv/bin/python
+```
+
+The Python environment must provide `rapidocr_onnxruntime`. Hydrogen starts the worker on demand; it does not keep a large OCR model loaded in the Rust daemon.
+
+### OCR commands
+
+Recognise an image from a clipboard-history entry:
+
+```sh
+hydrogen ocr clip CLIPHIST_ID
+```
+
+Recognise an image file:
+
+```sh
+hydrogen ocr file ~/Pictures/notes.png
+```
+
+To paste the result into a specific Hyprland window, provide its address:
+
+```sh
+hydrogen ocr file ~/Pictures/notes.png --window WINDOW_ADDRESS
+```
+
+ for inline expressions and `$...$` for display expressions). When a window address is supplied, Hydrogen focuses that window and sends Ctrl+V. Pix2Text is the default mixed text/formula engine; TrOCR is a separate selectable mode because it is trained for handwritten text lines, not mathematical notation. For handwritten equations, use the default Pix2Text mode and check the LaTeX result.
 
 ## Configuration
 
