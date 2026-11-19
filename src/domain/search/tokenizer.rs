@@ -54,15 +54,15 @@ pub fn extract_raw_tokens(text: &str) -> Vec<String> {
         }
     };
     for ch in text.chars() {
-        if ch.is_alphanumeric() {
+        if let Some(alias) = math_alias(ch) {
+            flush(&mut buf, &mut out);
+            out.push(alias.to_string());
+        } else if ch.is_alphanumeric() {
             for c in ch.to_lowercase() {
                 buf.push(c);
             }
         } else {
             flush(&mut buf, &mut out);
-            if let Some(alias) = math_alias(ch) {
-                out.push(alias.to_string());
-            }
         }
     }
     flush(&mut buf, &mut out);
