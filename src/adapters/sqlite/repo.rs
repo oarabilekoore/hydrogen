@@ -1,6 +1,8 @@
+use crate::adapters::fs::text_extract::is_plain_text_path;
 use crate::domain::document::{is_image_extension, CachedImage, FileEntry, IndexStats, SearchHit};
 use crate::domain::search::ranker::{
-    collapse_whitespace, inspect_passage_and_phrase, score_filename_match, similarity_ratio,
+    best_pdf_page, collapse_whitespace, inspect_passage_and_phrase, locate_match_line,
+    score_filename_match, similarity_ratio,
 };
 use crate::domain::search::tfidf::{compute_idf, normalize_doc_weights};
 use crate::domain::search::tokenizer::tokenize_content;
@@ -589,6 +591,9 @@ impl IndexRepository for SqliteIndexRepository {
                         phrase: false,
                         snippet: String::new(),
                         is_dir,
+                        page: None,
+                        line: None,
+                        preview: String::new(),
                     }
                 })
                 .collect();
@@ -829,6 +834,9 @@ impl IndexRepository for SqliteIndexRepository {
                 phrase: false,
                 snippet: fts_data.map(|(_, s, _)| s.clone()).unwrap_or_default(),
                 is_dir,
+                page: None,
+                line: None,
+                preview: String::new(),
             });
         }
 
@@ -856,6 +864,44 @@ impl IndexRepository for SqliteIndexRepository {
                 item.snippet = best_snip;
                 if phrase_hit {
                     item.score = ((item.score + 750.0) * 100.0).round() / 100.0;
+                }
+                if is_plain_text_path(Path::new(&item.path)) {
+                    item.line =
+                        locate_match_line(&body, &raw_query_norm, &q_tokens).map(|n| n as i64);
+                }
+            }
+
+            if item.path.to_ascii_lowercase().ends_with(".pdf") {
+                if let Ok(mut stmt) = conn.prepare(
+                    "SELECT page_no, body, preview_path FROM pdf_pages WHERE path = ?1 ORDER BY page_no",
+                ) {
+                    if let Ok(rows) = stmt.query_map(params![item.path], |r| {
+                        Ok((
+                            r.get::<_, i64>(0)?,
+                            r.get::<_, String>(1)?,
+                            r.get::<_, String>(2)?,
+                        ))
+                    }) {
+                        let pages: Vec<(i64, String, String)> = rows.flatten().collect();
+                        if let Some(i) = best_pdf_page(&pages, &raw_query_norm, &q_tokens) {
+                            let (page_no, page_body, preview) = &pages[i];
+                            item.page = Some(*page_no);
+                            if !preview.is_empty() {
+                                item.preview = preview.clone();
+                            }
+                            let (page_phrase, page_snip) = inspect_passage_and_phrase(
+                                "",
+                                page_body,
+                                &raw_query_norm,
+                                &q_tokens,
+                                "",
+                            );
+                            if !page_snip.is_empty() {
+                                item.snippet = page_snip;
+                            }
+                            item.phrase = item.phrase || page_phrase;
+                        }
+                    }
                 }
             }
         }

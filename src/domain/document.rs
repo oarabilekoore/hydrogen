@@ -35,6 +35,15 @@ pub struct SearchHit {
     pub snippet: String,
     #[serde(rename = "isDir")]
     pub is_dir: bool,
+    /// 1-based PDF page containing the best match (PDFs only).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub page: Option<i64>,
+    /// 1-based line of the best match (plain-text/code files only).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub line: Option<i64>,
+    /// Pre-rendered PNG of the matching PDF page, when one exists.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub preview: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

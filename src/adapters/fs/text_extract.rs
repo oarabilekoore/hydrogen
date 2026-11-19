@@ -38,6 +38,15 @@ const IMAGE_SKIP_DIRS: &[&str] = &[
     ".thumbnails",
 ];
 
+/// True for files whose indexed body is the raw file text, so a body line number
+/// is also the line number in the file (not PDFs or zipped XML formats).
+pub fn is_plain_text_path(path: &Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .map(|e| TEXT_EXTS.contains(&e.to_ascii_lowercase().as_str()))
+        .unwrap_or(false)
+}
+
 pub struct CompositeTextExtractor;
 
 impl TextExtractor for CompositeTextExtractor {

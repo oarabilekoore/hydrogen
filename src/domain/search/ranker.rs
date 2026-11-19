@@ -108,6 +108,56 @@ pub fn inspect_passage_and_phrase(
     (phrase_hit, best_line)
 }
 
+/// 1-based line of the best match in `body`: the first line containing the whole
+/// phrase, otherwise the line with the most distinct query tokens.
+pub fn locate_match_line(body: &str, raw_query_norm: &str, q_tokens: &[String]) -> Option<usize> {
+    let tok_set: HashSet<&str> = q_tokens.iter().map(|s| s.as_str()).collect();
+    let mut best: Option<(usize, usize)> = None; // (hits, line_no)
+    for (idx, line) in body.lines().enumerate() {
+        let clean = collapse_whitespace(line).to_ascii_lowercase();
+        if clean.is_empty() {
+            continue;
+        }
+        if !raw_query_norm.is_empty() && clean.contains(raw_query_norm) {
+            return Some(idx + 1);
+        }
+        let hits = extract_raw_tokens(&clean)
+            .iter()
+            .filter(|t| tok_set.contains(t.as_str()))
+            .collect::<HashSet<_>>()
+            .len();
+        if hits > best.map(|b| b.0).unwrap_or(0) {
+            best = Some((hits, idx + 1));
+        }
+    }
+    best.map(|(_, line)| line)
+}
+
+/// Index into `pages` of the page that best matches: pages containing the whole
+/// phrase win, then pages with the most distinct query tokens (earlier page on ties).
+pub fn best_pdf_page(
+    pages: &[(i64, String, String)],
+    raw_query_norm: &str,
+    q_tokens: &[String],
+) -> Option<usize> {
+    let tok_set: HashSet<&str> = q_tokens.iter().map(|s| s.as_str()).collect();
+    let mut best: Option<(usize, usize)> = None; // (score, index)
+    for (i, (_, body, _)) in pages.iter().enumerate() {
+        let norm = collapse_whitespace(body).to_ascii_lowercase();
+        let hits = extract_raw_tokens(&norm)
+            .iter()
+            .filter(|t| tok_set.contains(t.as_str()))
+            .collect::<HashSet<_>>()
+            .len();
+        let phrase = !raw_query_norm.is_empty() && norm.contains(raw_query_norm);
+        let score = if phrase { 1000 } else { 0 } + hits;
+        if score > best.map(|b| b.0).unwrap_or(0) {
+            best = Some((score, i));
+        }
+    }
+    best.map(|(_, i)| i)
+}
+
 /// Score filename/path relevance so `hydrogen query` serves both direct file search and content search.
 pub fn score_filename_match(path: &str, name: &str, q_lower: &str, q_tokens: &[String]) -> f64 {
     let name_lower = name.to_ascii_lowercase();
