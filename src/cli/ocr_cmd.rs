@@ -39,13 +39,23 @@ pub fn run(args: OcrArgs, cfg: &AppConfig) -> Result<()> {
     let ocr = RustOcrProvider::new(cfg.models_dir.clone());
     let service = OcrService::new(&ocr, &desktop);
     match args.action {
-        OcrAction::Clip { clip_id, window, math } => {
-            if math { service.ocr_clipboard_math(&clip_id, &window) }
-            else { service.ocr_clipboard(&clip_id, &window) }
+        OcrAction::Clip {
+            clip_id,
+            window,
+            math,
+        } => {
+            if math {
+                service.ocr_clipboard_math(&clip_id, &window)
+            } else {
+                service.ocr_clipboard(&clip_id, &window)
+            }
         }
         OcrAction::File { path, window, math } => {
-            if math { service.ocr_file_math(&path, &window) }
-            else { service.ocr_file(&path, &window) }
+            if math {
+                service.ocr_file_math(&path, &window)
+            } else {
+                service.ocr_file(&path, &window)
+            }
         }
     }
 }

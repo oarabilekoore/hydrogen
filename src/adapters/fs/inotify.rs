@@ -79,12 +79,9 @@ impl LinuxInotifyWatcher {
     fn is_under_ignored(&self, path: &Path) -> bool {
         for root in &self.roots {
             if let Ok(rel) = path.strip_prefix(root) {
-                return rel.components().any(|c| {
-                    c.as_os_str()
-                        .to_str()
-                        .map(should_skip_name)
-                        .unwrap_or(true)
-                });
+                return rel
+                    .components()
+                    .any(|c| c.as_os_str().to_str().map(should_skip_name).unwrap_or(true));
             }
         }
         true
@@ -185,11 +182,7 @@ impl LinuxInotifyWatcher {
         if poll_rc > 0 && (pfd.revents & libc::POLLIN) != 0 {
             loop {
                 let n = unsafe {
-                    libc::read(
-                        self.fd,
-                        buf.as_mut_ptr() as *mut libc::c_void,
-                        buf.len(),
-                    )
+                    libc::read(self.fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len())
                 };
                 if n <= 0 {
                     break;
@@ -199,7 +192,8 @@ impl LinuxInotifyWatcher {
 
                 while offset + 16 <= bytes.len() {
                     let wd = i32::from_ne_bytes(bytes[offset..offset + 4].try_into().unwrap());
-                    let mask = u32::from_ne_bytes(bytes[offset + 4..offset + 8].try_into().unwrap());
+                    let mask =
+                        u32::from_ne_bytes(bytes[offset + 4..offset + 8].try_into().unwrap());
                     let cookie =
                         u32::from_ne_bytes(bytes[offset + 8..offset + 12].try_into().unwrap());
                     let name_len =
@@ -236,7 +230,9 @@ impl LinuxInotifyWatcher {
                     };
 
                     let is_dir = (mask & libc::IN_ISDIR) != 0;
-                    if !name.is_empty() && should_skip_name(&name) && (mask & libc::IN_MOVED_TO) == 0
+                    if !name.is_empty()
+                        && should_skip_name(&name)
+                        && (mask & libc::IN_MOVED_TO) == 0
                     {
                         continue;
                     }

@@ -40,11 +40,7 @@ impl DesktopEnvironment for HyprlandDesktop {
 
     fn focus_and_paste(&self, window_addr: &str) -> Result<()> {
         let _ = Command::new("hyprctl")
-            .args([
-                "dispatch",
-                "focuswindow",
-                &format!("address:{window_addr}"),
-            ])
+            .args(["dispatch", "focuswindow", &format!("address:{window_addr}")])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status();

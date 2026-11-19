@@ -19,21 +19,24 @@ pub fn extract_doc_terms(title: &str, body: &str, caption_text: &str) -> Vec<(St
         *tf.entry(format!("w:{tok}")).or_insert(0.0) += 3.5;
     }
     for pair in title_toks.windows(2) {
-        *tf.entry(format!("b:{}_{}", pair[0], pair[1])).or_insert(0.0) += 3.0;
+        *tf.entry(format!("b:{}_{}", pair[0], pair[1]))
+            .or_insert(0.0) += 3.0;
     }
 
     for tok in &cap_toks {
         *tf.entry(format!("w:{tok}")).or_insert(0.0) += 2.2;
     }
     for pair in cap_toks.windows(2) {
-        *tf.entry(format!("b:{}_{}", pair[0], pair[1])).or_insert(0.0) += 2.0;
+        *tf.entry(format!("b:{}_{}", pair[0], pair[1]))
+            .or_insert(0.0) += 2.0;
     }
 
     for tok in &body_toks {
         *tf.entry(format!("w:{tok}")).or_insert(0.0) += 1.0;
     }
     for pair in body_toks.windows(2) {
-        *tf.entry(format!("b:{}_{}", pair[0], pair[1])).or_insert(0.0) += 1.6;
+        *tf.entry(format!("b:{}_{}", pair[0], pair[1]))
+            .or_insert(0.0) += 1.6;
     }
 
     let mut weighted: Vec<(String, f64)> = tf

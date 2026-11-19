@@ -16,11 +16,16 @@ pub struct IndexArgs {
 #[derive(Subcommand, Debug)]
 pub enum IndexAction {
     /// Fast incremental file/doc sync + inode move recovery
-    Sync { #[arg(long)] no_images: bool },
+    Sync {
+        #[arg(long)]
+        no_images: bool,
+    },
     /// Run local Rust OCR indexing on eligible images
     SyncImages {
-        #[arg(long)] retag: bool,
-        #[arg(long, default_value_t = 0)] limit: usize,
+        #[arg(long)]
+        retag: bool,
+        #[arg(long, default_value_t = 0)]
+        limit: usize,
     },
     /// Show index statistics as JSON
     Stats,

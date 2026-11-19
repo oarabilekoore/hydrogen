@@ -29,8 +29,10 @@ pub fn get_image_dimensions(path: &Path) -> Option<(u32, u32)> {
     if &head[..4] == b"RIFF" && &head[8..12] == b"WEBP" {
         let chunk = &head[12..16];
         if chunk == b"VP8X" && n >= 30 {
-            let w = 1 + (u32::from(head[24]) | (u32::from(head[25]) << 8) | (u32::from(head[26]) << 16));
-            let h = 1 + (u32::from(head[27]) | (u32::from(head[28]) << 8) | (u32::from(head[29]) << 16));
+            let w = 1
+                + (u32::from(head[24]) | (u32::from(head[25]) << 8) | (u32::from(head[26]) << 16));
+            let h = 1
+                + (u32::from(head[27]) | (u32::from(head[28]) << 8) | (u32::from(head[29]) << 16));
             return Some((w, h));
         }
         if chunk == b"VP8 " && n >= 30 {
@@ -75,7 +77,18 @@ pub fn get_image_dimensions(path: &Path) -> Option<(u32, u32)> {
             let seg_len = u16::from_be_bytes(len_buf) as i64;
             if matches!(
                 marker,
-                0xC0 | 0xC1 | 0xC2 | 0xC3 | 0xC5 | 0xC6 | 0xC7 | 0xC9 | 0xCA | 0xCB | 0xCD | 0xCE | 0xCF
+                0xC0 | 0xC1
+                    | 0xC2
+                    | 0xC3
+                    | 0xC5
+                    | 0xC6
+                    | 0xC7
+                    | 0xC9
+                    | 0xCA
+                    | 0xCB
+                    | 0xCD
+                    | 0xCE
+                    | 0xCF
             ) {
                 let mut sof = [0u8; 5];
                 if f.read_exact(&mut sof).is_ok() {

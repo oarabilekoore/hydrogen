@@ -31,7 +31,9 @@ impl<'a> CalendarService<'a> {
     pub fn list_upcoming(&self, from_date: Option<&str>, days: i64) -> Result<Vec<CalendarEvent>> {
         let start_day: NaiveDateTime = match from_date {
             Some(s) => NaiveDate::parse_from_str(s, "%Y-%m-%d")
-                .map_err(|e| HydrogenError::InvalidInput(format!("Invalid --from date '{s}': {e}")))?
+                .map_err(|e| {
+                    HydrogenError::InvalidInput(format!("Invalid --from date '{s}': {e}"))
+                })?
                 .and_hms_opt(0, 0, 0)
                 .unwrap(),
             None => Local::now().date_naive().and_hms_opt(0, 0, 0).unwrap(),
