@@ -61,17 +61,17 @@ impl<'a> SyncService<'a> {
             if existing.contains_key(&p_str) || entry.ino == 0 {
                 continue;
             }
-            if let Some(old_path) = self.repo.find_by_inode(entry.dev, entry.ino)? {
-                if old_path != p_str && !current_paths.contains(&old_path) {
-                    if self.repo.rename_path(&old_path, &p_str, entry.is_dir)? > 0 {
-                        existing.remove(&old_path);
-                        if let Some(mut ic) = img_cached.remove(&old_path) {
-                            ic.path = p_str.clone();
-                            img_cached.insert(p_str.clone(), ic);
-                        }
-                        moved += 1;
-                    }
+            if let Some(old_path) = self.repo.find_by_inode(entry.dev, entry.ino)?
+                && old_path != p_str
+                && !current_paths.contains(&old_path)
+                && self.repo.rename_path(&old_path, &p_str, entry.is_dir)? > 0
+            {
+                existing.remove(&old_path);
+                if let Some(mut ic) = img_cached.remove(&old_path) {
+                    ic.path = p_str.clone();
+                    img_cached.insert(p_str.clone(), ic);
                 }
+                moved += 1;
             }
         }
 
