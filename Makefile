@@ -42,14 +42,7 @@ models:
 
 service: install
 	mkdir -p $(SYSTEMD_USER_DIR)
-	printf '%s\\n' '[Unit]' \\
-	'Description=Hydrogen Rust Indexer and Local OCR Backend for Quickshell' \\
-	'After=graphical-session.target' '' '[Service]' \\
-	'Type=simple' \\
-	'ExecStart=$(BINDIR)/hydrogen daemon' \\
-	'Restart=on-failure' \\
-	'RestartSec=2' 'Nice=15' '' '[Install]' \\
-	'WantedBy=default.target' > $(SYSTEMD_USER_DIR)/$(SERVICE_NAME)
+	printf '%s\n' '[Unit]' 'Description=Hydrogen Rust Indexer and Local OCR Backend for Quickshell' 'After=graphical-session.target' '' '[Service]' 'Type=simple' 'ExecStart=$(BINDIR)/hydrogen daemon' 'Restart=on-failure' 'RestartSec=2' 'Nice=15' '' '[Install]' 'WantedBy=default.target' > $(SYSTEMD_USER_DIR)/$(SERVICE_NAME)
 	systemctl --user daemon-reload
 	systemctl --user enable --now $(SERVICE_NAME)
 
