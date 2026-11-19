@@ -139,6 +139,20 @@ impl<'a> SyncService<'a> {
                 }
                 let body = if entry.is_dir {
                     String::new()
+                } else if entry.path.extension().and_then(|e| e.to_str()).map(|e| e.eq_ignore_ascii_case("pdf")).unwrap_or(false) {
+                    let pages = crate::adapters::fs::text_extract::extract_pdf_pages(&entry.path, &self.cfg.state_dir);
+                    let hash = hash_file_blake3(&entry.path).unwrap_or_default();
+                    let mut indexed = Vec::with_capacity(pages.len());
+                    for (page_no, mut page_text, preview_path) in pages {
+                        if page_text.trim().is_empty() && !preview_path.is_empty() {
+                            if let Ok(boxes) = self.ocr.ocr_boxes(Path::new(&preview_path)) {
+                                page_text = boxes.into_iter().map(|b| b.text).collect::<Vec<_>>().join("\\n");
+                            }
+                        }
+                        indexed.push((page_no, page_text, preview_path));
+                    }
+                    self.repo.replace_pdf_pages(&p_str, &indexed, &hash)?;
+                    indexed.iter().map(|(n, text, _)| format!("[Page {n}] {text}")).collect::<Vec<_>>().join("\\n")
                 } else {
                     self.extractor.extract_text(&entry.path, entry.size)
                 };
