@@ -222,6 +222,26 @@ impl SqliteIndexRepository {
 }
 
 impl IndexRepository for SqliteIndexRepository {
+    fn upsert_content_hash(&self, path: &str, hash: &str, size: u64, mtime: i64) -> Result<()> {
+        let conn = self.connect()?;
+        conn.execute(
+            "INSERT INTO content_hashes(path,content_hash,size,mtime) VALUES(?1,?2,?3,?4)
+             ON CONFLICT(path) DO UPDATE SET content_hash=excluded.content_hash,size=excluded.size,mtime=excluded.mtime",
+            params![path, hash, size as i64, mtime],
+        )?;
+        Ok(())
+    }
+
+    fn enqueue_model_job(&self, path: &str, task: &str) -> Result<()> {
+        let conn = self.connect()?;
+        conn.execute(
+            "INSERT INTO model_jobs(path,task,status) VALUES(?1,?2,'queued')
+             ON CONFLICT(path,task) DO UPDATE SET status=CASE WHEN model_jobs.status='done' THEN 'queued' ELSE model_jobs.status END, updated_at=unixepoch()",
+            params![path, task],
+        )?;
+        Ok(())
+    }
+
     fn load_file_records(&self) -> Result<HashMap<String, (i64, u64)>> {
         let conn = self.connect()?;
         let mut stmt = conn.prepare("SELECT path, mtime, size FROM files")?;
