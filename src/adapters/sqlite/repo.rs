@@ -222,7 +222,7 @@ impl SqliteIndexRepository {
 }
 
 impl IndexRepository for SqliteIndexRepository {
-    fn upsert_content_hash(&self, path: &str, hash: &str, size: u64, mtime: i64) -> Result<()> {
+    fn replace_pdf_pages(&self, path: &str, pages: &[(i64, String, String)], hash: &str) -> Result<()> {\n        let mut conn = self.connect()?;\n        let tx = conn.transaction()?;\n        tx.execute("DELETE FROM pdf_pages WHERE path=?1", params![path])?;\n        tx.execute("DELETE FROM pdf_pages_fts WHERE path=?1", params![path])?;\n        for (page_no, body, preview) in pages {\n            tx.execute("INSERT INTO pdf_pages(path,page_no,content_hash,body,preview_path) VALUES(?1,?2,?3,?4,?5)", params![path,page_no,hash,body,preview])?;\n            tx.execute("INSERT INTO pdf_pages_fts(path,page_no,body) VALUES(?1,?2,?3)", params![path,page_no,body])?;\n        }\n        tx.commit()?;\n        Ok(())\n    }\n\n    fn upsert_content_hash(&self, path: &str, hash: &str, size: u64, mtime: i64) -> Result<()> {
         let conn = self.connect()?;
         conn.execute(
             "INSERT INTO content_hashes(path,content_hash,size,mtime) VALUES(?1,?2,?3,?4)
