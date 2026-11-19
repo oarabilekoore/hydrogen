@@ -1,0 +1,27 @@
+name: Rust CI
+
+on:
+  push:
+    branches: [main, feature/rust-multimodal-index]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Format and compile
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Compile
+        run: cargo check --all-targets
+      - name: Test
+        run: cargo test --all-targets

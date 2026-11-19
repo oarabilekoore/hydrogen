@@ -158,3 +158,44 @@ fn extract_xml_zip_text(path: &Path) -> String {
 
     chunks.join(" ").chars().take(MAX_TEXT_CHARS).collect()
 }
+
+
+/// Extract each PDF page independently and render a small local preview.
+/// Requires Poppler's pdftotext, pdfinfo, and pdftoppm utilities.
+pub fn extract_pdf_pages(path: &Path, preview_root: &Path) -> Vec<(i64, String, String)> {
+    let info = Command::new("pdfinfo").arg(path).stderr(Stdio::null()).output();
+    let Ok(info) = info else { return Vec::new(); };
+    if !info.status.success() { return Vec::new(); }
+    let info_text = String::from_utf8_lossy(&info.stdout);
+    let Some(page_count) = info_text.lines().find_map(|line| {
+        line.strip_prefix("Pages:").and_then(|v| v.trim().parse::<u32>().ok())
+    }) else { return Vec::new(); };
+    let key = blake3::hash(path.to_string_lossy().as_bytes()).to_hex().to_string();
+    let dir = preview_root.join("pdf-pages").join(key);
+    if std::fs::create_dir_all(&dir).is_err() { return Vec::new(); }
+    let mut pages = Vec::new();
+    for page in 1..=page_count.min(500) {
+        let text_out = Command::new("pdftotext")
+            .args(["-q", "-enc", "UTF-8", "-layout", "-f"])
+            .arg(page.to_string()).arg("-l").arg(page.to_string())
+            .arg(path).arg("-").stderr(Stdio::null()).output();
+        let Ok(text_out) = text_out else { continue; };
+        let mut text = if text_out.status.success() {
+            String::from_utf8_lossy(&text_out.stdout).chars().take(40_000).collect::<String>()
+        } else { String::new() };
+        let preview = dir.join(format!("page-{page}"));
+        let rendered = Command::new("pdftoppm")
+            .args(["-f"]).arg(page.to_string()).args(["-l"]).arg(page.to_string())
+            .args(["-singlefile", "-scale-to", "1200", "-png"])
+            .arg(path).arg(&preview).stdout(Stdio::null()).stderr(Stdio::null()).status();
+        let preview_path = if rendered.map(|s| s.success()).unwrap_or(false) {
+            preview.with_extension("png").to_string_lossy().to_string()
+        } else { String::new() };
+        if text.trim().is_empty() && !preview_path.is_empty() {
+            // Image-only page: OCR is intentionally queued for the Rust OCR worker.
+            text = String::new();
+        }
+        pages.push((i64::from(page), text, preview_path));
+    }
+    pages
+}

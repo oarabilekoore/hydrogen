@@ -8,7 +8,8 @@ use crate::ports::extractor::{CaptionProvider, FileScanner, OcrProvider, TextExt
 use crate::ports::repository::IndexRepository;
 use serde_json::json;
 use std::collections::HashSet;
-use std::fs;
+use std::fs::{self, File};
+use std::io::Read;
 use std::os::unix::process::CommandExt;
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -92,6 +93,16 @@ impl<'a> SyncService<'a> {
         for entry in &entries {
             let p_str = entry.path.to_string_lossy().to_string();
             let prev = existing.get(&p_str).copied();
+            if !entry.is_dir && prev != Some((entry.mtime, entry.size)) {
+                if let Ok(hash) = hash_file_blake3(&entry.path) {
+                    self.repo.upsert_content_hash(&p_str, &hash, entry.size, entry.mtime)?;
+                }
+                if entry.path.extension().and_then(|e| e.to_str()).map(|e| e.eq_ignore_ascii_case("pdf")).unwrap_or(false) {
+                    self.repo.enqueue_model_job(&p_str, "pdf_pages")?;
+                } else if self.extractor.is_indexable_image(&entry.path, entry.size) {
+                    self.repo.enqueue_model_job(&p_str, "image_ocr")?;
+                }
+            }
             let title = entry
                 .path
                 .file_name()
@@ -128,6 +139,20 @@ impl<'a> SyncService<'a> {
                 }
                 let body = if entry.is_dir {
                     String::new()
+                } else if entry.path.extension().and_then(|e| e.to_str()).map(|e| e.eq_ignore_ascii_case("pdf")).unwrap_or(false) {
+                    let pages = crate::adapters::fs::text_extract::extract_pdf_pages(&entry.path, &self.cfg.state_dir);
+                    let hash = hash_file_blake3(&entry.path).unwrap_or_default();
+                    let mut indexed = Vec::with_capacity(pages.len());
+                    for (page_no, mut page_text, preview_path) in pages {
+                        if page_text.trim().is_empty() && !preview_path.is_empty() {
+                            if let Ok(boxes) = self.ocr.ocr_boxes(Path::new(&preview_path)) {
+                                page_text = boxes.into_iter().map(|b| b.text).collect::<Vec<_>>().join("\\n");
+                            }
+                        }
+                        indexed.push((page_no, page_text, preview_path));
+                    }
+                    self.repo.replace_pdf_pages(&p_str, &indexed, &hash)?;
+                    indexed.iter().map(|(n, text, _)| format!("[Page {n}] {text}")).collect::<Vec<_>>().join("\\n")
                 } else {
                     self.extractor.extract_text(&entry.path, entry.size)
                 };
@@ -344,4 +369,18 @@ pub fn bump_revision(rev_file: &Path) {
     if fs::write(&tmp, format!("{ts}\n")).is_ok() {
         let _ = fs::rename(&tmp, rev_file);
     }
+}
+
+/// Stream files through BLAKE3 so large PDFs and images do not need to be
+/// loaded into RAM. The digest is stored separately from mtime/size metadata.
+fn hash_file_blake3(path: &Path) -> std::io::Result<String> {
+    let mut file = File::open(path)?;
+    let mut hasher = blake3::Hasher::new();
+    let mut buffer = [0u8; 64 * 1024];
+    loop {
+        let read = file.read(&mut buffer)?;
+        if read == 0 { break; }
+        hasher.update(&buffer[..read]);
+    }
+    Ok(hasher.finalize().to_hex().to_string())
 }

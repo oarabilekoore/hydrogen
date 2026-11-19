@@ -3,6 +3,8 @@ use crate::error::Result;
 use std::collections::HashMap;
 
 pub trait IndexRepository {
+    fn upsert_content_hash(&self, path: &str, hash: &str, size: u64, mtime: i64) -> Result<()>;\n    fn replace_pdf_pages(&self, path: &str, pages: &[(i64, String, String)], hash: &str) -> Result<()>;
+    fn enqueue_model_job(&self, path: &str, task: &str) -> Result<()>;
     fn load_file_records(&self) -> Result<HashMap<String, (i64, u64)>>;
     fn load_image_cache(&self) -> Result<HashMap<String, CachedImage>>;
     fn find_by_inode(&self, dev: u64, ino: u64) -> Result<Option<String>>;

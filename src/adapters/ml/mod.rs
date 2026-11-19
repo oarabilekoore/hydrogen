@@ -1,1 +1,1 @@
-pub mod workers;
+pub mod rust_ocr;
