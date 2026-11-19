@@ -56,7 +56,9 @@ impl RustOcrProvider {
             if !path.is_file() {
                 return Err(format!("Texo formula model missing: {}", path.display()));
             }
-            texo_ocr::Ocr::from_path(&path).map(Arc::new).map_err(|e| e.to_string())
+            texo_ocr::Ocr::from_path(&path)
+                .map(Arc::new)
+                .map_err(|e| e.to_string())
         });
         result.clone().map_err(HydrogenError::ExternalTool)
     }
@@ -102,7 +104,11 @@ impl OcrProvider for RustOcrProvider {
         for path in paths {
             let p = Path::new(path);
             if let Ok(boxes) = self.run_printed(p) {
-                let text = boxes.into_iter().map(|b| b.text).collect::<Vec<_>>().join("\n");
+                let text = boxes
+                    .into_iter()
+                    .map(|b| b.text)
+                    .collect::<Vec<_>>()
+                    .join("\n");
                 if !text.is_empty() {
                     out.insert(path.clone(), text);
                 }

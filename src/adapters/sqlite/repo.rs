@@ -162,8 +162,7 @@ impl SqliteIndexRepository {
 
         let mut doc_rows: Vec<(String, String, f64)> = Vec::new();
         {
-            let mut stmt =
-                conn.prepare("SELECT path, term, tf_w FROM doc_terms ORDER BY path")?;
+            let mut stmt = conn.prepare("SELECT path, term, tf_w FROM doc_terms ORDER BY path")?;
             let rows = stmt.query_map([], |r| {
                 Ok((
                     r.get::<_, String>(0)?,
@@ -222,14 +221,22 @@ impl SqliteIndexRepository {
 }
 
 impl IndexRepository for SqliteIndexRepository {
-    fn replace_pdf_pages(&self, path: &str, pages: &[(i64, String, String)], hash: &str) -> Result<()> {
+    fn replace_pdf_pages(
+        &self,
+        path: &str,
+        pages: &[(i64, String, String)],
+        hash: &str,
+    ) -> Result<()> {
         let mut conn = self.connect()?;
         let tx = conn.transaction()?;
         tx.execute("DELETE FROM pdf_pages WHERE path=?1", params![path])?;
         tx.execute("DELETE FROM pdf_pages_fts WHERE path=?1", params![path])?;
         for (page_no, body, preview) in pages {
             tx.execute("INSERT INTO pdf_pages(path,page_no,content_hash,body,preview_path) VALUES(?1,?2,?3,?4,?5)", params![path,page_no,hash,body,preview])?;
-            tx.execute("INSERT INTO pdf_pages_fts(path,page_no,body) VALUES(?1,?2,?3)", params![path,page_no,body])?;
+            tx.execute(
+                "INSERT INTO pdf_pages_fts(path,page_no,body) VALUES(?1,?2,?3)",
+                params![path, page_no, body],
+            )?;
         }
         tx.commit()?;
         Ok(())
@@ -274,9 +281,8 @@ impl IndexRepository for SqliteIndexRepository {
 
     fn load_image_cache(&self) -> Result<HashMap<String, CachedImage>> {
         let conn = self.connect()?;
-        let mut stmt = conn.prepare(
-            "SELECT path, mtime, size, ocr_text, caption_text FROM image_cache",
-        )?;
+        let mut stmt =
+            conn.prepare("SELECT path, mtime, size, ocr_text, caption_text FROM image_cache")?;
         let rows = stmt.query_map([], |r| {
             let sz: i64 = r.get(2)?;
             Ok(CachedImage {
@@ -319,13 +325,19 @@ impl IndexRepository for SqliteIndexRepository {
         let mut conn = self.connect()?;
         let tx = conn.transaction()?;
 
-        tx.execute("DELETE FROM files_fts WHERE path = ?1", params![p_str.as_ref()])?;
+        tx.execute(
+            "DELETE FROM files_fts WHERE path = ?1",
+            params![p_str.as_ref()],
+        )?;
         tx.execute(
             "INSERT INTO files_fts (path, title, body) VALUES (?1, ?2, ?3)",
             params![p_str.as_ref(), title, body],
         )?;
 
-        tx.execute("DELETE FROM doc_terms WHERE path = ?1", params![p_str.as_ref()])?;
+        tx.execute(
+            "DELETE FROM doc_terms WHERE path = ?1",
+            params![p_str.as_ref()],
+        )?;
         {
             let mut ins =
                 tx.prepare("INSERT INTO doc_terms (path, term, tf_w) VALUES (?1, ?2, ?3)")?;
@@ -413,7 +425,10 @@ impl IndexRepository for SqliteIndexRepository {
             }
         } else {
             for tbl in tables {
-                tx.execute(&format!("DELETE FROM {tbl} WHERE path = ?1"), params![new_path])?;
+                tx.execute(
+                    &format!("DELETE FROM {tbl} WHERE path = ?1"),
+                    params![new_path],
+                )?;
                 let n = tx.execute(
                     &format!("UPDATE {tbl} SET path = ?1 WHERE path = ?2"),
                     params![new_path, old_path],
@@ -423,7 +438,10 @@ impl IndexRepository for SqliteIndexRepository {
                 }
             }
             // Mark files.mtime = -1 so `sync` refreshes filename tokens while keeping image_cache intact
-            tx.execute("UPDATE files SET mtime = -1 WHERE path = ?1", params![new_path])?;
+            tx.execute(
+                "UPDATE files SET mtime = -1 WHERE path = ?1",
+                params![new_path],
+            )?;
         }
 
         tx.commit()?;
@@ -456,7 +474,10 @@ impl IndexRepository for SqliteIndexRepository {
                     params![target],
                 )?
             } else {
-                tx.execute(&format!("DELETE FROM {tbl} WHERE path = ?1"), params![target])?
+                tx.execute(
+                    &format!("DELETE FROM {tbl} WHERE path = ?1"),
+                    params![target],
+                )?
             };
             if tbl == "files" {
                 deleted += n;
@@ -503,8 +524,7 @@ impl IndexRepository for SqliteIndexRepository {
         let mut conn = self.connect()?;
         let postings_count: usize =
             conn.query_row("SELECT COUNT(*) FROM term_postings", [], |r| r.get(0))?;
-        let files_count: usize =
-            conn.query_row("SELECT COUNT(*) FROM files", [], |r| r.get(0))?;
+        let files_count: usize = conn.query_row("SELECT COUNT(*) FROM files", [], |r| r.get(0))?;
 
         if force || (files_count > 0 && postings_count == 0) {
             self.rebuild_sparse_index(&mut conn)?;
@@ -602,9 +622,8 @@ impl IndexRepository for SqliteIndexRepository {
                 term_slots.entry(key).or_default().insert(tok.clone());
             } else if tok.chars().count() >= 4 {
                 let prefix: String = tok.chars().take(2).collect();
-                let mut stmt = conn.prepare(
-                    "SELECT term, idf FROM idf_stats WHERE term LIKE ?1 LIMIT 400",
-                )?;
+                let mut stmt =
+                    conn.prepare("SELECT term, idf FROM idf_stats WHERE term LIKE ?1 LIMIT 400")?;
                 let rows = stmt.query_map(params![format!("w:{prefix}%")], |r| {
                     Ok((r.get::<_, String>(0)?, r.get::<_, f64>(1)?))
                 })?;
@@ -631,10 +650,7 @@ impl IndexRepository for SqliteIndexRepository {
                     if w > *entry {
                         *entry = w;
                     }
-                    term_slots
-                        .entry(cand_term)
-                        .or_default()
-                        .insert(tok.clone());
+                    term_slots.entry(cand_term).or_default().insert(tok.clone());
                 }
             }
         }

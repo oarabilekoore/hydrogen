@@ -13,7 +13,10 @@ pub fn unescape_ics(s: &str) -> String {
         .replace("\\\\", "\\")
 }
 
-pub fn parse_ics_datetime(params: &HashMap<String, String>, val: &str) -> Option<(NaiveDateTime, bool)> {
+pub fn parse_ics_datetime(
+    params: &HashMap<String, String>,
+    val: &str,
+) -> Option<(NaiveDateTime, bool)> {
     let v = val.trim();
     if params.get("VALUE").map(|s| s.as_str()) == Some("DATE") || v.len() == 8 {
         let d = NaiveDate::parse_from_str(v.get(..8)?, "%Y%m%d").ok()?;
@@ -43,13 +46,22 @@ fn add_months(dt: NaiveDateTime, months: i32) -> Option<NaiveDateTime> {
     Some(new_date.and_time(dt.time()))
 }
 
-fn nth_occurrence(start: NaiveDateTime, freq: &str, interval: i64, k: i64) -> Option<NaiveDateTime> {
+fn nth_occurrence(
+    start: NaiveDateTime,
+    freq: &str,
+    interval: i64,
+    k: i64,
+) -> Option<NaiveDateTime> {
     match freq {
         "DAILY" => Some(start + Duration::days(interval * k)),
         "WEEKLY" => Some(start + Duration::weeks(interval * k)),
         "MONTHLY" => add_months(start, (interval * k) as i32),
         "YEARLY" => {
-            let d = NaiveDate::from_ymd_opt(start.year() + (interval * k) as i32, start.month(), start.day())?;
+            let d = NaiveDate::from_ymd_opt(
+                start.year() + (interval * k) as i32,
+                start.month(),
+                start.day(),
+            )?;
             Some(d.and_time(start.time()))
         }
         _ => None,
@@ -132,7 +144,11 @@ pub fn expand_occurrences(
             let monday = c_dt - Duration::days(wd);
             let mut list: Vec<NaiveDateTime> = byday_indices
                 .iter()
-                .map(|&d_idx| (monday + Duration::days(d_idx)).date().and_time(ev.start.time()))
+                .map(|&d_idx| {
+                    (monday + Duration::days(d_idx))
+                        .date()
+                        .and_time(ev.start.time())
+                })
                 .filter(|&dt| dt >= ev.start)
                 .collect();
             list.sort();
@@ -144,7 +160,9 @@ pub fn expand_occurrences(
 
         let mut stop = false;
         for c in cands {
-            if until.map(|u| c > u).unwrap_or(false) || count.map(|max_n| n >= max_n).unwrap_or(false) {
+            if until.map(|u| c > u).unwrap_or(false)
+                || count.map(|max_n| n >= max_n).unwrap_or(false)
+            {
                 stop = true;
                 break;
             }

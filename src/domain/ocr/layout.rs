@@ -28,21 +28,13 @@ pub fn format_markdown(boxes: &[OcrBox]) -> String {
             if trimmed.is_empty() || b.box_pts.is_empty() {
                 return None;
             }
-            let y_top = b
-                .box_pts
-                .iter()
-                .map(|p| p[1])
-                .fold(f64::INFINITY, f64::min);
+            let y_top = b.box_pts.iter().map(|p| p[1]).fold(f64::INFINITY, f64::min);
             let y_bot = b
                 .box_pts
                 .iter()
                 .map(|p| p[1])
                 .fold(f64::NEG_INFINITY, f64::max);
-            let x_left = b
-                .box_pts
-                .iter()
-                .map(|p| p[0])
-                .fold(f64::INFINITY, f64::min);
+            let x_left = b.box_pts.iter().map(|p| p[0]).fold(f64::INFINITY, f64::min);
             let height = (y_bot - y_top).max(1.0);
             Some(Item {
                 y_top,

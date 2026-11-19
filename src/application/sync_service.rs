@@ -98,9 +98,16 @@ impl<'a> SyncService<'a> {
             let prev = existing.get(&p_str).copied();
             if !entry.is_dir && prev != Some((entry.mtime, entry.size)) {
                 if let Ok(hash) = hash_file_blake3(&entry.path) {
-                    self.repo.upsert_content_hash(&p_str, &hash, entry.size, entry.mtime)?;
+                    self.repo
+                        .upsert_content_hash(&p_str, &hash, entry.size, entry.mtime)?;
                 }
-                if entry.path.extension().and_then(|e| e.to_str()).map(|e| e.eq_ignore_ascii_case("pdf")).unwrap_or(false) {
+                if entry
+                    .path
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .map(|e| e.eq_ignore_ascii_case("pdf"))
+                    .unwrap_or(false)
+                {
                     self.repo.enqueue_model_job(&p_str, "pdf_pages")?;
                 } else if self.extractor.is_indexable_image(&entry.path, entry.size) {
                     self.repo.enqueue_model_job(&p_str, "image_ocr")?;
@@ -111,7 +118,8 @@ impl<'a> SyncService<'a> {
                 .file_name()
                 .and_then(|n| n.to_str())
                 .unwrap_or(&p_str);
-            let is_img = !entry.is_dir && self.extractor.is_indexable_image(&entry.path, entry.size);
+            let is_img =
+                !entry.is_dir && self.extractor.is_indexable_image(&entry.path, entry.size);
 
             if is_img {
                 if let Some(ic) = img_cached.get(&p_str) {
@@ -142,20 +150,37 @@ impl<'a> SyncService<'a> {
                 }
                 let body = if entry.is_dir {
                     String::new()
-                } else if entry.path.extension().and_then(|e| e.to_str()).map(|e| e.eq_ignore_ascii_case("pdf")).unwrap_or(false) {
-                    let pages = crate::adapters::fs::text_extract::extract_pdf_pages(&entry.path, &self.cfg.state_dir);
+                } else if entry
+                    .path
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .map(|e| e.eq_ignore_ascii_case("pdf"))
+                    .unwrap_or(false)
+                {
+                    let pages = crate::adapters::fs::text_extract::extract_pdf_pages(
+                        &entry.path,
+                        &self.cfg.state_dir,
+                    );
                     let hash = hash_file_blake3(&entry.path).unwrap_or_default();
                     let mut indexed = Vec::with_capacity(pages.len());
                     for (page_no, mut page_text, preview_path) in pages {
                         if page_text.trim().is_empty() && !preview_path.is_empty() {
                             if let Ok(boxes) = self.ocr.ocr_boxes(Path::new(&preview_path)) {
-                                page_text = boxes.into_iter().map(|b| b.text).collect::<Vec<_>>().join("\\n");
+                                page_text = boxes
+                                    .into_iter()
+                                    .map(|b| b.text)
+                                    .collect::<Vec<_>>()
+                                    .join("\\n");
                             }
                         }
                         indexed.push((page_no, page_text, preview_path));
                     }
                     self.repo.replace_pdf_pages(&p_str, &indexed, &hash)?;
-                    indexed.iter().map(|(n, text, _)| format!("[Page {n}] {text}")).collect::<Vec<_>>().join("\\n")
+                    indexed
+                        .iter()
+                        .map(|(n, text, _)| format!("[Page {n}] {text}"))
+                        .collect::<Vec<_>>()
+                        .join("\\n")
                 } else {
                     self.extractor.extract_text(&entry.path, entry.size)
                 };
@@ -382,7 +407,9 @@ fn hash_file_blake3(path: &Path) -> std::io::Result<String> {
     let mut buffer = [0u8; 64 * 1024];
     loop {
         let read = file.read(&mut buffer)?;
-        if read == 0 { break; }
+        if read == 0 {
+            break;
+        }
         hasher.update(&buffer[..read]);
     }
     Ok(hasher.finalize().to_hex().to_string())

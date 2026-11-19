@@ -17,14 +17,21 @@ pub struct AppConfig {
 
 impl AppConfig {
     pub fn load() -> Self {
-        let home = env::var("HOME").map(PathBuf::from).unwrap_or_else(|_| PathBuf::from("/tmp"));
+        let home = env::var("HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| PathBuf::from("/tmp"));
         let home_str = home.to_string_lossy();
-        let state_dir = env::var("HYDROGEN_STATE_DIR").map(PathBuf::from)
+        let state_dir = env::var("HYDROGEN_STATE_DIR")
+            .map(PathBuf::from)
             .unwrap_or_else(|_| home.join(".local/state/quickshell-launcher"));
-        let models_dir = env::var("HYDROGEN_MODELS_DIR").map(PathBuf::from)
+        let models_dir = env::var("HYDROGEN_MODELS_DIR")
+            .map(PathBuf::from)
             .unwrap_or_else(|_| home.join(".local/share/hydrogen/models"));
-        let default_event_duration_mins = env::var("DURATION").ok()
-            .and_then(|v| v.parse::<i64>().ok()).filter(|&d| d > 0).unwrap_or(60);
+        let default_event_duration_mins = env::var("DURATION")
+            .ok()
+            .and_then(|v| v.parse::<i64>().ok())
+            .filter(|&d| d > 0)
+            .unwrap_or(60);
 
         Self {
             db_path: state_dir.join("content-index.db"),
@@ -32,7 +39,13 @@ impl AppConfig {
             rev_file: state_dir.join("index.rev"),
             img_lock_path: state_dir.join("image-sync.pid"),
             models_dir,
-            search_roots: vec![home.join("Documents"), home.join("Downloads"), home.join("Pictures"), home.join("Videos"), home.join("Projects")],
+            search_roots: vec![
+                home.join("Documents"),
+                home.join("Downloads"),
+                home.join("Pictures"),
+                home.join("Videos"),
+                home.join("Projects"),
+            ],
             ics_globs: vec![
                 format!("{home_str}/.local/share/evolution/calendar/*/calendar.ics"),
                 format!("{home_str}/.calendars/**/*.ics"),

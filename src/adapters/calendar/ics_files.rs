@@ -39,7 +39,10 @@ pub fn parse_vcalendar_text(text: &str) -> Vec<RawVEvent> {
     let normalized = text.replace("\r\n", "\n");
     let mut unfolded_lines: Vec<String> = Vec::new();
     for raw_line in normalized.lines() {
-        if let Some(rest) = raw_line.strip_prefix(' ').or_else(|| raw_line.strip_prefix('\t')) {
+        if let Some(rest) = raw_line
+            .strip_prefix(' ')
+            .or_else(|| raw_line.strip_prefix('\t'))
+        {
             if let Some(last) = unfolded_lines.last_mut() {
                 last.push_str(rest);
                 continue;
@@ -69,7 +72,10 @@ pub fn parse_vcalendar_text(text: &str) -> Vec<RawVEvent> {
     events
 }
 
-fn extract_props<'a>(lines: &'a [String], prop_name: &str) -> Vec<(HashMap<String, String>, &'a str)> {
+fn extract_props<'a>(
+    lines: &'a [String],
+    prop_name: &str,
+) -> Vec<(HashMap<String, String>, &'a str)> {
     let mut found = Vec::new();
     for line in lines {
         let Some((key, val)) = line.split_once(':') else {

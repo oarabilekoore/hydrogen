@@ -26,13 +26,19 @@ impl<'a> OcrService<'a> {
     }
 
     fn with_clipboard_image<F>(&self, clip_id: &str, process: F) -> Result<()>
-    where F: FnOnce(&Path) -> Result<()> {
+    where
+        F: FnOnce(&Path) -> Result<()>,
+    {
         if clip_id.trim().is_empty() {
-            self.desktop.notify("OCR Failed", "No clipboard ID provided.", "critical");
+            self.desktop
+                .notify("OCR Failed", "No clipboard ID provided.", "critical");
             return Err(HydrogenError::InvalidInput("empty clip_id".into()));
         }
         let runtime_dir = env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".into());
-        let ms = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis();
+        let ms = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis();
         let tmp_img = Path::new(&runtime_dir).join(format!("qs_ocr_{clip_id}_{ms}.png"));
         let res = (|| -> Result<()> {
             self.desktop.decode_clipboard_image(clip_id, &tmp_img)?;
@@ -51,11 +57,15 @@ impl<'a> OcrService<'a> {
     }
 
     pub fn ocr_file_math(&self, path: &Path, window_addr: &str) -> Result<()> {
-        self.process_file(path, window_addr, |p| self.process_math_image(p, window_addr))
+        self.process_file(path, window_addr, |p| {
+            self.process_math_image(p, window_addr)
+        })
     }
 
     fn process_file<F>(&self, path: &Path, _window_addr: &str, process: F) -> Result<()>
-    where F: FnOnce(&Path) -> Result<()> {
+    where
+        F: FnOnce(&Path) -> Result<()>,
+    {
         if !path.is_file() {
             let msg = format!("File not found: {}", path.display());
             self.desktop.notify("OCR Failed", &msg, "critical");
@@ -78,7 +88,11 @@ impl<'a> OcrService<'a> {
         let latex = self.ocr.ocr_math_latex(image_path)?;
         let latex = latex.trim();
         if latex.is_empty() {
-            self.desktop.notify("OCR Warning", "No mathematical expression detected.", "normal");
+            self.desktop.notify(
+                "OCR Warning",
+                "No mathematical expression detected.",
+                "normal",
+            );
             return Ok(());
         }
         let markdown = format!("$$\n{latex}\n$$");
@@ -87,14 +101,16 @@ impl<'a> OcrService<'a> {
 
     fn copy_and_paste(&self, text: &str, window_addr: &str, title: &str) -> Result<()> {
         if text.trim().is_empty() {
-            self.desktop.notify("OCR Warning", "No text detected in image.", "normal");
+            self.desktop
+                .notify("OCR Warning", "No text detected in image.", "normal");
             return Ok(());
         }
         self.desktop.copy_text_to_clipboard(text)?;
         if !window_addr.trim().is_empty() {
             self.desktop.focus_and_paste(window_addr.trim())?;
         }
-        self.desktop.notify(title, "Copied OCR result to clipboard.", "normal");
+        self.desktop
+            .notify(title, "Copied OCR result to clipboard.", "normal");
         Ok(())
     }
 }

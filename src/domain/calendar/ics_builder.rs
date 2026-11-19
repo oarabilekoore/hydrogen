@@ -31,8 +31,9 @@ pub fn build_single_event_ics(
         )
     } else {
         let combined = format!("{date_str} {time_str}");
-        let s = NaiveDateTime::parse_from_str(&combined, "%Y-%m-%d %H:%M")
-            .map_err(|e| HydrogenError::InvalidInput(format!("Invalid datetime '{combined}': {e}")))?;
+        let s = NaiveDateTime::parse_from_str(&combined, "%Y-%m-%d %H:%M").map_err(|e| {
+            HydrogenError::InvalidInput(format!("Invalid datetime '{combined}': {e}"))
+        })?;
         let e = s + Duration::minutes(duration_mins);
         (
             format!("DTSTART:{}", s.format("%Y%m%dT%H%M%S")),
