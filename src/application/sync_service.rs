@@ -99,7 +99,7 @@ impl<'a> SyncService<'a> {
                 }
                 if entry.path.extension().and_then(|e| e.to_str()).map(|e| e.eq_ignore_ascii_case("pdf")).unwrap_or(false) {
                     self.repo.enqueue_model_job(&p_str, "pdf_pages")?;
-                } else if is_img {
+                } else if self.extractor.is_indexable_image(&entry.path, entry.size) {
                     self.repo.enqueue_model_job(&p_str, "image_ocr")?;
                 }
             }
