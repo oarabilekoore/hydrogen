@@ -13,6 +13,10 @@ pub struct AppConfig {
     pub ics_globs: Vec<String>,
     pub evolution_db_globs: Vec<String>,
     pub default_event_duration_mins: i64,
+    pub embeddings_enabled: bool,
+    pub inference_threads: usize,
+    pub image_batch_size: usize,
+    pub pdf_page_limit: usize,
 }
 
 impl AppConfig {
@@ -56,6 +60,24 @@ impl AppConfig {
             evolution_db_globs: vec![format!("{home_str}/.cache/evolution/calendar/*/cache.db")],
             state_dir,
             default_event_duration_mins,
+            embeddings_enabled: env::var("HYDROGEN_EMBEDDINGS")
+                .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+                .unwrap_or(false),
+            inference_threads: env::var("HYDROGEN_INFERENCE_THREADS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(2)
+                .clamp(1, 2),
+            image_batch_size: env::var("HYDROGEN_IMAGE_BATCH_SIZE")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(2)
+                .clamp(1, 4),
+            pdf_page_limit: env::var("HYDROGEN_PDF_PAGE_LIMIT")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(500)
+                .clamp(1, 500),
         }
     }
 }
