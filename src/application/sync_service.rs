@@ -105,8 +105,14 @@ impl<'a> SyncService<'a> {
             let content_changed = prev != Some((entry.mtime, entry.size)) || hash_changed;
 
             if !entry.is_dir && content_changed {
-                if let Some(hash) = current_hash.as_deref() {
-                    self.repo.upsert_content_hash(&p_str, hash, entry.size, entry.mtime)?;
+                let is_pdf = entry.path.extension().and_then(|e| e.to_str())
+                    .map(|e| e.eq_ignore_ascii_case("pdf")).unwrap_or(false);
+                // For PDFs, only commit the new digest after a successful page pass.
+                // Otherwise a transient Poppler failure would suppress the retry.
+                if !is_pdf {
+                    if let Some(hash) = current_hash.as_deref() {
+                        self.repo.upsert_content_hash(&p_str, hash, entry.size, entry.mtime)?;
+                    }
                 }
                 if entry
                     .path
@@ -192,6 +198,7 @@ impl<'a> SyncService<'a> {
                         continue;
                     }
                     self.repo.replace_pdf_pages(&p_str, &indexed, &hash)?;
+                    self.repo.upsert_content_hash(&p_str, &hash, entry.size, entry.mtime)?;
                     indexed
                         .iter()
                         .map(|(n, text, _)| format!("[Page {n}] {text}"))
