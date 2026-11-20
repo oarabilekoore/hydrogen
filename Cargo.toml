@@ -26,7 +26,7 @@ texo-ocr = { git = "https://github.com/studio-ransom/best-ocr-rust", default-fea
 # Optional-at-runtime local embeddings; models load only when semantic indexing/search is requested.
 fastembed = "7.7.1"
 ffai-argus = { version = "0.7", optional = true }
-ffai-core = { version = "0.7", optional = true }
+ffai-core = { version = "0.8", optional = true }
 ffai-media = { version = "0.6", optional = true }
 
 [features]
