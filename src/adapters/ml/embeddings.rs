@@ -123,7 +123,10 @@ fn chunks(text: &str) -> Vec<String> {
     if chars.len() <= DOCUMENT_CHUNK_CHARS {
         return vec![text.to_string()];
     }
-    let total_chunks = chars.len().div_ceil(DOCUMENT_CHUNK_CHARS).min(MAX_DOCUMENT_CHUNKS);
+    let total_chunks = chars
+        .len()
+        .div_ceil(DOCUMENT_CHUNK_CHARS)
+        .min(MAX_DOCUMENT_CHUNKS);
     let mut out = Vec::with_capacity(total_chunks);
     for index in 0..total_chunks {
         let start = if total_chunks == MAX_DOCUMENT_CHUNKS {
