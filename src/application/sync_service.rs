@@ -99,11 +99,16 @@ impl<'a> SyncService<'a> {
             let prev = existing.get(&p_str).copied();
             // Metadata is a cheap first signal, but the persisted digest is the
             // source of truth when timestamps are preserved by copies/sync tools.
-            let current_hash = if entry.is_dir { None } else { hash_file_blake3(&entry.path).ok() };
+            let current_hash = if entry.is_dir {
+                None
+            } else {
+                hash_file_blake3(&entry.path).ok()
+            };
             let hash_changed = if let Some(hash) = current_hash.as_deref() {
                 content_hashes.get(&p_str).map(String::as_str) != Some(hash)
             } else { false };
-            let content_changed = prev != Some((entry.mtime, entry.size)) || hash_changed;
+            let content_changed =
+                prev != Some((entry.mtime, entry.size)) || hash_changed;
 
             if !entry.is_dir && content_changed {
                 let is_pdf = entry.path.extension().and_then(|e| e.to_str())
@@ -187,7 +192,9 @@ impl<'a> SyncService<'a> {
                                         .collect::<Vec<_>>().join("\\n");
                                 }
                                 Err(error) => {
-                                    eprintln!("hydrogen: PDF page OCR failed for {p_str} page {page_no}: {error}");
+                                    eprintln!(
+                                        "hydrogen: PDF page OCR failed for {p_str} page {page_no}: {error}"
+                                    );
                                     extraction_failed = true;
                                 }
                             }
