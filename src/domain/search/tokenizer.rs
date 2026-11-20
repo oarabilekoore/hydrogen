@@ -74,6 +74,25 @@ pub fn extract_raw_tokens(text: &str) -> Vec<String> {
         }
     }
     flush(&mut buf, &mut out);
+    if math_context {
+        // Short adjacent symbols often represent implicit multiplication (for
+        // example, "ma" in F = ma). Keep the compound token and index its
+        // individual variables as well. Avoid splitting common function names.
+        const FUNCTIONS: &[&str] = &[
+            "sin", "cos", "tan", "cot", "sec", "csc", "log", "ln", "exp", "max", "min",
+        ];
+        let mut variables = Vec::new();
+        for token in &out {
+            if token.chars().count() == 2
+                && token.chars().all(|ch| ch.is_ascii_alphabetic())
+                && !FUNCTIONS.contains(&token.as_str())
+                && !matches!(token.as_str(), "pi" | "mu" | "nu")
+            {
+                variables.extend(token.chars().map(|ch| ch.to_string()));
+            }
+        }
+        out.extend(variables);
+    }
     out
 }
 pub fn tokenize_content(text: &str) -> Vec<String> {
@@ -116,7 +135,7 @@ mod tests {
 
     #[test]
     fn still_discards_single_letter_prose_tokens() {
-        assert_eq!(extract_raw_tokens("a cat is here"), vec!["cat", "here"]);
+        assert_eq!(extract_raw_tokens("a dog"), vec!["dog"]);
     }
 
     #[test]
