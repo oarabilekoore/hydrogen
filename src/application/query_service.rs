@@ -32,7 +32,9 @@ impl<'a> QueryService<'a> {
 
         // Keep the lexical engine as a first-class retrieval channel. Semantic
         // vectors augment it; they never replace exact filename/phrase matches.
-        let lexical = self.repo.search(trimmed, limit.saturating_mul(3).max(30), mode)?;
+        let lexical = self
+            .repo
+            .search(trimmed, limit.saturating_mul(3).max(30), mode)?;
         let text_vector = self.embeddings.embed_document(trimmed)?;
         let text_hits = self.repo.semantic_search(
             &text_vector,
@@ -48,7 +50,10 @@ impl<'a> QueryService<'a> {
             limit.saturating_mul(5).max(50),
         )?;
 
-        Ok(reciprocal_rank_fusion(vec![lexical, text_hits, image_hits], limit))
+        Ok(reciprocal_rank_fusion(
+            vec![lexical, text_hits, image_hits],
+            limit,
+        ))
     }
 }
 
