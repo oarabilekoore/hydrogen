@@ -755,16 +755,14 @@ mod integration_tests {
         assert_eq!(first.pending_images, 1);
         let image_sync = service.sync_images(false, 0).unwrap();
         assert!(image_sync.contains("\"processed\":1"));
-        assert!(repo.model_job_pending(
-            &root.join("diagram.png").to_string_lossy(),
-            "image_ocr"
-        ).unwrap());
+        assert!(repo
+            .model_job_pending(&root.join("diagram.png").to_string_lossy(), "image_ocr")
+            .unwrap());
         let retry_sync = service.sync_images(false, 0).unwrap();
         assert!(retry_sync.contains("\"processed\":1"));
-        assert!(!repo.model_job_pending(
-            &root.join("diagram.png").to_string_lossy(),
-            "image_ocr"
-        ).unwrap());
+        assert!(!repo
+            .model_job_pending(&root.join("diagram.png").to_string_lossy(), "image_ocr")
+            .unwrap());
 
         let text_vectors = repo
             .semantic_search(&[1.0, 0.0, 0.0], TEXT_MODEL_ID, "text", 10)
