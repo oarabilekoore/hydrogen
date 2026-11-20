@@ -398,8 +398,7 @@ impl<'a> SyncService<'a> {
                 }
                 let p_str = entry.path.to_string_lossy().to_string();
                 let needs_clip_embedding = if self.cfg.embeddings_enabled {
-                    let clip_missing =
-                        !self.repo.has_embedding(&p_str, CLIP_MODEL_ID, "clip")?;
+                    let clip_missing = !self.repo.has_embedding(&p_str, CLIP_MODEL_ID, "clip")?;
                     let text_available = img_cached
                         .get(&p_str)
                         .map(|cached| {
