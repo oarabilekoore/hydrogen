@@ -1,11 +1,13 @@
+use crate::adapters::ml::embeddings::{CLIP_MODEL_ID, TEXT_MODEL_ID};
 use crate::config::AppConfig;
 use crate::domain::document::{
     compose_image_body, CachedImage, FileEntry, IndexStats, SyncSummary,
 };
 use crate::domain::search::tfidf::extract_doc_terms;
 use crate::error::Result;
-use crate::adapters::ml::embeddings::{CLIP_MODEL_ID, TEXT_MODEL_ID};
-use crate::ports::extractor::{CaptionProvider, EmbeddingProvider, FileScanner, OcrProvider, TextExtractor};
+use crate::ports::extractor::{
+    CaptionProvider, EmbeddingProvider, FileScanner, OcrProvider, TextExtractor,
+};
 use crate::ports::repository::IndexRepository;
 use serde_json::json;
 use std::collections::HashSet;
@@ -175,13 +177,25 @@ impl<'a> SyncService<'a> {
                             if !body.trim().is_empty() {
                                 if let Ok(vector) = self.embeddings.embed_document(&body) {
                                     if let Some(hash) = current_hash.as_deref() {
-                                        self.repo.upsert_embedding(&p_str, TEXT_MODEL_ID, "text", &vector, hash)?;
+                                        self.repo.upsert_embedding(
+                                            &p_str,
+                                            TEXT_MODEL_ID,
+                                            "text",
+                                            &vector,
+                                            hash,
+                                        )?;
                                     }
                                 }
                             }
                             if let Ok(vector) = self.embeddings.embed_image(&entry.path) {
                                 if let Some(hash) = current_hash.as_deref() {
-                                    self.repo.upsert_embedding(&p_str, CLIP_MODEL_ID, "clip", &vector, hash)?;
+                                    self.repo.upsert_embedding(
+                                        &p_str,
+                                        CLIP_MODEL_ID,
+                                        "clip",
+                                        &vector,
+                                        hash,
+                                    )?;
                                 }
                             }
                         }
@@ -227,7 +241,8 @@ impl<'a> SyncService<'a> {
                                 &entry.path,
                                 page_no,
                                 &self.cfg.state_dir,
-                            ).unwrap_or(preview_path)
+                            )
+                            .unwrap_or(preview_path)
                         } else {
                             preview_path
                         };
@@ -278,7 +293,13 @@ impl<'a> SyncService<'a> {
                 if self.cfg.embeddings_enabled && has_body {
                     if let Ok(vector) = self.embeddings.embed_document(&body) {
                         if let Some(hash) = current_hash.as_deref() {
-                            self.repo.upsert_embedding(&p_str, TEXT_MODEL_ID, "text", &vector, hash)?;
+                            self.repo.upsert_embedding(
+                                &p_str,
+                                TEXT_MODEL_ID,
+                                "text",
+                                &vector,
+                                hash,
+                            )?;
                         }
                     }
                 }
@@ -429,12 +450,26 @@ impl<'a> SyncService<'a> {
                         let hash = hash_file_blake3(&entry.path).unwrap_or_default();
                         if has_body {
                             if let Ok(vector) = self.embeddings.embed_document(&body) {
-                                self.repo.upsert_embedding(&p_str, TEXT_MODEL_ID, "text", &vector, &hash)?;
+                                self.repo.upsert_embedding(
+                                    &p_str,
+                                    TEXT_MODEL_ID,
+                                    "text",
+                                    &vector,
+                                    &hash,
+                                )?;
                             }
                         }
                         match self.embeddings.embed_image(&entry.path) {
-                            Ok(vector) => self.repo.upsert_embedding(&p_str, CLIP_MODEL_ID, "clip", &vector, &hash)?,
-                            Err(error) => eprintln!("hydrogen: image embedding failed for {p_str}: {error}"),
+                            Ok(vector) => self.repo.upsert_embedding(
+                                &p_str,
+                                CLIP_MODEL_ID,
+                                "clip",
+                                &vector,
+                                &hash,
+                            )?,
+                            Err(error) => {
+                                eprintln!("hydrogen: image embedding failed for {p_str}: {error}")
+                            }
                         }
                     }
                     if *need_ocr {
@@ -594,7 +629,10 @@ mod integration_tests {
     struct FixtureModels;
     impl OcrProvider for FixtureModels {
         fn batch_ocr_text(&self, paths: &[String]) -> HashMap<String, String> {
-            paths.iter().map(|p| (p.clone(), "thermal chart".into())).collect()
+            paths
+                .iter()
+                .map(|p| (p.clone(), "thermal chart".into()))
+                .collect()
         }
         fn ocr_boxes(&self, _image_path: &Path) -> Result<Vec<crate::domain::ocr::layout::OcrBox>> {
             Ok(Vec::new())
@@ -602,7 +640,10 @@ mod integration_tests {
     }
     impl CaptionProvider for FixtureModels {
         fn batch_captions(&self, paths: &[String]) -> HashMap<String, String> {
-            paths.iter().map(|p| (p.clone(), "engineering diagram".into())).collect()
+            paths
+                .iter()
+                .map(|p| (p.clone(), "engineering diagram".into()))
+                .collect()
         }
     }
     impl EmbeddingProvider for FixtureModels {
@@ -624,7 +665,12 @@ mod integration_tests {
         let metadata = path.metadata().unwrap();
         FileEntry {
             path,
-            mtime: metadata.modified().unwrap().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64,
+            mtime: metadata
+                .modified()
+                .unwrap()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs() as i64,
             size: metadata.len(),
             is_dir: false,
             dev: metadata.dev(),
@@ -634,14 +680,25 @@ mod integration_tests {
 
     #[test]
     fn sync_indexes_documents_images_vectors_and_fuses_search() {
-        let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-        let root = std::env::temp_dir().join(format!("hydrogen-e2e-{}-{nonce}", std::process::id()));
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root =
+            std::env::temp_dir().join(format!("hydrogen-e2e-{}-{nonce}", std::process::id()));
         let state = root.join("state");
         std::fs::create_dir_all(&root).unwrap();
-        std::fs::write(root.join("lecture.txt"), "Heat transfer and thermal resistance").unwrap();
+        std::fs::write(
+            root.join("lecture.txt"),
+            "Heat transfer and thermal resistance",
+        )
+        .unwrap();
         std::fs::write(root.join("diagram.png"), vec![7u8; 20_000]).unwrap();
 
-        let entries = vec![entry(root.join("lecture.txt")), entry(root.join("diagram.png"))];
+        let entries = vec![
+            entry(root.join("lecture.txt")),
+            entry(root.join("diagram.png")),
+        ];
         let scanner = FixtureScanner(entries);
         let extractor = FixtureExtractor;
         let models = FixtureModels;
@@ -662,7 +719,8 @@ mod integration_tests {
             pdf_page_limit: 50,
         };
         let repo = SqliteIndexRepository::open(&cfg.db_path).unwrap();
-        let service = SyncService::new(&cfg, &repo, &scanner, &extractor, &models, &models, &models);
+        let service =
+            SyncService::new(&cfg, &repo, &scanner, &extractor, &models, &models, &models);
 
         let first = service.sync(false).unwrap();
         assert_eq!(first.updated, 2);
@@ -670,17 +728,28 @@ mod integration_tests {
         let image_sync = service.sync_images(false, 0).unwrap();
         assert!(image_sync.contains("\"processed\":1"));
 
-        let text_vectors = repo.semantic_search(&[1.0, 0.0, 0.0], TEXT_MODEL_ID, "text", 10).unwrap();
-        assert!(text_vectors.iter().any(|hit| hit.path.ends_with("lecture.txt")));
-        let image_vectors = repo.semantic_search(&[1.0, 0.0, 0.0], CLIP_MODEL_ID, "clip", 10).unwrap();
-        assert!(image_vectors.iter().any(|hit| hit.path.ends_with("diagram.png")));
+        let text_vectors = repo
+            .semantic_search(&[1.0, 0.0, 0.0], TEXT_MODEL_ID, "text", 10)
+            .unwrap();
+        assert!(text_vectors
+            .iter()
+            .any(|hit| hit.path.ends_with("lecture.txt")));
+        let image_vectors = repo
+            .semantic_search(&[1.0, 0.0, 0.0], CLIP_MODEL_ID, "clip", 10)
+            .unwrap();
+        assert!(image_vectors
+            .iter()
+            .any(|hit| hit.path.ends_with("diagram.png")));
 
         let query = QueryService::new(&repo, &models);
         let hits = query.search("thermal resistance", 10, "all", true).unwrap();
         assert!(hits.iter().any(|hit| hit.path.ends_with("lecture.txt")));
 
         let second = service.sync(false).unwrap();
-        assert_eq!(second.updated, 0, "unchanged files should not be re-embedded");
+        assert_eq!(
+            second.updated, 0,
+            "unchanged files should not be re-embedded"
+        );
         std::fs::remove_dir_all(root).unwrap();
     }
 }
