@@ -254,15 +254,16 @@ impl IndexRepository for SqliteIndexRepository {
         Ok(())
     }
 
-    fn content_hash(&self, path: &str) -> Result<Option<String>> {
+    fn load_content_hashes(&self) -> Result<HashMap<String, String>> {
         let conn = self.connect()?;
-        conn.query_row(
-            "SELECT content_hash FROM content_hashes WHERE path=?1",
-            params![path],
-            |row| row.get(0),
-        )
-        .optional()
-        .map_err(Into::into)
+        let mut stmt = conn.prepare("SELECT path, content_hash FROM content_hashes")?;
+        let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?;
+        let mut hashes = HashMap::new();
+        for row in rows {
+            let (path, hash) = row?;
+            hashes.insert(path, hash);
+        }
+        Ok(hashes)
     }
 
     fn enqueue_model_job(&self, path: &str, task: &str) -> Result<()> {
