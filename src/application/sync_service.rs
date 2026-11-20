@@ -627,6 +627,7 @@ mod integration_tests {
     use std::collections::HashMap;
     use std::os::unix::fs::MetadataExt;
     use std::path::PathBuf;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     struct FixtureScanner(Vec<FileEntry>);
@@ -646,9 +647,14 @@ mod integration_tests {
         }
     }
 
-    struct FixtureModels;
+    struct FixtureModels {
+        ocr_attempts: AtomicUsize,
+    }
     impl OcrProvider for FixtureModels {
         fn batch_ocr_text(&self, paths: &[String]) -> HashMap<String, String> {
+            if self.ocr_attempts.fetch_add(1, Ordering::SeqCst) == 0 {
+                return HashMap::new();
+            }
             paths
                 .iter()
                 .map(|p| (p.clone(), "thermal chart".into()))
@@ -721,7 +727,7 @@ mod integration_tests {
         ];
         let scanner = FixtureScanner(entries);
         let extractor = FixtureExtractor;
-        let models = FixtureModels;
+        let models = FixtureModels {\n            ocr_attempts: AtomicUsize::new(0),\n        };
         let cfg = AppConfig {
             state_dir: state.clone(),
             db_path: state.join("index.db"),
@@ -747,6 +753,16 @@ mod integration_tests {
         assert_eq!(first.pending_images, 1);
         let image_sync = service.sync_images(false, 0).unwrap();
         assert!(image_sync.contains("\"processed\":1"));
+        assert!(repo.model_job_pending(
+            &root.join("diagram.png").to_string_lossy(),
+            "image_ocr"
+        ).unwrap());
+        let retry_sync = service.sync_images(false, 0).unwrap();
+        assert!(retry_sync.contains("\"processed\":1"));
+        assert!(!repo.model_job_pending(
+            &root.join("diagram.png").to_string_lossy(),
+            "image_ocr"
+        ).unwrap());
 
         let text_vectors = repo
             .semantic_search(&[1.0, 0.0, 0.0], TEXT_MODEL_ID, "text", 10)
