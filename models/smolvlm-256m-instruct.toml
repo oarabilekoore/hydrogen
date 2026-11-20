@@ -1,0 +1,16 @@
+# SmolVLM-256M-Instruct, used only by the optional image-captioning feature.
+# Weights are fetched separately into FFAI_CACHE and are never vendored here.
+name = "smolvlm-256m-instruct"
+task = "vlm"
+description = "SmolVLM-256M-Instruct — SigLIP vision tower and Llama decoder"
+license = "Apache-2.0"
+hf_repo = "HuggingFaceTB/SmolVLM-256M-Instruct"
+
+[[files]]
+name = "model.safetensors"
+
+[[files]]
+name = "config.json"
+
+[[files]]
+name = "tokenizer.json"
