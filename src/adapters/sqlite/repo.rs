@@ -115,6 +115,16 @@ impl SqliteIndexRepository {
             );
             CREATE INDEX IF NOT EXISTS idx_embedding_model_modality
                 ON embedding_vectors(model_id, modality);
+            CREATE TABLE IF NOT EXISTS worker_metrics (
+                metric_id INTEGER PRIMARY KEY,
+                task TEXT NOT NULL,
+                duration_ms INTEGER NOT NULL,
+                rss_bytes INTEGER NOT NULL,
+                items INTEGER NOT NULL,
+                created_at INTEGER NOT NULL DEFAULT (unixepoch())
+            );
+            CREATE INDEX IF NOT EXISTS idx_worker_metrics_created
+                ON worker_metrics(created_at DESC);
             CREATE TABLE IF NOT EXISTS model_jobs (
                 job_id INTEGER PRIMARY KEY, path TEXT NOT NULL, task TEXT NOT NULL,
                 status TEXT NOT NULL DEFAULT 'queued', attempts INTEGER NOT NULL DEFAULT 0,
@@ -482,6 +492,22 @@ impl IndexRepository for SqliteIndexRepository {
             |row| row.get(0),
         )?;
         Ok(pending)
+    }
+
+    fn record_worker_metric(
+        &self,
+        task: &str,
+        duration_ms: u64,
+        rss_bytes: u64,
+        items: usize,
+    ) -> Result<()> {
+        let conn = self.connect()?;
+        conn.execute(
+            "INSERT INTO worker_metrics(task, duration_ms, rss_bytes, items)
+             VALUES(?1, ?2, ?3, ?4)",
+            params![task, duration_ms as i64, rss_bytes as i64, items as i64],
+        )?;
+        Ok(())
     }
 
     fn load_file_records(&self) -> Result<HashMap<String, (i64, u64)>> {
