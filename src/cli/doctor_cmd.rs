@@ -1,6 +1,6 @@
 use crate::config::AppConfig;
 use crate::error::Result;
-use rusqlite::Connection;
+use rusqlite::Connection;\nuse crate::adapters::sqlite::repo::SqliteIndexRepository;
 use serde_json::{json, Value};
 use std::env;
 use std::path::Path;
@@ -66,7 +66,7 @@ pub fn run(cfg: &AppConfig) -> Result<()> {
 
     let mut database = json!({"exists": cfg.db_path.is_file()});
     if cfg.db_path.is_file() {
-        let conn = Connection::open(&cfg.db_path)?;
+        let _repo = SqliteIndexRepository::open(&cfg.db_path)?;\n        let conn = Connection::open(&cfg.db_path)?;
         let integrity: String = conn.query_row("PRAGMA quick_check", [], |row| row.get(0))?;
         let queue: Value = {
             let mut stmt = conn.prepare(
