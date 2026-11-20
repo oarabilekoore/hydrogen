@@ -286,6 +286,12 @@ impl<'a> SyncService<'a> {
                 for (entry, need_ocr, need_cap) in batch {
                     let p_str = entry.path.to_string_lossy().to_string();
                     let prev_ic = img_cached.get(&p_str);
+                    // A missing map entry means inference failed. Do not persist an
+                    // empty result as a successful OCR pass; let the next sync retry.
+                    if *need_ocr && !ocr_map.contains_key(&p_str) {
+                        eprintln!("hydrogen: image OCR failed; leaving {} pending", p_str);
+                        continue;
+                    }
                     let ocr_txt = if *need_ocr {
                         ocr_map.get(&p_str).cloned().unwrap_or_default()
                     } else {
