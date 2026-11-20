@@ -163,9 +163,17 @@ impl CaptionProvider for RustOcrProvider {
                 return out;
             }
             let engine = self.captioner.get_or_init(|| {
-                Ok(Mutex::new(SmolVlm::with_manifest_dir(
-                    self.models_dir.join("argus"),
-                )))
+                let manifest_dir = self.models_dir.join("argus");
+                std::fs::create_dir_all(&manifest_dir).map_err(|e| e.to_string())?;
+                let manifest_path = manifest_dir.join("smolvlm-256m-instruct.toml");
+                if !manifest_path.is_file() {
+                    std::fs::write(
+                        &manifest_path,
+                        include_str!("../../../models/smolvlm-256m-instruct.toml"),
+                    )
+                    .map_err(|e| e.to_string())?;
+                }
+                Ok(Mutex::new(SmolVlm::with_manifest_dir(manifest_dir)))
             });
             let Ok(engine) = engine else {
                 eprintln!(
