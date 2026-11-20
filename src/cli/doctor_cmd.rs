@@ -112,11 +112,28 @@ pub fn run(cfg: &AppConfig) -> Result<()> {
             }
             Value::Object(counts)
         };
+        let worker_metrics: Vec<Value> = {
+            let mut stmt = conn.prepare(
+                "SELECT task, duration_ms, rss_bytes, items, created_at
+                 FROM worker_metrics ORDER BY metric_id DESC LIMIT 10",
+            )?;
+            let rows = stmt.query_map([], |row| {
+                Ok(json!({
+                    "task": row.get::<_, String>(0)?,
+                    "duration_ms": row.get::<_, u64>(1)?,
+                    "rss_bytes": row.get::<_, u64>(2)?,
+                    "items": row.get::<_, u64>(3)?,
+                    "created_at": row.get::<_, i64>(4)?
+                }))
+            })?;
+            rows.collect::<std::result::Result<Vec<_>, _>>()?
+        };
         database = json!({
             "exists": true,
             "integrity": integrity.clone(),
             "queue": queue,
-            "embeddings": vectors
+            "embeddings": vectors,
+            "recent_worker_metrics": worker_metrics
         });
         check("database:integrity", integrity == "ok", integrity);
     }
