@@ -221,6 +221,15 @@ impl<'a> SyncService<'a> {
                     let mut indexed = Vec::with_capacity(pages.len());
                     let mut extraction_failed = false;
                     for (page_no, mut page_text, preview_path) in pages {
+                        let preview_path = if page_text.trim().is_empty() {
+                            crate::adapters::fs::text_extract::render_pdf_page(
+                                &entry.path,
+                                page_no,
+                                &self.cfg.state_dir,
+                            ).unwrap_or(preview_path)
+                        } else {
+                            preview_path
+                        };
                         if page_text.trim().is_empty() && !preview_path.is_empty() {
                             match self.ocr.ocr_boxes(Path::new(&preview_path)) {
                                 Ok(boxes) => {
@@ -237,6 +246,8 @@ impl<'a> SyncService<'a> {
                                     extraction_failed = true;
                                 }
                             }
+                        } else if page_text.trim().is_empty() {
+                            extraction_failed = true;
                         }
                         indexed.push((page_no, page_text, preview_path));
                     }
