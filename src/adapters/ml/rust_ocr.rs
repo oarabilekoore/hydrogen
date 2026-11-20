@@ -156,7 +156,10 @@ impl OcrProvider for RustOcrProvider {
 // working set than OCR. It is loaded once per image-sync process, never at startup.
 impl CaptionProvider for RustOcrProvider {
     fn batch_captions(&self, paths: &[String]) -> HashMap<String, String> {
+        #[cfg(feature = "image-captioning")]
         let mut out = HashMap::new();
+        #[cfg(not(feature = "image-captioning"))]
+        let out = HashMap::new();
         #[cfg(feature = "image-captioning")]
         {
             if !self.captions_enabled || paths.is_empty() {
@@ -201,7 +204,7 @@ impl CaptionProvider for RustOcrProvider {
                     max_new_tokens: Some(48),
                     ..VlmOptions::default()
                 };
-                match engine.describe_image(&image, &options) {
+                match engine.describe(&image, &options) {
                     Ok(caption) if !caption.trim().is_empty() => {
                         out.insert(path.clone(), caption.trim().to_string());
                     }
