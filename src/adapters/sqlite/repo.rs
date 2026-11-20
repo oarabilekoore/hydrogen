@@ -270,7 +270,10 @@ impl IndexRepository for SqliteIndexRepository {
         let conn = self.connect()?;
         conn.execute(
             "INSERT INTO model_jobs(path,task,status) VALUES(?1,?2,'queued')
-             ON CONFLICT(path,task) DO UPDATE SET status=CASE WHEN model_jobs.status='done' THEN 'queued' ELSE model_jobs.status END, updated_at=unixepoch()",
+             ON CONFLICT(path,task) DO UPDATE SET
+                status=CASE WHEN model_jobs.status IN ('done','failed') THEN 'queued' ELSE model_jobs.status END,
+                attempts=CASE WHEN model_jobs.status IN ('done','failed') THEN 0 ELSE model_jobs.attempts END,
+                updated_at=unixepoch()",
             params![path, task],
         )?;
         Ok(())
@@ -282,7 +285,7 @@ impl IndexRepository for SqliteIndexRepository {
         // Recover work left in processing by a crashed process after ten minutes.
         tx.execute(
             "UPDATE model_jobs SET status='queued', updated_at=unixepoch()
-             WHERE status='processing' AND updated_at < unixepoch() - 600",
+             WHERE status='processing' AND updated_at < unixepoch() - 1800",
             [],
         )?;
         let claimed = tx.execute(
