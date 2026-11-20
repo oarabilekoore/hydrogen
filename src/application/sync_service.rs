@@ -350,7 +350,7 @@ impl<'a> SyncService<'a> {
             }
 
             let mut processed = 0usize;
-            for batch in queue.chunks(8) {
+            for batch in queue.chunks(self.cfg.image_batch_size) {
                 let mut claimed = HashSet::new();
                 for (entry, need_ocr, _) in batch {
                     if *need_ocr {
