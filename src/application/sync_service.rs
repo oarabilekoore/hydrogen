@@ -550,3 +550,128 @@ fn hash_file_blake3(path: &Path) -> std::io::Result<String> {
     }
     Ok(hasher.finalize().to_hex().to_string())
 }
+
+#[cfg(test)]
+mod integration_tests {
+    use super::*;
+    use crate::adapters::ml::embeddings::{CLIP_MODEL_ID, TEXT_MODEL_ID};
+    use crate::adapters::sqlite::repo::SqliteIndexRepository;
+    use crate::application::query_service::QueryService;
+    use crate::domain::document::FileEntry;
+    use crate::ports::extractor::{EmbeddingProvider, OcrProvider};
+    use crate::ports::repository::IndexRepository;
+    use std::collections::HashMap;
+    use std::os::unix::fs::MetadataExt;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    struct FixtureScanner(Vec<FileEntry>);
+    impl FileScanner for FixtureScanner {
+        fn scan(&self, _max_depth: usize, _max_results: usize) -> Vec<FileEntry> {
+            self.0.clone()
+        }
+    }
+
+    struct FixtureExtractor;
+    impl TextExtractor for FixtureExtractor {
+        fn extract_text(&self, path: &Path, _size: u64) -> String {
+            std::fs::read_to_string(path).unwrap_or_default()
+        }
+        fn is_indexable_image(&self, path: &Path, size: u64) -> bool {
+            path.extension().and_then(|e| e.to_str()) == Some("png") && size >= 10_000
+        }
+    }
+
+    struct FixtureModels;
+    impl OcrProvider for FixtureModels {
+        fn batch_ocr_text(&self, paths: &[String]) -> HashMap<String, String> {
+            paths.iter().map(|p| (p.clone(), "thermal chart".into())).collect()
+        }
+        fn ocr_boxes(&self, _image_path: &Path) -> Result<Vec<crate::domain::ocr::layout::OcrBox>> {
+            Ok(Vec::new())
+        }
+    }
+    impl CaptionProvider for FixtureModels {
+        fn batch_captions(&self, paths: &[String]) -> HashMap<String, String> {
+            paths.iter().map(|p| (p.clone(), "engineering diagram".into())).collect()
+        }
+    }
+    impl EmbeddingProvider for FixtureModels {
+        fn embed_document(&self, text: &str) -> Result<Vec<f32>> {
+            if text.trim().is_empty() {
+                return Err(crate::error::HydrogenError::InvalidInput("empty".into()));
+            }
+            Ok(vec![1.0, 0.0, 0.0])
+        }
+        fn embed_clip_text(&self, _text: &str) -> Result<Vec<f32>> {
+            Ok(vec![1.0, 0.0, 0.0])
+        }
+        fn embed_image(&self, _path: &Path) -> Result<Vec<f32>> {
+            Ok(vec![1.0, 0.0, 0.0])
+        }
+    }
+
+    fn entry(path: PathBuf) -> FileEntry {
+        let metadata = path.metadata().unwrap();
+        FileEntry {
+            path,
+            mtime: metadata.modified().unwrap().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64,
+            size: metadata.len(),
+            is_dir: false,
+            dev: metadata.dev(),
+            ino: metadata.ino(),
+        }
+    }
+
+    #[test]
+    fn sync_indexes_documents_images_vectors_and_fuses_search() {
+        let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let root = std::env::temp_dir().join(format!("hydrogen-e2e-{}-{nonce}", std::process::id()));
+        let state = root.join("state");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("lecture.txt"), "Heat transfer and thermal resistance").unwrap();
+        std::fs::write(root.join("diagram.png"), vec![7u8; 20_000]).unwrap();
+
+        let entries = vec![entry(root.join("lecture.txt")), entry(root.join("diagram.png"))];
+        let scanner = FixtureScanner(entries);
+        let extractor = FixtureExtractor;
+        let models = FixtureModels;
+        let cfg = AppConfig {
+            state_dir: state.clone(),
+            db_path: state.join("index.db"),
+            cache_txt: state.join("files.txt"),
+            rev_file: state.join("index.rev"),
+            img_lock_path: state.join("images.pid"),
+            models_dir: root.join("models"),
+            search_roots: vec![root.clone()],
+            ics_globs: Vec::new(),
+            evolution_db_globs: Vec::new(),
+            default_event_duration_mins: 60,
+            embeddings_enabled: true,
+            inference_threads: 2,
+            image_batch_size: 2,
+            pdf_page_limit: 50,
+        };
+        let repo = SqliteIndexRepository::open(&cfg.db_path).unwrap();
+        let service = SyncService::new(&cfg, &repo, &scanner, &extractor, &models, &models, &models);
+
+        let first = service.sync(false).unwrap();
+        assert_eq!(first.updated, 2);
+        assert_eq!(first.pending_images, 1);
+        let image_sync = service.sync_images(false, 0).unwrap();
+        assert!(image_sync.contains("\"processed\":1"));
+
+        let text_vectors = repo.semantic_search(&[1.0, 0.0, 0.0], TEXT_MODEL_ID, "text", 10).unwrap();
+        assert!(text_vectors.iter().any(|hit| hit.path.ends_with("lecture.txt")));
+        let image_vectors = repo.semantic_search(&[1.0, 0.0, 0.0], CLIP_MODEL_ID, "clip", 10).unwrap();
+        assert!(image_vectors.iter().any(|hit| hit.path.ends_with("diagram.png")));
+
+        let query = QueryService::new(&repo, &models);
+        let hits = query.search("thermal resistance", 10, "all", true).unwrap();
+        assert!(hits.iter().any(|hit| hit.path.ends_with("lecture.txt")));
+
+        let second = service.sync(false).unwrap();
+        assert_eq!(second.updated, 0, "unchanged files should not be re-embedded");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+}
