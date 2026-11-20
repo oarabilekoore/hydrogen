@@ -225,8 +225,12 @@ pub fn extract_pdf_pages(
     }
     let extracted = String::from_utf8_lossy(&text_out.stdout);
     let page_texts: Vec<&str> = extracted.split('\u{000c}').collect();
-    let mut pages = Vec::with_capacity(page_count.min(500) as usize);
-    for page in 1..=page_count.min(500) {
+    // Honour the configured page budget. A user on an 8 GB machine should
+    // not unexpectedly render/OCR hundreds of pages in one foreground sync.
+    let page_limit = max_pages.clamp(1, 500) as u32;
+    let pages_to_index = page_count.min(page_limit);
+    let mut pages = Vec::with_capacity(pages_to_index as usize);
+    for page in 1..=pages_to_index {
         let text = page_texts
             .get((page - 1) as usize)
             .copied()
