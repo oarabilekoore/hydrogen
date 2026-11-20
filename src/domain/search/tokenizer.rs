@@ -47,8 +47,13 @@ pub fn extract_raw_tokens(text: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut buf = String::new();
     let math_context = text.chars().any(|ch| {
-        matches!(ch, '=' | '+' | '-' | '*' | '/' | '^' | '_' | '∫' | '∑' | '√' | '≤' | '≥' | '≠')
-    }) || text.contains("\\frac") || text.contains("\\sqrt") || text.contains("\\int");
+        matches!(
+            ch,
+            '=' | '+' | '-' | '*' | '/' | '^' | '_' | '∫' | '∑' | '√' | '≤' | '≥' | '≠'
+        )
+    }) || text.contains("\\frac")
+        || text.contains("\\sqrt")
+        || text.contains("\\int");
     let flush = |buf: &mut String, out: &mut Vec<String>| {
         if buf.chars().count() >= 2 || (math_context && buf.chars().count() == 1) {
             out.push(std::mem::take(buf));
