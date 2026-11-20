@@ -170,22 +170,28 @@ impl<'a> SyncService<'a> {
                     );
                     let hash = hash_file_blake3(&entry.path).unwrap_or_default();
                     let mut indexed = Vec::with_capacity(pages.len());
+                    let mut extraction_failed = false;
                     for (page_no, mut page_text, preview_path) in pages {
                         if page_text.trim().is_empty() && !preview_path.is_empty() {
-                            if let Ok(boxes) = self.ocr.ocr_boxes(Path::new(&preview_path)) {
-                                page_text = boxes
-                                    .into_iter()
-                                    .map(|b| b.text)
-                                    .collect::<Vec<_>>()
-                                    .join("\\n");
+                            match self.ocr.ocr_boxes(Path::new(&preview_path)) {
+                                Ok(boxes) => {
+                                    page_text = boxes.into_iter().map(|b| b.text)
+                                        .collect::<Vec<_>>().join("\\n");
+                                }
+                                Err(error) => {
+                                    eprintln!("hydrogen: PDF page OCR failed for {p_str} page {page_no}: {error}");
+                                    extraction_failed = true;
+                                }
                             }
                         }
                         indexed.push((page_no, page_text, preview_path));
                     }
-                    // Preserve the last known-good page index if Poppler fails.
-                    if !indexed.is_empty() {
-                        self.repo.replace_pdf_pages(&p_str, &indexed, &hash)?;
+                    // Preserve the last known-good page and document index if Poppler
+                    // or OCR fails. The next sync retries instead of recording a false success.
+                    if extraction_failed || indexed.is_empty() {
+                        continue;
                     }
+                    self.repo.replace_pdf_pages(&p_str, &indexed, &hash)?;
                     indexed
                         .iter()
                         .map(|(n, text, _)| format!("[Page {n}] {text}"))
