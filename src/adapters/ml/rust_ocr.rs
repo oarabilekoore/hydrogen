@@ -106,7 +106,11 @@ impl OcrProvider for RustOcrProvider {
             match self.run_printed(p) {
                 Ok(boxes) => {
                     // A successful empty result is distinct from inference failure.
-                    let text = boxes.into_iter().map(|b| b.text).collect::<Vec<_>>().join("\n");
+                    let text = boxes
+                        .into_iter()
+                        .map(|b| b.text)
+                        .collect::<Vec<_>>()
+                        .join("\n");
                     out.insert(path.clone(), text);
                 }
                 Err(error) => {
