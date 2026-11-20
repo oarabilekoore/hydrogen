@@ -422,7 +422,7 @@ impl<'a> SyncService<'a> {
                     Some(_ic) if ocr_pending => {
                         queue.push((entry, true, true));
                     }
-                    Some(ic) if needs_clip_embedding => {
+                    Some(_ic) if needs_clip_embedding => {
                         queue.push((entry, false, true));
                     }
                     Some(ic) if retag && ic.caption_text.trim().is_empty() => {
