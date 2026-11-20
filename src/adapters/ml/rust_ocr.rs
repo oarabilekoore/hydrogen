@@ -190,9 +190,10 @@ impl CaptionProvider for RustOcrProvider {
                     prompt: Some(
                         "Describe this image in one concise factual sentence. Mention visible objects, document structure, diagrams, and readable text when relevant.".into(),
                     ),
+                    max_new_tokens: Some(48),
                     ..VlmOptions::default()
                 };
-                match engine.describe_image(&image, &options) {
+                match engine.describe_image_unsplit(&image, &options) {
                     Ok(caption) if !caption.trim().is_empty() => {
                         out.insert(path.clone(), caption.trim().to_string());
                     }
