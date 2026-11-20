@@ -1,8 +1,8 @@
 use crate::adapters::fs::inotify::LinuxInotifyWatcher;
 use crate::adapters::fs::scanner::WalkDirScanner;
 use crate::adapters::fs::text_extract::CompositeTextExtractor;
-use crate::adapters::ml::rust_ocr::RustOcrProvider;
 use crate::adapters::ml::embeddings::FastEmbedProvider;
+use crate::adapters::ml::rust_ocr::RustOcrProvider;
 use crate::adapters::sqlite::repo::SqliteIndexRepository;
 use crate::application::sync_service::SyncService;
 use crate::application::watcher_service::WatcherService;
