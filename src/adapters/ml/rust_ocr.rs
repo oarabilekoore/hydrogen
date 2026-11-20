@@ -6,16 +6,16 @@
 use crate::domain::ocr::layout::OcrBox;
 use crate::error::{HydrogenError, Result};
 use crate::ports::extractor::{CaptionProvider, OcrProvider};
-use pure_onnx_ocr::OcrEngine;
-use std::collections::HashMap;
-use std::path::{Path, PathBuf};
-use std::sync::{Arc, OnceLock};
-#[cfg(feature = "image-captioning")]
-use std::sync::Mutex;
 #[cfg(feature = "image-captioning")]
 use ffai_argus::SmolVlm;
 #[cfg(feature = "image-captioning")]
 use ffai_core::engine::{VlmEngine, VlmOptions};
+use pure_onnx_ocr::OcrEngine;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+#[cfg(feature = "image-captioning")]
+use std::sync::Mutex;
+use std::sync::{Arc, OnceLock};
 
 pub struct RustOcrProvider {
     models_dir: PathBuf,
@@ -32,13 +32,19 @@ impl RustOcrProvider {
     pub fn new(models_dir: PathBuf) -> Self {
         Self {
             models_dir,
-            inference_threads: std::env::var("HYDROGEN_INFERENCE_THREADS").ok().and_then(|v| v.parse().ok()).unwrap_or(2).clamp(1, 2),
+            inference_threads: std::env::var("HYDROGEN_INFERENCE_THREADS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(2)
+                .clamp(1, 2),
             printed: OnceLock::new(),
             formula: OnceLock::new(),
             #[cfg(feature = "image-captioning")]
             captioner: OnceLock::new(),
             #[cfg(feature = "image-captioning")]
-            captions_enabled: std::env::var("HYDROGEN_CAPTIONS").map(|v| v == "1" || v.eq_ignore_ascii_case("true")).unwrap_or(false),
+            captions_enabled: std::env::var("HYDROGEN_CAPTIONS")
+                .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+                .unwrap_or(false),
         }
     }
 
@@ -162,7 +168,10 @@ impl CaptionProvider for RustOcrProvider {
                 )))
             });
             let Ok(engine) = engine else {
-                eprintln!("hydrogen: SmolVLM initialisation failed: {}", engine.as_ref().err().unwrap());
+                eprintln!(
+                    "hydrogen: SmolVLM initialisation failed: {}",
+                    engine.as_ref().err().unwrap()
+                );
                 return out;
             };
             let Ok(mut engine) = engine.lock() else {
