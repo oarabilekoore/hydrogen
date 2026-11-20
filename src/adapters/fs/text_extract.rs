@@ -184,9 +184,9 @@ fn extract_xml_zip_text(path: &Path) -> String {
     chunks.join(" ").chars().take(MAX_TEXT_CHARS).collect()
 }
 
-/// Extract each PDF page independently and render a small local preview.
-/// Requires Poppler's pdftotext, pdfinfo, and pdftoppm utilities.
-pub fn extract_pdf_pages(path: &Path, preview_root: &Path) -> Vec<(i64, String, String)> {
+/// Extract PDF text in one Poppler pass. Page previews are rendered only
+/// for image-only pages that need OCR or for pages returned by search.
+pub fn extract_pdf_pages(path: &Path, _preview_root: &Path) -> Vec<(i64, String, String)> {
     let info = Command::new("pdfinfo")
         .arg(path)
         .stderr(Stdio::null())
@@ -207,57 +207,75 @@ pub fn extract_pdf_pages(path: &Path, preview_root: &Path) -> Vec<(i64, String, 
     if page_count == 0 {
         return Vec::new();
     }
-    let key = blake3::hash(path.to_string_lossy().as_bytes())
-        .to_hex()
-        .to_string();
-    let dir = preview_root.join("pdf-pages").join(key);
-    if std::fs::create_dir_all(&dir).is_err() {
+    let text_out = Command::new("pdftotext")
+        .args(["-q", "-enc", "UTF-8", "-layout"])
+        .arg(path)
+        .arg("-")
+        .stderr(Stdio::null())
+        .output();
+    let Ok(text_out) = text_out else {
+        return Vec::new();
+    };
+    if !text_out.status.success() {
         return Vec::new();
     }
-    let mut pages = Vec::new();
+    let extracted = String::from_utf8_lossy(&text_out.stdout);
+    let page_texts: Vec<&str> = extracted.split('\u{000c}').collect();
+    let mut pages = Vec::with_capacity(page_count.min(500) as usize);
     for page in 1..=page_count.min(500) {
-        let text_out = Command::new("pdftotext")
-            .args(["-q", "-enc", "UTF-8", "-layout", "-f"])
-            .arg(page.to_string())
-            .arg("-l")
-            .arg(page.to_string())
-            .arg(path)
-            .arg("-")
-            .stderr(Stdio::null())
-            .output();
-        let Ok(text_out) = text_out else {
-            continue;
-        };
-        let mut text = if text_out.status.success() {
-            String::from_utf8_lossy(&text_out.stdout)
-                .chars()
-                .take(40_000)
-                .collect::<String>()
-        } else {
-            String::new()
-        };
-        let preview = dir.join(format!("page-{page}"));
-        let rendered = Command::new("pdftoppm")
-            .args(["-f"])
-            .arg(page.to_string())
-            .args(["-l"])
-            .arg(page.to_string())
-            .args(["-singlefile", "-scale-to", "1200", "-png"])
-            .arg(path)
-            .arg(&preview)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
-        let preview_path = if rendered.map(|s| s.success()).unwrap_or(false) {
-            preview.with_extension("png").to_string_lossy().to_string()
-        } else {
-            String::new()
-        };
-        if text.trim().is_empty() && !preview_path.is_empty() {
-            // Image-only page: OCR is intentionally queued for the Rust OCR worker.
-            text = String::new();
-        }
-        pages.push((i64::from(page), text, preview_path));
+        let text = page_texts
+            .get((page - 1) as usize)
+            .copied()
+            .unwrap_or("")
+            .chars()
+            .take(40_000)
+            .collect::<String>();
+        pages.push((i64::from(page), text, String::new()));
     }
     pages
 }
+
+/// Render and cache one PDF page. The content digest is part of the cache key,
+/// so replacing a PDF at the same path cannot return a stale preview.
+pub fn render_pdf_page(path: &Path, page_no: i64, preview_root: &Path) -> Option<String> {
+    if page_no < 1 || !path.is_file() {
+        return None;
+    }
+    let mut file = File::open(path).ok()?;
+    let mut hasher = blake3::Hasher::new();
+    let mut buffer = [0u8; 64 * 1024];
+    loop {
+        let count = file.read(&mut buffer).ok()?;
+        if count == 0 {
+            break;
+        }
+        hasher.update(&buffer[..count]);
+    }
+    let digest = hasher.finalize().to_hex().to_string();
+    let key = blake3::hash(path.to_string_lossy().as_bytes()).to_hex().to_string();
+    let dir = preview_root.join("pdf-pages").join(format!("{key}-{}", &digest[..12]));
+    std::fs::create_dir_all(&dir).ok()?;
+    let output = dir.join(format!("page-{page_no}.png"));
+    if output.is_file() {
+        return Some(output.to_string_lossy().to_string());
+    }
+    let prefix = dir.join(format!("page-{page_no}"));
+    let status = Command::new("pdftoppm")
+        .args(["-f"])
+        .arg(page_no.to_string())
+        .args(["-l"])
+        .arg(page_no.to_string())
+        .args(["-singlefile", "-scale-to", "900", "-png"])
+        .arg(path)
+        .arg(&prefix)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .ok()?;
+    if status.success() && output.is_file() {
+        Some(output.to_string_lossy().to_string())
+    } else {
+        None
+    }
+}
+
