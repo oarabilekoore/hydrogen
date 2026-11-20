@@ -254,6 +254,17 @@ impl IndexRepository for SqliteIndexRepository {
         Ok(())
     }
 
+    fn content_hash(&self, path: &str) -> Result<Option<String>> {
+        let conn = self.connect()?;
+        conn.query_row(
+            "SELECT content_hash FROM content_hashes WHERE path=?1",
+            params![path],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(Into::into)
+    }
+
     fn enqueue_model_job(&self, path: &str, task: &str) -> Result<()> {
         let conn = self.connect()?;
         conn.execute(
