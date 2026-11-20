@@ -14,6 +14,9 @@ another inference runtime or changing the installed OCR models.
 - Image OCR distinguishes a successful empty recognition from a model failure.
   Failed inference is logged and is not written to the image cache as a successful
   empty result.
+- PDF and image OCR jobs are claimed atomically, attempts are recorded, stale
+  processing jobs are recovered after ten minutes, failures are retried up to
+  three attempts, and successful work is marked complete.
 - DOCX/ODT/EPUB/PPTX/XLSX XML extraction has per-member and aggregate
   decompressed-byte limits.
 - Math-aware tokenization retains single-letter variables in expressions while
@@ -22,19 +25,16 @@ another inference runtime or changing the installed OCR models.
 
 ## Deliberately not added in this change
 
-The current repository does not yet contain a complete consumer for the
-`model_jobs` table, a working image-caption model, or an end-to-end local
-embedding provider. Adding placeholder workers or claiming that the existing
-embedding table provides semantic retrieval would make the system less reliable,
-not more. These need separate, testable implementations:
+The queue is consumed by the sync-driven PDF/image OCR paths; a general-purpose
+background scheduler and model-availability/queue diagnostic command remain future
+work. Image captioning is still intentionally a no-op, and the embedding table
+does not yet provide semantic retrieval. Adding placeholder models would make the
+system less reliable, not more. Remaining work:
 
-1. A durable worker that claims jobs atomically, records attempts, retries
-   recoverable failures, and marks terminal outcomes.
-2. A model-availability and queue diagnostic command.
-3. A real local text embedding provider and a separately evaluated joint
+1. A real local text embedding provider and a separately evaluated joint
    image/text model, followed by reciprocal-rank fusion with BM25 and math search.
-4. On-demand PDF preview rendering and bounded worker concurrency.
-5. End-to-end fixture tests for scanned PDFs, image OCR failures, interrupted
+2. On-demand PDF preview rendering and bounded worker concurrency.
+3. End-to-end fixture tests for scanned PDFs, image OCR failures, interrupted
    extraction, same-size/same-mtime edits, and mathematical queries.
 
 ## Resource constraints
