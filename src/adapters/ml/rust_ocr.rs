@@ -193,7 +193,7 @@ impl CaptionProvider for RustOcrProvider {
                     max_new_tokens: Some(48),
                     ..VlmOptions::default()
                 };
-                match engine.describe_image_unsplit(&image, &options) {
+                match engine.describe_image(&image, &options) {
                     Ok(caption) if !caption.trim().is_empty() => {
                         out.insert(path.clone(), caption.trim().to_string());
                     }
