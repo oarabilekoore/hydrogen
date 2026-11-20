@@ -1,7 +1,7 @@
+use crate::adapters::sqlite::repo::SqliteIndexRepository;
 use crate::config::AppConfig;
 use crate::error::Result;
 use rusqlite::Connection;
-use crate::adapters::sqlite::repo::SqliteIndexRepository;
 use serde_json::{json, Value};
 use std::env;
 use std::path::Path;
@@ -30,7 +30,10 @@ fn directory_bytes(path: &Path) -> u64 {
 fn memory_available_bytes() -> Option<u64> {
     let contents = std::fs::read_to_string("/proc/meminfo").ok()?;
     contents.lines().find_map(|line| {
-        let value = line.strip_prefix("MemAvailable:")?.split_whitespace().next()?;
+        let value = line
+            .strip_prefix("MemAvailable:")?
+            .split_whitespace()
+            .next()?;
         value.parse::<u64>().ok().map(|kib| kib * 1024)
     })
 }
@@ -45,15 +48,27 @@ pub fn run(cfg: &AppConfig) -> Result<()> {
         check(
             &format!("dependency:{binary}"),
             command_available(binary),
-            if command_available(binary) { "found in PATH".into() } else { "missing from PATH".into() },
+            if command_available(binary) {
+                "found in PATH".into()
+            } else {
+                "missing from PATH".into()
+            },
         );
     }
 
     let det = cfg.models_dir.join("ppocr/det/inference.onnx");
     let rec = cfg.models_dir.join("ppocr/rec/inference.onnx");
     let texo = cfg.models_dir.join("texo-distill-f16.gguf");
-    check("model:ppocr-detector", det.is_file(), det.display().to_string());
-    check("model:ppocr-recognizer", rec.is_file(), rec.display().to_string());
+    check(
+        "model:ppocr-detector",
+        det.is_file(),
+        det.display().to_string(),
+    );
+    check(
+        "model:ppocr-recognizer",
+        rec.is_file(),
+        rec.display().to_string(),
+    );
     check("model:texo", texo.is_file(), texo.display().to_string());
 
     let embedding_dir = cfg.models_dir.join("embeddings/fastembed");
@@ -103,11 +118,7 @@ pub fn run(cfg: &AppConfig) -> Result<()> {
             "queue": queue,
             "embeddings": vectors
         });
-        check(
-            "database:integrity",
-            integrity == "ok",
-            integrity,
-        );
+        check("database:integrity", integrity == "ok", integrity);
     }
 
     let memory = memory_available_bytes();
