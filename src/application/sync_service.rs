@@ -119,7 +119,19 @@ impl<'a> SyncService<'a> {
                 !entry.is_dir && self.extractor.is_indexable_image(&entry.path, entry.size);
             let embedding_missing = if self.cfg.embeddings_enabled && !entry.is_dir {
                 if is_img {
-                    !self.repo.has_embedding(&p_str, CLIP_MODEL_ID, "clip")?
+                    let clip_missing =
+                        !self.repo.has_embedding(&p_str, CLIP_MODEL_ID, "clip")?;
+                    let text_available = img_cached
+                        .get(&p_str)
+                        .map(|cached| {
+                            !compose_image_body(&cached.caption_text, &cached.ocr_text)
+                                .trim()
+                                .is_empty()
+                        })
+                        .unwrap_or(false);
+                    let text_missing = text_available
+                        && !self.repo.has_embedding(&p_str, TEXT_MODEL_ID, "text")?;
+                    clip_missing || text_missing
                 } else {
                     !self.repo.has_embedding(&p_str, TEXT_MODEL_ID, "text")?
                 }
@@ -175,30 +187,41 @@ impl<'a> SyncService<'a> {
                             .upsert_document(entry, title, &body, has_body, &terms)?;
                         if self.cfg.embeddings_enabled {
                             if !body.trim().is_empty() {
-                                if let Ok(vector) = self.embeddings.embed_document(&body) {
+                                match self.embeddings.embed_document(&body) {
+                                    Ok(vector) => {
+                                        if let Some(hash) = current_hash.as_deref() {
+                                            self.repo.upsert_embedding(
+                                                &p_str,
+                                                TEXT_MODEL_ID,
+                                                "text",
+                                                &vector,
+                                                hash,
+                                            )?;
+                                        }
+                                    }
+                                    Err(error) => eprintln!(
+                                        "hydrogen: image text embedding failed for {p_str}: {error}"
+                                    ),
+                                }
+                            }
+                            match self.embeddings.embed_image(&entry.path) {
+                                Ok(vector) => {
                                     if let Some(hash) = current_hash.as_deref() {
                                         self.repo.upsert_embedding(
                                             &p_str,
-                                            TEXT_MODEL_ID,
-                                            "text",
+                                            CLIP_MODEL_ID,
+                                            "clip",
                                             &vector,
                                             hash,
                                         )?;
                                     }
                                 }
-                            }
-                            if let Ok(vector) = self.embeddings.embed_image(&entry.path) {
-                                if let Some(hash) = current_hash.as_deref() {
-                                    self.repo.upsert_embedding(
-                                        &p_str,
-                                        CLIP_MODEL_ID,
-                                        "clip",
-                                        &vector,
-                                        hash,
-                                    )?;
-                                }
+                                Err(error) => eprintln!(
+                                    "hydrogen: image embedding failed for {p_str}: {error}"
+                                ),
                             }
                         }
+                        pending_images += 1;
                         updated += 1;
                         continue;
                     }
