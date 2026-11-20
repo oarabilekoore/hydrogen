@@ -4,7 +4,8 @@ use crate::domain::document::{
 };
 use crate::domain::search::tfidf::extract_doc_terms;
 use crate::error::Result;
-use crate::ports::extractor::{CaptionProvider, FileScanner, OcrProvider, TextExtractor};
+use crate::adapters::ml::embeddings::{CLIP_MODEL_ID, TEXT_MODEL_ID};
+use crate::ports::extractor::{CaptionProvider, EmbeddingProvider, FileScanner, OcrProvider, TextExtractor};
 use crate::ports::repository::IndexRepository;
 use serde_json::json;
 use std::collections::HashSet;
@@ -22,6 +23,7 @@ pub struct SyncService<'a> {
     extractor: &'a dyn TextExtractor,
     ocr: &'a dyn OcrProvider,
     captioner: &'a dyn CaptionProvider,
+    embeddings: &'a dyn EmbeddingProvider,
 }
 
 impl<'a> SyncService<'a> {
@@ -109,7 +111,19 @@ impl<'a> SyncService<'a> {
             } else {
                 false
             };
-            let content_changed = prev != Some((entry.mtime, entry.size)) || hash_changed;
+            let is_img =
+                !entry.is_dir && self.extractor.is_indexable_image(&entry.path, entry.size);
+            let embedding_missing = if self.cfg.embeddings_enabled && !entry.is_dir {
+                if is_img {
+                    !self.repo.has_embedding(&p_str, CLIP_MODEL_ID, "clip")?
+                } else {
+                    !self.repo.has_embedding(&p_str, TEXT_MODEL_ID, "text")?
+                }
+            } else {
+                false
+            };
+            let content_changed =
+                prev != Some((entry.mtime, entry.size)) || hash_changed || embedding_missing;
 
             if !entry.is_dir && content_changed {
                 let is_pdf = entry
@@ -144,9 +158,6 @@ impl<'a> SyncService<'a> {
                 .file_name()
                 .and_then(|n| n.to_str())
                 .unwrap_or(&p_str);
-            let is_img =
-                !entry.is_dir && self.extractor.is_indexable_image(&entry.path, entry.size);
-
             if is_img {
                 if let Some(ic) = img_cached.get(&p_str) {
                     if ic.mtime == entry.mtime && ic.size == entry.size {
@@ -158,6 +169,20 @@ impl<'a> SyncService<'a> {
                         let terms = extract_doc_terms(title, &ic.ocr_text, &ic.caption_text);
                         self.repo
                             .upsert_document(entry, title, &body, has_body, &terms)?;
+                        if self.cfg.embeddings_enabled {
+                            if !body.trim().is_empty() {
+                                if let Ok(vector) = self.embeddings.embed_document(&body) {
+                                    if let Some(hash) = current_hash.as_deref() {
+                                        self.repo.upsert_embedding(&p_str, TEXT_MODEL_ID, "text", &vector, hash)?;
+                                    }
+                                }
+                            }
+                            if let Ok(vector) = self.embeddings.embed_image(&entry.path) {
+                                if let Some(hash) = current_hash.as_deref() {
+                                    self.repo.upsert_embedding(&p_str, CLIP_MODEL_ID, "clip", &vector, hash)?;
+                                }
+                            }
+                        }
                         updated += 1;
                         continue;
                     }
@@ -236,6 +261,13 @@ impl<'a> SyncService<'a> {
                 let terms = extract_doc_terms(title, &body, "");
                 self.repo
                     .upsert_document(entry, title, &body, has_body, &terms)?;
+                if self.cfg.embeddings_enabled && has_body {
+                    if let Ok(vector) = self.embeddings.embed_document(&body) {
+                        if let Some(hash) = current_hash.as_deref() {
+                            self.repo.upsert_embedding(&p_str, TEXT_MODEL_ID, "text", &vector, hash)?;
+                        }
+                    }
+                }
                 updated += 1;
             }
         }
@@ -370,6 +402,18 @@ impl<'a> SyncService<'a> {
                     })?;
                     self.repo
                         .upsert_document(entry, title, &body, has_body, &terms)?;
+                    if self.cfg.embeddings_enabled {
+                        let hash = hash_file_blake3(&entry.path).unwrap_or_default();
+                        if has_body {
+                            if let Ok(vector) = self.embeddings.embed_document(&body) {
+                                self.repo.upsert_embedding(&p_str, TEXT_MODEL_ID, "text", &vector, &hash)?;
+                            }
+                        }
+                        match self.embeddings.embed_image(&entry.path) {
+                            Ok(vector) => self.repo.upsert_embedding(&p_str, CLIP_MODEL_ID, "clip", &vector, &hash)?,
+                            Err(error) => eprintln!("hydrogen: image embedding failed for {p_str}: {error}"),
+                        }
+                    }
                     if *need_ocr {
                         self.repo.complete_model_job(&p_str, "image_ocr")?;
                     }
