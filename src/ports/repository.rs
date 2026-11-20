@@ -6,6 +6,7 @@ pub trait IndexRepository {
     fn upsert_content_hash(&self, path: &str, hash: &str, size: u64, mtime: i64) -> Result<()>;
     fn load_content_hashes(&self) -> Result<HashMap<String, String>>;
     fn upsert_embedding(&self, path: &str, model_id: &str, modality: &str, vector: &[f32], hash: &str) -> Result<()>;
+    fn has_embedding(&self, path: &str, model_id: &str, modality: &str) -> Result<bool>;
     fn semantic_search(&self, vector: &[f32], model_id: &str, modality: &str, limit: usize) -> Result<Vec<SearchHit>>;
     fn replace_pdf_pages(
         &self,
