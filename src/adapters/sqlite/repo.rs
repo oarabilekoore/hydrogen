@@ -295,7 +295,11 @@ impl IndexRepository for SqliteIndexRepository {
         Ok(())
     }
 
-    fn load_embedding_batch(&self, after_path: &str, limit: usize) -> Result<Vec<(String, String, String)>> {
+    fn load_embedding_batch(
+        &self,
+        after_path: &str,
+        limit: usize,
+    ) -> Result<Vec<(String, String, String)>> {
         let conn = self.connect()?;
         let mut stmt = conn.prepare(
             "SELECT f.path, files_fts.body, COALESCE(content_hashes.content_hash, '')
@@ -374,7 +378,11 @@ impl IndexRepository for SqliteIndexRepository {
             if vector_norm <= f32::EPSILON {
                 continue;
             }
-            let dot = query_vector.iter().zip(&vector).map(|(a, b)| a * b).sum::<f32>();
+            let dot = query_vector
+                .iter()
+                .zip(&vector)
+                .map(|(a, b)| a * b)
+                .sum::<f32>();
             let similarity = (dot / (query_norm * vector_norm)).clamp(-1.0, 1.0);
             let name = Path::new(&path)
                 .file_name()
@@ -385,7 +393,14 @@ impl IndexRepository for SqliteIndexRepository {
             scored.push(SearchHit {
                 path,
                 name,
-                source: if is_dir { "dir" } else if is_image { "image" } else { "doc" }.into(),
+                source: if is_dir {
+                    "dir"
+                } else if is_image {
+                    "image"
+                } else {
+                    "doc"
+                }
+                .into(),
                 score: f64::from(similarity),
                 vec: f64::from(similarity),
                 fts: 0.0,
