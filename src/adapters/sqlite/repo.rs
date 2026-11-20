@@ -295,6 +295,26 @@ impl IndexRepository for SqliteIndexRepository {
         Ok(())
     }
 
+    fn load_embedding_batch(&self, after_path: &str, limit: usize) -> Result<Vec<(String, String, String)>> {
+        let conn = self.connect()?;
+        let mut stmt = conn.prepare(
+            "SELECT f.path, files_fts.body, COALESCE(content_hashes.content_hash, '')
+             FROM files f
+             JOIN files_fts ON files_fts.path = f.path
+             LEFT JOIN content_hashes ON content_hashes.path = f.path
+             WHERE f.is_dir = 0 AND f.path > ?1 AND LENGTH(TRIM(files_fts.body)) > 0
+             ORDER BY f.path LIMIT ?2",
+        )?;
+        let rows = stmt.query_map(params![after_path, limit.max(1) as i64], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+        })?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row?);
+        }
+        Ok(out)
+    }
+
     fn has_embedding(&self, path: &str, model_id: &str, modality: &str) -> Result<bool> {
         let conn = self.connect()?;
         let exists: bool = conn.query_row(
