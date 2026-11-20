@@ -106,18 +106,25 @@ impl<'a> SyncService<'a> {
             };
             let hash_changed = if let Some(hash) = current_hash.as_deref() {
                 content_hashes.get(&p_str).map(String::as_str) != Some(hash)
-            } else { false };
+            } else {
+                false
+            };
             let content_changed =
                 prev != Some((entry.mtime, entry.size)) || hash_changed;
 
             if !entry.is_dir && content_changed {
-                let is_pdf = entry.path.extension().and_then(|e| e.to_str())
-                    .map(|e| e.eq_ignore_ascii_case("pdf")).unwrap_or(false);
+                let is_pdf = entry
+                    .path
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .map(|e| e.eq_ignore_ascii_case("pdf"))
+                    .unwrap_or(false);
                 // For PDFs, only commit the new digest after a successful page pass.
                 // Otherwise a transient Poppler failure would suppress the retry.
                 if !is_pdf {
                     if let Some(hash) = current_hash.as_deref() {
-                        self.repo.upsert_content_hash(&p_str, hash, entry.size, entry.mtime)?;
+                        self.repo
+                            .upsert_content_hash(&p_str, hash, entry.size, entry.mtime)?;
                         content_hashes.insert(p_str.clone(), hash.to_string());
                     }
                 }
