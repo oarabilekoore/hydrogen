@@ -687,6 +687,25 @@ mod integration_tests {
         }
     }
 
+    struct UnavailableEmbeddings;
+    impl EmbeddingProvider for UnavailableEmbeddings {
+        fn embed_document(&self, _text: &str) -> Result<Vec<f32>> {
+            Err(crate::error::HydrogenError::ExternalTool(
+                "embedding model unavailable".into(),
+            ))
+        }
+        fn embed_clip_text(&self, _text: &str) -> Result<Vec<f32>> {
+            Err(crate::error::HydrogenError::ExternalTool(
+                "CLIP model unavailable".into(),
+            ))
+        }
+        fn embed_image(&self, _path: &Path) -> Result<Vec<f32>> {
+            Err(crate::error::HydrogenError::ExternalTool(
+                "image model unavailable".into(),
+            ))
+        }
+    }
+
     fn entry(path: PathBuf) -> FileEntry {
         let metadata = path.metadata().unwrap();
         FileEntry {
@@ -780,6 +799,16 @@ mod integration_tests {
         let query = QueryService::new(&repo, &models);
         let hits = query.search("thermal resistance", 10, "all", true).unwrap();
         assert!(hits.iter().any(|hit| hit.path.ends_with("lecture.txt")));
+
+        // A missing optional model must degrade to lexical retrieval, not an error.
+        let unavailable = UnavailableEmbeddings;
+        let lexical_fallback = QueryService::new(&repo, &unavailable);
+        let fallback_hits = lexical_fallback
+            .search("thermal resistance", 10, "all", true)
+            .unwrap();
+        assert!(fallback_hits
+            .iter()
+            .any(|hit| hit.path.ends_with("lecture.txt")));
 
         let second = service.sync(false).unwrap();
         assert_eq!(
