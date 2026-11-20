@@ -13,6 +13,7 @@ make install
 hydrogen index sync
 hydrogen index embed                 # backfill existing text and image vectors
 hydrogen query "heat exchanger" --semantic
+hydrogen query --image ./diagram.png
 hydrogen doctor
 ```
 
