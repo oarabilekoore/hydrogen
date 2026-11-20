@@ -60,7 +60,8 @@ pub fn run(args: IndexArgs, cfg: &AppConfig) -> Result<()> {
             println!("{result}");
         }
         IndexAction::Embed { limit } => {
-            let (documents, images, failed) = embed_existing(&repo, &extractor, &embeddings, limit)?;
+            let (documents, images, failed) =
+                embed_existing(&repo, &extractor, &embeddings, limit)?;
             println!(
                 "{}",
                 serde_json::json!({
