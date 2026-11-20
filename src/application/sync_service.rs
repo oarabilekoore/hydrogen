@@ -384,8 +384,23 @@ impl<'a> SyncService<'a> {
                     continue;
                 }
                 let p_str = entry.path.to_string_lossy().to_string();
-                let needs_clip_embedding = self.cfg.embeddings_enabled
-                    && !self.repo.has_embedding(&p_str, CLIP_MODEL_ID, "clip")?;
+                let needs_clip_embedding = if self.cfg.embeddings_enabled {
+                    let clip_missing =
+                        !self.repo.has_embedding(&p_str, CLIP_MODEL_ID, "clip")?;
+                    let text_available = img_cached
+                        .get(&p_str)
+                        .map(|cached| {
+                            !compose_image_body(&cached.caption_text, &cached.ocr_text)
+                                .trim()
+                                .is_empty()
+                        })
+                        .unwrap_or(false);
+                    let text_missing = text_available
+                        && !self.repo.has_embedding(&p_str, TEXT_MODEL_ID, "text")?;
+                    clip_missing || text_missing
+                } else {
+                    false
+                };
                 let ocr_pending = self.repo.model_job_pending(&p_str, "image_ocr")?;
                 match img_cached.get(&p_str) {
                     None => queue.push((entry, true, true)),
