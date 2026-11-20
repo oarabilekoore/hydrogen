@@ -109,8 +109,7 @@ impl<'a> SyncService<'a> {
             } else {
                 false
             };
-            let content_changed =
-                prev != Some((entry.mtime, entry.size)) || hash_changed;
+            let content_changed = prev != Some((entry.mtime, entry.size)) || hash_changed;
 
             if !entry.is_dir && content_changed {
                 let is_pdf = entry
