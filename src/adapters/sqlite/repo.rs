@@ -1080,6 +1080,21 @@ impl IndexRepository for SqliteIndexRepository {
 
         scored.sort_by(|a, b| b.score.total_cmp(&a.score));
         scored.truncate(limit);
+        // Only render previews for the final visible result set, never every
+        // candidate PDF considered during ranking.
+        for item in &mut scored {
+            if item.preview.is_empty() {
+                if let Some(page_no) = item.page {
+                    if let Some(preview) = crate::adapters::fs::text_extract::render_pdf_page(
+                        Path::new(&item.path),
+                        page_no,
+                        self.db_path.parent().unwrap_or_else(|| Path::new(".")),
+                    ) {
+                        item.preview = preview;
+                    }
+                }
+            }
+        }
         Ok(scored)
     }
 
