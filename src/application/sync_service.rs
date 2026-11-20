@@ -220,7 +220,8 @@ impl<'a> SyncService<'a> {
                         continue;
                     }
                     self.repo.replace_pdf_pages(&p_str, &indexed, &hash)?;
-                    self.repo.upsert_content_hash(&p_str, &hash, entry.size, entry.mtime)?;
+                    self.repo
+                        .upsert_content_hash(&p_str, &hash, entry.size, entry.mtime)?;
                     self.repo.complete_model_job(&p_str, "pdf_pages")?;
                     content_hashes.insert(p_str.clone(), hash.clone());
                     indexed
