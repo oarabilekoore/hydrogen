@@ -74,7 +74,7 @@ impl FastEmbedProvider {
                 ImageEmbedding::try_new(
                     ImageInitOptions::new(ImageEmbeddingModel::ClipVitB32)
                         .with_cache_dir(self.cache_dir.join("clip-vit-b32-image"))
-                        .with_intra_threads(THREADS)
+                        .with_intra_threads(self.threads)
                         .with_show_download_progress(true),
                 )
                 .map(Mutex::new)
