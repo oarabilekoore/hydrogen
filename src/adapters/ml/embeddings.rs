@@ -6,8 +6,8 @@
 use crate::error::{HydrogenError, Result};
 use crate::ports::extractor::EmbeddingProvider;
 use fastembed::{
-    EmbeddingModel, ImageEmbedding, ImageEmbeddingModel, ImageInitOptions,
-    TextEmbedding, TextInitOptions,
+    EmbeddingModel, ImageEmbedding, ImageEmbeddingModel, ImageInitOptions, TextEmbedding,
+    TextInitOptions,
 };
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
@@ -29,7 +29,11 @@ impl FastEmbedProvider {
     pub fn new(models_dir: PathBuf) -> Self {
         Self {
             cache_dir: models_dir.join("embeddings").join("fastembed"),
-            threads: std::env::var("HYDROGEN_INFERENCE_THREADS").ok().and_then(|v| v.parse().ok()).unwrap_or(2).clamp(1, 2),
+            threads: std::env::var("HYDROGEN_INFERENCE_THREADS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(2)
+                .clamp(1, 2),
             text: OnceLock::new(),
             clip_text: OnceLock::new(),
             clip_image: OnceLock::new(),
@@ -86,9 +90,9 @@ impl FastEmbedProvider {
 }
 
 fn normalise_mean(vectors: Vec<Vec<f32>>) -> Result<Vec<f32>> {
-    let first = vectors.first().ok_or_else(|| {
-        HydrogenError::ExternalTool("embedding model returned no vectors".into())
-    })?;
+    let first = vectors
+        .first()
+        .ok_or_else(|| HydrogenError::ExternalTool("embedding model returned no vectors".into()))?;
     let dimensions = first.len();
     if dimensions == 0 || vectors.iter().any(|v| v.len() != dimensions) {
         return Err(HydrogenError::ExternalTool(
@@ -212,7 +216,9 @@ mod tests {
         let text = "engineering ".repeat(4_000);
         let parts = chunks(&text);
         assert!(parts.len() <= MAX_DOCUMENT_CHUNKS);
-        assert!(parts.iter().all(|part| part.chars().count() <= DOCUMENT_CHUNK_CHARS));
+        assert!(parts
+            .iter()
+            .all(|part| part.chars().count() <= DOCUMENT_CHUNK_CHARS));
     }
 
     #[test]
