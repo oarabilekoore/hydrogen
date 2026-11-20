@@ -50,6 +50,7 @@ impl<'a> SyncService<'a> {
     }
 
     pub fn sync(&self, spawn_images: bool) -> Result<SyncSummary> {
+        let sync_started = Instant::now();
         fs::create_dir_all(&self.cfg.state_dir)?;
         let entries = self.scanner.scan(6, 5000);
 
@@ -325,15 +326,20 @@ impl<'a> SyncService<'a> {
                 self.repo
                     .upsert_document(entry, title, &body, has_body, &terms)?;
                 if self.cfg.embeddings_enabled && has_body {
-                    if let Ok(vector) = self.embeddings.embed_document(&body) {
-                        if let Some(hash) = current_hash.as_deref() {
-                            self.repo.upsert_embedding(
-                                &p_str,
-                                TEXT_MODEL_ID,
-                                "text",
-                                &vector,
-                                hash,
-                            )?;
+                    match self.embeddings.embed_document(&body) {
+                        Ok(vector) => {
+                            if let Some(hash) = current_hash.as_deref() {
+                                self.repo.upsert_embedding(
+                                    &p_str,
+                                    TEXT_MODEL_ID,
+                                    "text",
+                                    &vector,
+                                    hash,
+                                )?;
+                            }
+                        }
+                        Err(error) => {
+                            eprintln!("hydrogen: document embedding failed for {p_str}: {error}")
                         }
                     }
                 }
@@ -343,6 +349,14 @@ impl<'a> SyncService<'a> {
 
         self.repo
             .rebuild_sparse_index_if_needed(updated > 0 || moved > 0 || removed > 0)?;
+        if updated > 0 || moved > 0 || removed > 0 {
+            self.repo.record_worker_metric(
+                "document_sync",
+                sync_started.elapsed().as_millis() as u64,
+                current_rss_bytes(),
+                updated,
+            )?;
+        }
 
         write_compat_files(&self.cfg.cache_txt, &self.cfg.rev_file, &entries)?;
 
@@ -499,14 +513,17 @@ impl<'a> SyncService<'a> {
                     if self.cfg.embeddings_enabled {
                         let hash = hash_file_blake3(&entry.path).unwrap_or_default();
                         if has_body {
-                            if let Ok(vector) = self.embeddings.embed_document(&body) {
-                                self.repo.upsert_embedding(
+                            match self.embeddings.embed_document(&body) {
+                                Ok(vector) => self.repo.upsert_embedding(
                                     &p_str,
                                     TEXT_MODEL_ID,
                                     "text",
                                     &vector,
                                     &hash,
-                                )?;
+                                )?,
+                                Err(error) => eprintln!(
+                                    "hydrogen: image text embedding failed for {p_str}: {error}"
+                                ),
                             }
                         }
                         match self.embeddings.embed_image(&entry.path) {
