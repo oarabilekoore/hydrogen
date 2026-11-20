@@ -865,9 +865,23 @@ mod integration_tests {
             .iter()
             .any(|hit| hit.path.ends_with("lecture.txt")));
 
-        let second = service.sync(false).unwrap();
+        // Preserve the scanner's original size/mtime metadata while changing
+        // the bytes. The BLAKE3 digest must still trigger re-indexing.
+        std::fs::write(
+            root.join("lecture.txt"),
+            "Mass transfer and thermal resistance",
+        )
+        .unwrap();
+        let changed = service.sync(false).unwrap();
+        assert_eq!(changed.updated, 1);
+        let mass_hits = repo.search("mass transfer", 10, "all").unwrap();
+        assert!(mass_hits
+            .iter()
+            .any(|hit| hit.path.ends_with("lecture.txt")));
+
+        let unchanged = service.sync(false).unwrap();
         assert_eq!(
-            second.updated, 0,
+            unchanged.updated, 0,
             "unchanged files should not be re-embedded"
         );
         std::fs::remove_dir_all(root).unwrap();
