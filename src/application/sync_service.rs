@@ -192,7 +192,7 @@ impl<'a> SyncService<'a> {
                             match self.ocr.ocr_boxes(Path::new(&preview_path)) {
                                 Ok(boxes) => {
                                     page_text = boxes.into_iter().map(|b| b.text)
-                                        .collect::<Vec<_>>().join("\\n");
+                                        .collect::<Vec<_>>().join("\n");
                                 }
                                 Err(error) => {
                                     eprintln!(
@@ -218,7 +218,7 @@ impl<'a> SyncService<'a> {
                         .iter()
                         .map(|(n, text, _)| format!("[Page {n}] {text}"))
                         .collect::<Vec<_>>()
-                        .join("\\n")
+                        .join("\n")
                 } else {
                     self.extractor.extract_text(&entry.path, entry.size)
                 };
