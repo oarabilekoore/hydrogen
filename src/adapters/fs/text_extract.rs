@@ -14,6 +14,8 @@ const MIN_IMAGE_BYTES: u64 = 10 * 1024;
 const MAX_IMAGE_BYTES: u64 = 25 * 1024 * 1024;
 const MIN_IMAGE_DIM: u32 = 128;
 const MAX_TEXT_CHARS: usize = 120_000;
+const MAX_ARCHIVE_XML_BYTES: u64 = 8 * 1024 * 1024;
+const MAX_ARCHIVE_TOTAL_XML_BYTES: u64 = 24 * 1024 * 1024;
 
 const TEXT_EXTS: &[&str] = &[
     "txt", "md", "markdown", "rst", "org", "tex", "typ", "py", "c", "cpp", "cc", "h", "hpp", "go",
@@ -131,6 +133,7 @@ fn extract_xml_zip_text(path: &Path) -> String {
 
     let mut chunks: Vec<String> = Vec::new();
     let mut total_chars = 0usize;
+    let mut total_xml_bytes = 0u64;
 
     for i in 0..archive.len() {
         let Ok(mut entry) = archive.by_index(i) else {
@@ -139,10 +142,23 @@ fn extract_xml_zip_text(path: &Path) -> String {
         if !entry.name().ends_with(".xml") {
             continue;
         }
-        let mut xml_bytes = Vec::new();
-        if entry.read_to_end(&mut xml_bytes).is_err() {
+        // ZIP metadata is untrusted. Bound decompressed input per member and overall.
+        let member_limit = entry.size().min(MAX_ARCHIVE_XML_BYTES);
+        if entry.size() > MAX_ARCHIVE_XML_BYTES
+            || total_xml_bytes.saturating_add(member_limit) > MAX_ARCHIVE_TOTAL_XML_BYTES
+        {
             continue;
         }
+        let mut xml_bytes = Vec::with_capacity(member_limit as usize);
+        if entry
+            .take(member_limit + 1)
+            .read_to_end(&mut xml_bytes)
+            .is_err()
+            || xml_bytes.len() as u64 > member_limit
+        {
+            continue;
+        }
+        total_xml_bytes = total_xml_bytes.saturating_add(xml_bytes.len() as u64);
         let xml_str = String::from_utf8_lossy(&xml_bytes);
         let mut reader = Reader::from_str(&xml_str);
         loop {
@@ -188,6 +204,9 @@ pub fn extract_pdf_pages(path: &Path, preview_root: &Path) -> Vec<(i64, String, 
     }) else {
         return Vec::new();
     };
+    if page_count == 0 {
+        return Vec::new();
+    }
     let key = blake3::hash(path.to_string_lossy().as_bytes())
         .to_hex()
         .to_string();

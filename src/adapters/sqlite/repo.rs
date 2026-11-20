@@ -254,11 +254,66 @@ impl IndexRepository for SqliteIndexRepository {
         Ok(())
     }
 
+    fn load_content_hashes(&self) -> Result<HashMap<String, String>> {
+        let conn = self.connect()?;
+        let mut stmt = conn.prepare("SELECT path, content_hash FROM content_hashes")?;
+        let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?;
+        let mut hashes = HashMap::new();
+        for row in rows {
+            let (path, hash) = row?;
+            hashes.insert(path, hash);
+        }
+        Ok(hashes)
+    }
+
     fn enqueue_model_job(&self, path: &str, task: &str) -> Result<()> {
         let conn = self.connect()?;
         conn.execute(
             "INSERT INTO model_jobs(path,task,status) VALUES(?1,?2,'queued')
-             ON CONFLICT(path,task) DO UPDATE SET status=CASE WHEN model_jobs.status='done' THEN 'queued' ELSE model_jobs.status END, updated_at=unixepoch()",
+             ON CONFLICT(path,task) DO UPDATE SET
+                status=CASE WHEN model_jobs.status IN ('done','failed') THEN 'queued' ELSE model_jobs.status END,
+                attempts=CASE WHEN model_jobs.status IN ('done','failed') THEN 0 ELSE model_jobs.attempts END,
+                updated_at=unixepoch()",
+            params![path, task],
+        )?;
+        Ok(())
+    }
+
+    fn claim_model_job(&self, path: &str, task: &str) -> Result<bool> {
+        let mut conn = self.connect()?;
+        let tx = conn.transaction()?;
+        // Recover work left in processing by a crashed process after ten minutes.
+        tx.execute(
+            "UPDATE model_jobs SET status='queued', updated_at=unixepoch()
+             WHERE status='processing' AND updated_at < unixepoch() - 1800",
+            [],
+        )?;
+        let claimed = tx.execute(
+            "UPDATE model_jobs SET status='processing', attempts=attempts+1, updated_at=unixepoch()
+             WHERE path=?1 AND task=?2 AND status IN ('queued','failed') AND attempts < 3",
+            params![path, task],
+        )? > 0;
+        tx.commit()?;
+        Ok(claimed)
+    }
+
+    fn complete_model_job(&self, path: &str, task: &str) -> Result<()> {
+        let conn = self.connect()?;
+        conn.execute(
+            "UPDATE model_jobs SET status='done', updated_at=unixepoch()
+             WHERE path=?1 AND task=?2",
+            params![path, task],
+        )?;
+        Ok(())
+    }
+
+    fn fail_model_job(&self, path: &str, task: &str) -> Result<()> {
+        let conn = self.connect()?;
+        conn.execute(
+            "UPDATE model_jobs
+             SET status=CASE WHEN attempts >= 3 THEN 'failed' ELSE 'queued' END,
+                 updated_at=unixepoch()
+             WHERE path=?1 AND task=?2 AND status='processing'",
             params![path, task],
         )?;
         Ok(())

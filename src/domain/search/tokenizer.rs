@@ -46,8 +46,16 @@ fn math_alias(ch: char) -> Option<&'static str> {
 pub fn extract_raw_tokens(text: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut buf = String::new();
+    let math_context = text.chars().any(|ch| {
+        matches!(
+            ch,
+            '=' | '+' | '-' | '*' | '/' | '^' | '_' | '∫' | '∑' | '√' | '≤' | '≥' | '≠'
+        )
+    }) || text.contains("\\frac")
+        || text.contains("\\sqrt")
+        || text.contains("\\int");
     let flush = |buf: &mut String, out: &mut Vec<String>| {
-        if buf.chars().count() >= 2 {
+        if buf.chars().count() >= 2 || (math_context && buf.chars().count() == 1) {
             out.push(std::mem::take(buf));
         } else {
             buf.clear();
@@ -66,6 +74,25 @@ pub fn extract_raw_tokens(text: &str) -> Vec<String> {
         }
     }
     flush(&mut buf, &mut out);
+    if math_context {
+        // Short adjacent symbols often represent implicit multiplication (for
+        // example, "ma" in F = ma). Keep the compound token and index its
+        // individual variables as well. Avoid splitting common function names.
+        const FUNCTIONS: &[&str] = &[
+            "sin", "cos", "tan", "cot", "sec", "csc", "log", "ln", "exp", "max", "min",
+        ];
+        let mut variables = Vec::new();
+        for token in &out {
+            if token.chars().count() == 2
+                && token.chars().all(|ch| ch.is_ascii_alphabetic())
+                && !FUNCTIONS.contains(&token.as_str())
+                && !matches!(token.as_str(), "pi" | "mu" | "nu")
+            {
+                variables.extend(token.chars().map(|ch| ch.to_string()));
+            }
+        }
+        out.extend(variables);
+    }
     out
 }
 pub fn tokenize_content(text: &str) -> Vec<String> {
@@ -95,6 +122,22 @@ mod tests {
     fn falls_back_when_all_stopwords() {
         assert_eq!(tokenize_content("the and for"), vec!["the", "and", "for"]);
     }
+    #[test]
+    fn preserves_single_letter_variables_in_math_context() {
+        let tokens = extract_raw_tokens("F = ma; x^2 + y^2 = r^2");
+        for variable in ["f", "m", "a", "x", "y", "r"] {
+            assert!(
+                tokens.iter().any(|token| token == variable),
+                "missing {variable}"
+            );
+        }
+    }
+
+    #[test]
+    fn still_discards_single_letter_prose_tokens() {
+        assert_eq!(extract_raw_tokens("a dog"), vec!["dog"]);
+    }
+
     #[test]
     fn preserves_greek_and_math_symbols() {
         let t = extract_raw_tokens("∫ f(θ) dθ = π + √x ≥ 0");

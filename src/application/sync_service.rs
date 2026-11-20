@@ -48,6 +48,7 @@ impl<'a> SyncService<'a> {
         let entries = self.scanner.scan(6, 5000);
 
         let mut existing = self.repo.load_file_records()?;
+        let mut content_hashes = self.repo.load_content_hashes()?;
         let mut img_cached = self.repo.load_image_cache()?;
         let current_paths: HashSet<String> = entries
             .iter()
@@ -96,10 +97,35 @@ impl<'a> SyncService<'a> {
         for entry in &entries {
             let p_str = entry.path.to_string_lossy().to_string();
             let prev = existing.get(&p_str).copied();
-            if !entry.is_dir && prev != Some((entry.mtime, entry.size)) {
-                if let Ok(hash) = hash_file_blake3(&entry.path) {
-                    self.repo
-                        .upsert_content_hash(&p_str, &hash, entry.size, entry.mtime)?;
+            // Metadata is a cheap first signal, but the persisted digest is the
+            // source of truth when timestamps are preserved by copies/sync tools.
+            let current_hash = if entry.is_dir {
+                None
+            } else {
+                hash_file_blake3(&entry.path).ok()
+            };
+            let hash_changed = if let Some(hash) = current_hash.as_deref() {
+                content_hashes.get(&p_str).map(String::as_str) != Some(hash)
+            } else {
+                false
+            };
+            let content_changed = prev != Some((entry.mtime, entry.size)) || hash_changed;
+
+            if !entry.is_dir && content_changed {
+                let is_pdf = entry
+                    .path
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .map(|e| e.eq_ignore_ascii_case("pdf"))
+                    .unwrap_or(false);
+                // For PDFs, only commit the new digest after a successful page pass.
+                // Otherwise a transient Poppler failure would suppress the retry.
+                if !is_pdf {
+                    if let Some(hash) = current_hash.as_deref() {
+                        self.repo
+                            .upsert_content_hash(&p_str, hash, entry.size, entry.mtime)?;
+                        content_hashes.insert(p_str.clone(), hash.to_string());
+                    }
                 }
                 if entry
                     .path
@@ -124,7 +150,7 @@ impl<'a> SyncService<'a> {
             if is_img {
                 if let Some(ic) = img_cached.get(&p_str) {
                     if ic.mtime == entry.mtime && ic.size == entry.size {
-                        if prev == Some((entry.mtime, entry.size)) {
+                        if !content_changed {
                             continue;
                         }
                         let body = compose_image_body(&ic.caption_text, &ic.ocr_text);
@@ -138,14 +164,14 @@ impl<'a> SyncService<'a> {
                 }
 
                 pending_images += 1;
-                if prev == Some((entry.mtime, entry.size)) {
+                if !content_changed {
                     continue;
                 }
                 let terms = extract_doc_terms(title, "", "");
                 self.repo.upsert_document(entry, title, "", false, &terms)?;
                 updated += 1;
             } else {
-                if prev == Some((entry.mtime, entry.size)) {
+                if !content_changed {
                     continue;
                 }
                 let body = if entry.is_dir {
@@ -157,30 +183,52 @@ impl<'a> SyncService<'a> {
                     .map(|e| e.eq_ignore_ascii_case("pdf"))
                     .unwrap_or(false)
                 {
+                    if !self.repo.claim_model_job(&p_str, "pdf_pages")? {
+                        continue;
+                    }
                     let pages = crate::adapters::fs::text_extract::extract_pdf_pages(
                         &entry.path,
                         &self.cfg.state_dir,
                     );
                     let hash = hash_file_blake3(&entry.path).unwrap_or_default();
                     let mut indexed = Vec::with_capacity(pages.len());
+                    let mut extraction_failed = false;
                     for (page_no, mut page_text, preview_path) in pages {
                         if page_text.trim().is_empty() && !preview_path.is_empty() {
-                            if let Ok(boxes) = self.ocr.ocr_boxes(Path::new(&preview_path)) {
-                                page_text = boxes
-                                    .into_iter()
-                                    .map(|b| b.text)
-                                    .collect::<Vec<_>>()
-                                    .join("\\n");
+                            match self.ocr.ocr_boxes(Path::new(&preview_path)) {
+                                Ok(boxes) => {
+                                    page_text = boxes
+                                        .into_iter()
+                                        .map(|b| b.text)
+                                        .collect::<Vec<_>>()
+                                        .join("\n");
+                                }
+                                Err(error) => {
+                                    eprintln!(
+                                        "hydrogen: PDF page OCR failed for {p_str} page {page_no}: {error}"
+                                    );
+                                    extraction_failed = true;
+                                }
                             }
                         }
                         indexed.push((page_no, page_text, preview_path));
                     }
+                    // Preserve the last known-good page and document index if Poppler
+                    // or OCR fails. The next sync retries instead of recording a false success.
+                    if extraction_failed || indexed.is_empty() {
+                        self.repo.fail_model_job(&p_str, "pdf_pages")?;
+                        continue;
+                    }
                     self.repo.replace_pdf_pages(&p_str, &indexed, &hash)?;
+                    self.repo
+                        .upsert_content_hash(&p_str, &hash, entry.size, entry.mtime)?;
+                    self.repo.complete_model_job(&p_str, "pdf_pages")?;
+                    content_hashes.insert(p_str.clone(), hash.clone());
                     indexed
                         .iter()
                         .map(|(n, text, _)| format!("[Page {n}] {text}"))
                         .collect::<Vec<_>>()
-                        .join("\\n")
+                        .join("\n")
                 } else {
                     self.extractor.extract_text(&entry.path, entry.size)
                 };
@@ -253,9 +301,21 @@ impl<'a> SyncService<'a> {
 
             let mut processed = 0usize;
             for batch in queue.chunks(8) {
+                let mut claimed = HashSet::new();
+                for (entry, need_ocr, _) in batch {
+                    if *need_ocr {
+                        let path = entry.path.to_string_lossy().to_string();
+                        self.repo.enqueue_model_job(&path, "image_ocr")?;
+                        if self.repo.claim_model_job(&path, "image_ocr")? {
+                            claimed.insert(path);
+                        }
+                    }
+                }
                 let ocr_targets: Vec<String> = batch
                     .iter()
-                    .filter(|(_, need_ocr, _)| *need_ocr)
+                    .filter(|(entry, need_ocr, _)| {
+                        *need_ocr && claimed.contains(&entry.path.to_string_lossy().to_string())
+                    })
                     .map(|(e, _, _)| e.path.to_string_lossy().to_string())
                     .collect();
                 let cap_targets: Vec<String> = batch
@@ -270,6 +330,17 @@ impl<'a> SyncService<'a> {
                 for (entry, need_ocr, need_cap) in batch {
                     let p_str = entry.path.to_string_lossy().to_string();
                     let prev_ic = img_cached.get(&p_str);
+                    // Jobs already claimed by another process are left untouched.
+                    if *need_ocr && !claimed.contains(&p_str) {
+                        continue;
+                    }
+                    // A missing map entry means inference failed. Do not persist an
+                    // empty result as a successful OCR pass; release it for retry.
+                    if *need_ocr && !ocr_map.contains_key(&p_str) {
+                        self.repo.fail_model_job(&p_str, "image_ocr")?;
+                        eprintln!("hydrogen: image OCR failed; leaving {} pending", p_str);
+                        continue;
+                    }
                     let ocr_txt = if *need_ocr {
                         ocr_map.get(&p_str).cloned().unwrap_or_default()
                     } else {
@@ -299,6 +370,9 @@ impl<'a> SyncService<'a> {
                     })?;
                     self.repo
                         .upsert_document(entry, title, &body, has_body, &terms)?;
+                    if *need_ocr {
+                        self.repo.complete_model_job(&p_str, "image_ocr")?;
+                    }
                     processed += 1;
                 }
 
