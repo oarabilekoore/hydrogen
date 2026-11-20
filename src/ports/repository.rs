@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 pub trait IndexRepository {
     fn upsert_content_hash(&self, path: &str, hash: &str, size: u64, mtime: i64) -> Result<()>;
-    fn content_hash(&self, path: &str) -> Result<Option<String>>;
+    fn load_content_hashes(&self) -> Result<HashMap<String, String>>;
     fn replace_pdf_pages(
         &self,
         path: &str,
