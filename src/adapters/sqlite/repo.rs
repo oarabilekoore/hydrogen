@@ -266,6 +266,113 @@ impl IndexRepository for SqliteIndexRepository {
         Ok(hashes)
     }
 
+    fn upsert_embedding(
+        &self,
+        path: &str,
+        model_id: &str,
+        modality: &str,
+        vector: &[f32],
+        hash: &str,
+    ) -> Result<()> {
+        if vector.is_empty() || vector.iter().any(|value| !value.is_finite()) {
+            return Err(crate::error::HydrogenError::InvalidInput(
+                "embedding vector is empty or contains non-finite values".into(),
+            ));
+        }
+        let mut bytes = Vec::with_capacity(vector.len() * 4);
+        for value in vector {
+            bytes.extend_from_slice(&value.to_le_bytes());
+        }
+        let conn = self.connect()?;
+        conn.execute(
+            "INSERT INTO embedding_vectors(path,model_id,modality,dimensions,vector,content_hash)
+             VALUES(?1,?2,?3,?4,?5,?6)
+             ON CONFLICT(path,model_id,modality) DO UPDATE SET
+                dimensions=excluded.dimensions, vector=excluded.vector,
+                content_hash=excluded.content_hash, updated_at=unixepoch()",
+            params![path, model_id, modality, vector.len() as i64, bytes, hash],
+        )?;
+        Ok(())
+    }
+
+    fn semantic_search(
+        &self,
+        query_vector: &[f32],
+        model_id: &str,
+        modality: &str,
+        limit: usize,
+    ) -> Result<Vec<SearchHit>> {
+        if query_vector.is_empty() || query_vector.iter().any(|v| !v.is_finite()) {
+            return Ok(Vec::new());
+        }
+        let conn = self.connect()?;
+        let mut stmt = conn.prepare(
+            "SELECT ev.path, ev.dimensions, ev.vector, f.is_dir,
+                    COALESCE(snippet(files_fts, 2, '', '', '…', 16), '')
+             FROM embedding_vectors ev
+             JOIN files f ON f.path = ev.path
+             LEFT JOIN files_fts ON files_fts.path = ev.path
+             WHERE ev.model_id = ?1 AND ev.modality = ?2",
+        )?;
+        let rows = stmt.query_map(params![model_id, modality], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, usize>(1)?,
+                row.get::<_, Vec<u8>>(2)?,
+                row.get::<_, i64>(3)? != 0,
+                row.get::<_, String>(4)?,
+            ))
+        })?;
+        let mut scored = Vec::new();
+        let query_norm = query_vector.iter().map(|v| v * v).sum::<f32>().sqrt();
+        if query_norm <= f32::EPSILON {
+            return Ok(Vec::new());
+        }
+        for row in rows {
+            let (path, dimensions, bytes, is_dir, snippet) = row?;
+            if dimensions != query_vector.len() || bytes.len() != dimensions * 4 {
+                continue;
+            }
+            let vector: Vec<f32> = bytes
+                .chunks_exact(4)
+                .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+                .collect();
+            if vector.iter().any(|v| !v.is_finite()) {
+                continue;
+            }
+            let vector_norm = vector.iter().map(|v| v * v).sum::<f32>().sqrt();
+            if vector_norm <= f32::EPSILON {
+                continue;
+            }
+            let dot = query_vector.iter().zip(&vector).map(|(a, b)| a * b).sum::<f32>();
+            let similarity = (dot / (query_norm * vector_norm)).clamp(-1.0, 1.0);
+            let name = Path::new(&path)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or(&path)
+                .to_string();
+            let is_image = !is_dir && is_image_extension(Path::new(&path));
+            scored.push(SearchHit {
+                path,
+                name,
+                source: if is_dir { "dir" } else if is_image { "image" } else { "doc" }.into(),
+                score: f64::from(similarity),
+                vec: f64::from(similarity),
+                fts: 0.0,
+                coverage: 1.0,
+                phrase: false,
+                snippet,
+                is_dir,
+                page: None,
+                line: None,
+                preview: String::new(),
+            });
+        }
+        scored.sort_by(|a, b| b.score.total_cmp(&a.score));
+        scored.truncate(limit.max(1));
+        Ok(scored)
+    }
+
     fn enqueue_model_job(&self, path: &str, task: &str) -> Result<()> {
         let conn = self.connect()?;
         conn.execute(
