@@ -186,7 +186,11 @@ fn extract_xml_zip_text(path: &Path) -> String {
 
 /// Extract PDF text in one Poppler pass. Page previews are rendered only
 /// for image-only pages that need OCR or for pages returned by search.
-pub fn extract_pdf_pages(path: &Path, _preview_root: &Path, max_pages: usize) -> Vec<(i64, String, String)> {
+pub fn extract_pdf_pages(
+    path: &Path,
+    _preview_root: &Path,
+    max_pages: usize,
+) -> Vec<(i64, String, String)> {
     let info = Command::new("pdfinfo")
         .arg(path)
         .stderr(Stdio::null())
@@ -252,8 +256,12 @@ pub fn render_pdf_page(path: &Path, page_no: i64, preview_root: &Path) -> Option
         hasher.update(&buffer[..count]);
     }
     let digest = hasher.finalize().to_hex().to_string();
-    let key = blake3::hash(path.to_string_lossy().as_bytes()).to_hex().to_string();
-    let dir = preview_root.join("pdf-pages").join(format!("{key}-{}", &digest[..12]));
+    let key = blake3::hash(path.to_string_lossy().as_bytes())
+        .to_hex()
+        .to_string();
+    let dir = preview_root
+        .join("pdf-pages")
+        .join(format!("{key}-{}", &digest[..12]));
     std::fs::create_dir_all(&dir).ok()?;
     let output = dir.join(format!("page-{page_no}.png"));
     if output.is_file() {
@@ -278,4 +286,3 @@ pub fn render_pdf_page(path: &Path, page_no: i64, preview_root: &Path) -> Option
         None
     }
 }
-
