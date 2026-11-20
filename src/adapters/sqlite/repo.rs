@@ -456,6 +456,19 @@ impl IndexRepository for SqliteIndexRepository {
         Ok(())
     }
 
+    fn model_job_pending(&self, path: &str, task: &str) -> Result<bool> {
+        let conn = self.connect()?;
+        let pending: bool = conn.query_row(
+            "SELECT EXISTS(
+                SELECT 1 FROM model_jobs
+                WHERE path=?1 AND task=?2 AND status IN ('queued','failed') AND attempts < 3
+            )",
+            params![path, task],
+            |row| row.get(0),
+        )?;
+        Ok(pending)
+    }
+
     fn load_file_records(&self) -> Result<HashMap<String, (i64, u64)>> {
         let conn = self.connect()?;
         let mut stmt = conn.prepare("SELECT path, mtime, size FROM files")?;
