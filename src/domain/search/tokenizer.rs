@@ -102,7 +102,10 @@ mod tests {
     fn preserves_single_letter_variables_in_math_context() {
         let tokens = extract_raw_tokens("F = ma; x^2 + y^2 = r^2");
         for variable in ["f", "m", "a", "x", "y", "r"] {
-            assert!(tokens.iter().any(|token| token == variable), "missing {variable}");
+            assert!(
+                tokens.iter().any(|token| token == variable),
+                "missing {variable}"
+            );
         }
     }
 
