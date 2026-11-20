@@ -63,8 +63,7 @@ Both run locally through FastEmbed/ONNX Runtime with a maximum of two inference
 threads. Models are cached below `$HYDROGEN_MODELS_DIR/embeddings/fastembed`.
 Run `hydrogen index embed` once to backfill an existing index. Use `HYDROGEN_EMBEDDINGS=1`
 for automatic updates during future syncs. Use `hydrogen query "..." --semantic` to combine lexical, document-vector and
-cross-modal image retrieval with reciprocal-rank fusion. Use `hydrogen query --image
-./query.png` for image-to-image retrieval. First use downloads the
+cross-modal image retrieval with reciprocal-rank fusion. Use `hydrogen query --image ./query.png` for image-to-image retrieval. First use downloads the
 selected model files; subsequent inference is offline.
 
 For free-form image descriptions, build with the optional Rust-native Candle SmolVLM
