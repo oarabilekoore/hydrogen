@@ -727,7 +727,9 @@ mod integration_tests {
         ];
         let scanner = FixtureScanner(entries);
         let extractor = FixtureExtractor;
-        let models = FixtureModels {\n            ocr_attempts: AtomicUsize::new(0),\n        };
+        let models = FixtureModels {
+            ocr_attempts: AtomicUsize::new(0),
+        };
         let cfg = AppConfig {
             state_dir: state.clone(),
             db_path: state.join("index.db"),
