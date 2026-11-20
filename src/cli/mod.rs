@@ -1,5 +1,6 @@
 pub mod calendar_cmd;
 pub mod daemon_cmd;
+pub mod doctor_cmd;
 pub mod index_cmd;
 pub mod ocr_cmd;
 pub mod query_cmd;
@@ -29,7 +30,7 @@ pub enum Commands {
     Daemon(daemon_cmd::DaemonArgs),
     /// Extract Markdown with Pix2Text, TrOCR, or legacy RapidOCR
     Ocr(ocr_cmd::OcrArgs),
-    /// List, create, or launch desktop calendar events
+    /// Diagnose local dependencies, models, database and worker state\n    Doctor,\n    /// List, create, or launch desktop calendar events
     Calendar(calendar_cmd::CalendarArgs),
 }
 
@@ -37,7 +38,7 @@ pub fn dispatch(cli: Cli, cfg: &AppConfig) -> Result<()> {
     match cli.command {
         Commands::Index(args) => index_cmd::run(args, cfg),
         Commands::Query(args) => query_cmd::run(args, cfg),
-        Commands::Daemon(args) => daemon_cmd::run(args, cfg),
+        Commands::Daemon(args) => daemon_cmd::run(args, cfg),\n        Commands::Doctor => doctor_cmd::run(cfg),
         Commands::Ocr(args) => ocr_cmd::run(args, cfg),
         Commands::Calendar(args) => calendar_cmd::run(args, cfg),
     }
