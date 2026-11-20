@@ -385,14 +385,14 @@ impl<'a> SyncService<'a> {
                     if *need_ocr && !claimed.contains(&p_str) {
                         continue;
                     }
-                    // A missing map entry means inference failed. Do not persist an
-                    // empty result as a successful OCR pass; release it for retry.
-                    if *need_ocr && !ocr_map.contains_key(&p_str) {
-                        self.repo.fail_model_job(&p_str, "image_ocr")?;
+                    // A missing map entry means inference failed. Preserve any
+                    // previous OCR text, but still retain an independent CLIP vector
+                    // and successful caption so one failed model cannot block retrieval.
+                    let ocr_failed = *need_ocr && !ocr_map.contains_key(&p_str);
+                    if ocr_failed {
                         eprintln!("hydrogen: image OCR failed; leaving {} pending", p_str);
-                        continue;
                     }
-                    let ocr_txt = if *need_ocr {
+                    let ocr_txt = if *need_ocr && !ocr_failed {
                         ocr_map.get(&p_str).cloned().unwrap_or_default()
                     } else {
                         prev_ic.map(|c| c.ocr_text.clone()).unwrap_or_default()
@@ -434,7 +434,11 @@ impl<'a> SyncService<'a> {
                         }
                     }
                     if *need_ocr {
-                        self.repo.complete_model_job(&p_str, "image_ocr")?;
+                        if ocr_failed {
+                            self.repo.fail_model_job(&p_str, "image_ocr")?;
+                        } else {
+                            self.repo.complete_model_job(&p_str, "image_ocr")?;
+                        }
                     }
                     processed += 1;
                 }
