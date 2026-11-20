@@ -177,6 +177,9 @@ impl<'a> SyncService<'a> {
                     .map(|e| e.eq_ignore_ascii_case("pdf"))
                     .unwrap_or(false)
                 {
+                    if !self.repo.claim_model_job(&p_str, "pdf_pages")? {
+                        continue;
+                    }
                     let pages = crate::adapters::fs::text_extract::extract_pdf_pages(
                         &entry.path,
                         &self.cfg.state_dir,
@@ -204,10 +207,12 @@ impl<'a> SyncService<'a> {
                     // Preserve the last known-good page and document index if Poppler
                     // or OCR fails. The next sync retries instead of recording a false success.
                     if extraction_failed || indexed.is_empty() {
+                        self.repo.fail_model_job(&p_str, "pdf_pages")?;
                         continue;
                     }
                     self.repo.replace_pdf_pages(&p_str, &indexed, &hash)?;
                     self.repo.upsert_content_hash(&p_str, &hash, entry.size, entry.mtime)?;
+                    self.repo.complete_model_job(&p_str, "pdf_pages")?;
                     content_hashes.insert(p_str.clone(), hash.clone());
                     indexed
                         .iter()
@@ -286,9 +291,21 @@ impl<'a> SyncService<'a> {
 
             let mut processed = 0usize;
             for batch in queue.chunks(8) {
+                let mut claimed = HashSet::new();
+                for (entry, need_ocr, _) in batch {
+                    if *need_ocr {
+                        let path = entry.path.to_string_lossy().to_string();
+                        self.repo.enqueue_model_job(&path, "image_ocr")?;
+                        if self.repo.claim_model_job(&path, "image_ocr")? {
+                            claimed.insert(path);
+                        }
+                    }
+                }
                 let ocr_targets: Vec<String> = batch
                     .iter()
-                    .filter(|(_, need_ocr, _)| *need_ocr)
+                    .filter(|(entry, need_ocr, _)| {
+                        *need_ocr && claimed.contains(&entry.path.to_string_lossy().to_string())
+                    })
                     .map(|(e, _, _)| e.path.to_string_lossy().to_string())
                     .collect();
                 let cap_targets: Vec<String> = batch
@@ -303,9 +320,14 @@ impl<'a> SyncService<'a> {
                 for (entry, need_ocr, need_cap) in batch {
                     let p_str = entry.path.to_string_lossy().to_string();
                     let prev_ic = img_cached.get(&p_str);
+                    // Jobs already claimed by another process are left untouched.
+                    if *need_ocr && !claimed.contains(&p_str) {
+                        continue;
+                    }
                     // A missing map entry means inference failed. Do not persist an
-                    // empty result as a successful OCR pass; let the next sync retry.
+                    // empty result as a successful OCR pass; release it for retry.
                     if *need_ocr && !ocr_map.contains_key(&p_str) {
+                        self.repo.fail_model_job(&p_str, "image_ocr")?;
                         eprintln!("hydrogen: image OCR failed; leaving {} pending", p_str);
                         continue;
                     }
@@ -338,6 +360,9 @@ impl<'a> SyncService<'a> {
                     })?;
                     self.repo
                         .upsert_document(entry, title, &body, has_body, &terms)?;
+                    if *need_ocr {
+                        self.repo.complete_model_job(&p_str, "image_ocr")?;
+                    }
                     processed += 1;
                 }
 
