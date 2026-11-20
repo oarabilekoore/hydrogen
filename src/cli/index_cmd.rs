@@ -1,6 +1,7 @@
 use crate::adapters::fs::scanner::WalkDirScanner;
 use crate::adapters::fs::text_extract::CompositeTextExtractor;
 use crate::adapters::ml::rust_ocr::RustOcrProvider;
+use crate::adapters::ml::embeddings::FastEmbedProvider;
 use crate::adapters::sqlite::repo::SqliteIndexRepository;
 use crate::application::sync_service::SyncService;
 use crate::config::AppConfig;
@@ -36,7 +37,8 @@ pub fn run(args: IndexArgs, cfg: &AppConfig) -> Result<()> {
     let scanner = WalkDirScanner::new(cfg.search_roots.clone());
     let extractor = CompositeTextExtractor;
     let ml = RustOcrProvider::new(cfg.models_dir.clone());
-    let service = SyncService::new(cfg, &repo, &scanner, &extractor, &ml, &ml);
+    let embeddings = FastEmbedProvider::new(cfg.models_dir.clone());
+    let service = SyncService::new(cfg, &repo, &scanner, &extractor, &ml, &ml, &embeddings);
     match args.action {
         IndexAction::Sync { no_images } => {
             let summary = service.sync(!no_images)?;
