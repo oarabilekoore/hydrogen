@@ -15,7 +15,11 @@ impl<'a> QueryService<'a> {
         Self { repo, embeddings }
     }
 
-    pub fn search_image(&self, image_path: &std::path::Path, limit: usize) -> Result<Vec<SearchHit>> {
+    pub fn search_image(
+        &self,
+        image_path: &std::path::Path,
+        limit: usize,
+    ) -> Result<Vec<SearchHit>> {
         let vector = self.embeddings.embed_image(image_path)?;
         self.repo
             .semantic_search(&vector, CLIP_MODEL_ID, "clip", limit.max(1))
