@@ -16,7 +16,7 @@ use std::io::Read;
 use std::os::unix::process::CommandExt;
 use std::path::Path;
 use std::process::{Command, Stdio};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 pub struct SyncService<'a> {
     cfg: &'a AppConfig,
@@ -227,6 +227,7 @@ impl<'a> SyncService<'a> {
                     if !self.repo.claim_model_job(&p_str, "pdf_pages")? {
                         continue;
                     }
+                    let pdf_started = Instant::now();
                     let pages = crate::adapters::fs::text_extract::extract_pdf_pages(
                         &entry.path,
                         &self.cfg.state_dir,
@@ -271,12 +272,24 @@ impl<'a> SyncService<'a> {
                     // or OCR fails. The next sync retries instead of recording a false success.
                     if extraction_failed || indexed.is_empty() {
                         self.repo.fail_model_job(&p_str, "pdf_pages")?;
+                        self.repo.record_worker_metric(
+                            "pdf_index_failed",
+                            pdf_started.elapsed().as_millis() as u64,
+                            current_rss_bytes(),
+                            indexed.len(),
+                        )?;
                         continue;
                     }
                     self.repo.replace_pdf_pages(&p_str, &indexed, &hash)?;
                     self.repo
                         .upsert_content_hash(&p_str, &hash, entry.size, entry.mtime)?;
                     self.repo.complete_model_job(&p_str, "pdf_pages")?;
+                    self.repo.record_worker_metric(
+                        "pdf_index",
+                        pdf_started.elapsed().as_millis() as u64,
+                        current_rss_bytes(),
+                        indexed.len(),
+                    )?;
                     content_hashes.insert(p_str.clone(), hash.clone());
                     indexed
                         .iter()
@@ -377,6 +390,7 @@ impl<'a> SyncService<'a> {
 
             let mut processed = 0usize;
             for batch in queue.chunks(self.cfg.image_batch_size) {
+                let batch_started = Instant::now();
                 let mut claimed = HashSet::new();
                 for (entry, need_ocr, _) in batch {
                     if *need_ocr {
@@ -483,6 +497,12 @@ impl<'a> SyncService<'a> {
                 }
 
                 self.repo.rebuild_sparse_index_if_needed(true)?;
+                self.repo.record_worker_metric(
+                    "image_sync_batch",
+                    batch_started.elapsed().as_millis() as u64,
+                    current_rss_bytes(),
+                    batch.len(),
+                )?;
                 bump_revision(&self.cfg.rev_file);
             }
 
@@ -752,4 +772,17 @@ mod integration_tests {
         );
         std::fs::remove_dir_all(root).unwrap();
     }
+}
+
+fn current_rss_bytes() -> u64 {
+    let Ok(status) = fs::read_to_string("/proc/self/status") else {
+        return 0;
+    };
+    status
+        .lines()
+        .find_map(|line| {
+            let value = line.strip_prefix("VmRSS:")?.split_whitespace().next()?;
+            value.parse::<u64>().ok().map(|kib| kib * 1024)
+        })
+        .unwrap_or(0)
 }
