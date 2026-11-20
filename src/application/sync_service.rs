@@ -191,8 +191,11 @@ impl<'a> SyncService<'a> {
                         if page_text.trim().is_empty() && !preview_path.is_empty() {
                             match self.ocr.ocr_boxes(Path::new(&preview_path)) {
                                 Ok(boxes) => {
-                                    page_text = boxes.into_iter().map(|b| b.text)
-                                        .collect::<Vec<_>>().join("\n");
+                                    page_text = boxes
+                                        .into_iter()
+                                        .map(|b| b.text)
+                                        .collect::<Vec<_>>()
+                                        .join("\n");
                                 }
                                 Err(error) => {
                                     eprintln!(
