@@ -13,6 +13,7 @@ use std::sync::{Arc, OnceLock};
 
 pub struct RustOcrProvider {
     models_dir: PathBuf,
+    inference_threads: usize,
     printed: OnceLock<std::result::Result<Arc<OcrEngine>, String>>,
     formula: OnceLock<std::result::Result<Arc<texo_ocr::Ocr>, String>>,
 }
@@ -21,6 +22,7 @@ impl RustOcrProvider {
     pub fn new(models_dir: PathBuf) -> Self {
         Self {
             models_dir,
+            inference_threads: std::env::var("HYDROGEN_INFERENCE_THREADS").ok().and_then(|v| v.parse().ok()).unwrap_or(2).clamp(1, 2),
             printed: OnceLock::new(),
             formula: OnceLock::new(),
         }
@@ -40,7 +42,7 @@ impl RustOcrProvider {
             pure_onnx_ocr::OcrEngineBuilder::new()
                 .det_model_dir(det)
                 .rec_model_dir(rec)
-                .inference_threads(2)
+                .inference_threads(self.inference_threads)
                 .rec_batch_size(1)
                 .plan_cache_capacity(1, 2)
                 .build()
