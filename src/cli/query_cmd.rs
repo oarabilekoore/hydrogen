@@ -1,5 +1,5 @@
-use crate::adapters::sqlite::repo::SqliteIndexRepository;
 use crate::adapters::ml::embeddings::FastEmbedProvider;
+use crate::adapters::sqlite::repo::SqliteIndexRepository;
 use crate::application::query_service::QueryService;
 use crate::config::AppConfig;
 use crate::error::Result;
