@@ -5,6 +5,27 @@ use std::collections::HashMap;
 pub trait IndexRepository {
     fn upsert_content_hash(&self, path: &str, hash: &str, size: u64, mtime: i64) -> Result<()>;
     fn load_content_hashes(&self) -> Result<HashMap<String, String>>;
+    fn upsert_embedding(
+        &self,
+        path: &str,
+        model_id: &str,
+        modality: &str,
+        vector: &[f32],
+        hash: &str,
+    ) -> Result<()>;
+    fn has_embedding(&self, path: &str, model_id: &str, modality: &str) -> Result<bool>;
+    fn load_embedding_batch(
+        &self,
+        after_path: &str,
+        limit: usize,
+    ) -> Result<Vec<(String, String, String)>>;
+    fn semantic_search(
+        &self,
+        vector: &[f32],
+        model_id: &str,
+        modality: &str,
+        limit: usize,
+    ) -> Result<Vec<SearchHit>>;
     fn replace_pdf_pages(
         &self,
         path: &str,
@@ -15,6 +36,14 @@ pub trait IndexRepository {
     fn claim_model_job(&self, path: &str, task: &str) -> Result<bool>;
     fn complete_model_job(&self, path: &str, task: &str) -> Result<()>;
     fn fail_model_job(&self, path: &str, task: &str) -> Result<()>;
+    fn model_job_pending(&self, path: &str, task: &str) -> Result<bool>;
+    fn record_worker_metric(
+        &self,
+        task: &str,
+        duration_ms: u64,
+        rss_bytes: u64,
+        items: usize,
+    ) -> Result<()>;
     fn load_file_records(&self) -> Result<HashMap<String, (i64, u64)>>;
     fn load_image_cache(&self) -> Result<HashMap<String, CachedImage>>;
     fn find_by_inode(&self, dev: u64, ino: u64) -> Result<Option<String>>;
