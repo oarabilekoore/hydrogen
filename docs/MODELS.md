@@ -71,7 +71,7 @@ backend and enable it explicitly:
 
 ```sh
 cargo build --release --features image-captioning
-HYDROGEN_CAPTIONS=1 hydrogen index sync-images
+FFAI_CACHE="$HYDROGEN_MODELS_DIR/argus/cache" HYDROGEN_CAPTIONS=1 hydrogen index sync-images
 ```
 
 The manifest is included in Hydrogen and copied into
