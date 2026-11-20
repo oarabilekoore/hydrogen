@@ -136,7 +136,7 @@ fn extract_xml_zip_text(path: &Path) -> String {
     let mut total_xml_bytes = 0u64;
 
     for i in 0..archive.len() {
-        let Ok(mut entry) = archive.by_index(i) else {
+        let Ok(entry) = archive.by_index(i) else {
             continue;
         };
         if !entry.name().ends_with(".xml") {
