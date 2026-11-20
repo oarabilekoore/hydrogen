@@ -331,9 +331,13 @@ impl<'a> SyncService<'a> {
                 let p_str = entry.path.to_string_lossy().to_string();
                 let needs_clip_embedding = self.cfg.embeddings_enabled
                     && !self.repo.has_embedding(&p_str, CLIP_MODEL_ID, "clip")?;
+                let ocr_pending = self.repo.model_job_pending(&p_str, "image_ocr")?;
                 match img_cached.get(&p_str) {
                     None => queue.push((entry, true, true)),
                     Some(ic) if ic.mtime != entry.mtime || ic.size != entry.size => {
+                        queue.push((entry, true, true));
+                    }
+                    Some(_ic) if ocr_pending => {
                         queue.push((entry, true, true));
                     }
                     Some(ic) if needs_clip_embedding => {
