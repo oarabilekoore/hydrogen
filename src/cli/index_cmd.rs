@@ -1,18 +1,18 @@
 use crate::adapters::fs::scanner::WalkDirScanner;
 use crate::adapters::fs::text_extract::CompositeTextExtractor;
-use crate::adapters::ml::rust_ocr::RustOcrProvider;
 use crate::adapters::ml::embeddings::{FastEmbedProvider, CLIP_MODEL_ID, TEXT_MODEL_ID};
+use crate::adapters::ml::rust_ocr::RustOcrProvider;
 use crate::adapters::sqlite::repo::SqliteIndexRepository;
 use crate::application::sync_service::SyncService;
 use crate::config::AppConfig;
-use crate::error::Result;
 use crate::domain::document::is_image_extension;
+use crate::error::Result;
 use crate::ports::extractor::{EmbeddingProvider, TextExtractor};
 use crate::ports::repository::IndexRepository;
+use clap::{Args, Subcommand};
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
-use clap::{Args, Subcommand};
 
 #[derive(Args, Debug)]
 pub struct IndexArgs {
@@ -31,6 +31,11 @@ pub enum IndexAction {
     SyncImages {
         #[arg(long)]
         retag: bool,
+        #[arg(long, default_value_t = 0)]
+        limit: usize,
+    },
+    /// Backfill local text and CLIP image vectors for existing indexed content
+    Embed {
         #[arg(long, default_value_t = 0)]
         limit: usize,
     },
@@ -54,7 +59,19 @@ pub fn run(args: IndexArgs, cfg: &AppConfig) -> Result<()> {
             let result = service.sync_images(retag, limit)?;
             println!("{result}");
         }
-        IndexAction::Embed { limit } => {\n            let (documents, images, failed) = embed_existing(&repo, &extractor, &embeddings, limit)?;\n            println!(\"{}\", serde_json::json!({\"status\":\"done\",\"documents\":documents,\"images\":images,\"failed\":failed}));\n        }\n        IndexAction::Stats => {
+        IndexAction::Embed { limit } => {
+            let (documents, images, failed) = embed_existing(&repo, &extractor, &embeddings, limit)?;
+            println!(
+                "{}",
+                serde_json::json!({
+                    "status": "done",
+                    "documents": documents,
+                    "images": images,
+                    "failed": failed
+                })
+            );
+        }
+        IndexAction::Stats => {
             let stats = service.stats()?;
             println!("{}", serde_json::to_string(&stats)?);
         }
@@ -90,7 +107,11 @@ fn embed_existing(
         if limit > 0 && documents + images >= limit {
             break;
         }
-        let remaining = if limit > 0 { (limit - documents - images).min(32) } else { 32 };
+        let remaining = if limit > 0 {
+            (limit - documents - images).min(32)
+        } else {
+            32
+        };
         let batch = repo.load_embedding_batch(&after, remaining)?;
         if batch.is_empty() {
             break;
