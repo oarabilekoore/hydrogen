@@ -25,8 +25,12 @@ models/
     rec/inference.onnx
     rec/inference.yml
   texo-distill-f16.gguf
-  handwriting/       # future dedicated handwritten prose model
-  embeddings/        # future text and joint image/text encoders
+  embeddings/
+    fastembed/
+      text-minilm/
+      clip-vit-b32-text/
+      clip-vit-b32-image/
+  argus/              # optional SmolVLM manifest and checkpoint
 ```
 
 The Rust PP-OCR adapter loads both stages from their directories. Texo loads
