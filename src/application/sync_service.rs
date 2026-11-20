@@ -127,8 +127,7 @@ impl<'a> SyncService<'a> {
             let file_changed = prev != Some((entry.mtime, entry.size)) || hash_changed;
             let embedding_missing = if self.cfg.embeddings_enabled && !entry.is_dir {
                 if is_img {
-                    let clip_missing =
-                        !self.repo.has_embedding(&p_str, CLIP_MODEL_ID, "clip")?;
+                    let clip_missing = !self.repo.has_embedding(&p_str, CLIP_MODEL_ID, "clip")?;
                     let text_available = img_cached
                         .get(&p_str)
                         .map(|cached| {
@@ -853,7 +852,9 @@ mod integration_tests {
         let hits = query.search("thermal resistance", 10, "all", true).unwrap();
         assert!(hits.iter().any(|hit| hit.path.ends_with("lecture.txt")));
         let image_hits = query.search_image(&root.join("diagram.png"), 10).unwrap();
-        assert!(image_hits.iter().any(|hit| hit.path.ends_with("diagram.png")));
+        assert!(image_hits
+            .iter()
+            .any(|hit| hit.path.ends_with("diagram.png")));
 
         // A missing optional model must degrade to lexical retrieval, not an error.
         let unavailable = UnavailableEmbeddings;
