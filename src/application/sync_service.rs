@@ -48,6 +48,7 @@ impl<'a> SyncService<'a> {
         let entries = self.scanner.scan(6, 5000);
 
         let mut existing = self.repo.load_file_records()?;
+        let mut content_hashes = self.repo.load_content_hashes()?;
         let mut img_cached = self.repo.load_image_cache()?;
         let current_paths: HashSet<String> = entries
             .iter()
@@ -100,7 +101,7 @@ impl<'a> SyncService<'a> {
             // source of truth when timestamps are preserved by copies/sync tools.
             let current_hash = if entry.is_dir { None } else { hash_file_blake3(&entry.path).ok() };
             let hash_changed = if let Some(hash) = current_hash.as_deref() {
-                self.repo.content_hash(&p_str)?.as_deref() != Some(hash)
+                content_hashes.get(&p_str).map(String::as_str) != Some(hash)
             } else { false };
             let content_changed = prev != Some((entry.mtime, entry.size)) || hash_changed;
 
@@ -112,6 +113,7 @@ impl<'a> SyncService<'a> {
                 if !is_pdf {
                     if let Some(hash) = current_hash.as_deref() {
                         self.repo.upsert_content_hash(&p_str, hash, entry.size, entry.mtime)?;
+                        content_hashes.insert(p_str.clone(), hash.to_string());
                     }
                 }
                 if entry
@@ -199,6 +201,7 @@ impl<'a> SyncService<'a> {
                     }
                     self.repo.replace_pdf_pages(&p_str, &indexed, &hash)?;
                     self.repo.upsert_content_hash(&p_str, &hash, entry.size, entry.mtime)?;
+                    content_hashes.insert(p_str.clone(), hash.clone());
                     indexed
                         .iter()
                         .map(|(n, text, _)| format!("[Page {n}] {text}"))
