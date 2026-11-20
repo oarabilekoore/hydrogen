@@ -26,8 +26,9 @@ pub fn run(args: QueryArgs, cfg: &AppConfig) -> Result<()> {
         return Ok(());
     }
     let repo = SqliteIndexRepository::open(&cfg.db_path)?;
-    let service = QueryService::new(&repo);
-    let hits = service.search(&args.query, args.limit, &args.mode)?;
+    let embeddings = FastEmbedProvider::new(cfg.models_dir.clone());
+    let service = QueryService::new(&repo, &embeddings);
+    let hits = service.search(&args.query, args.limit, &args.mode, args.semantic)?;
     println!("{}", serde_json::to_string(&hits)?);
     Ok(())
 }
