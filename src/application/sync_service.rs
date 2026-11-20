@@ -216,6 +216,7 @@ impl<'a> SyncService<'a> {
                     let pages = crate::adapters::fs::text_extract::extract_pdf_pages(
                         &entry.path,
                         &self.cfg.state_dir,
+                        self.cfg.pdf_page_limit,
                     );
                     let hash = hash_file_blake3(&entry.path).unwrap_or_default();
                     let mut indexed = Vec::with_capacity(pages.len());
