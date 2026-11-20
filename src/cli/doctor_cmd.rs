@@ -45,13 +45,14 @@ pub fn run(cfg: &AppConfig) -> Result<()> {
     };
 
     for binary in ["pdfinfo", "pdftotext", "pdftoppm"] {
+        let available = command_available(binary);
         check(
             &format!("dependency:{binary}"),
-            command_available(binary),
-            if command_available(binary) {
+            available,
+            if available {
                 "found in PATH".into()
             } else {
-                "missing from PATH".into()
+                "missing from PATH; PDF indexing/previews will be unavailable".into()
             },
         );
     }
@@ -73,11 +74,29 @@ pub fn run(cfg: &AppConfig) -> Result<()> {
 
     let embedding_dir = cfg.models_dir.join("embeddings/fastembed");
     let embedding_bytes = directory_bytes(&embedding_dir);
-    check(
-        "models:embedding-cache",
-        embedding_bytes > 0,
-        format!("{} bytes in {}", embedding_bytes, embedding_dir.display()),
-    );
+    if cfg.embeddings_enabled {
+        check(
+            "models:embedding-cache",
+            embedding_bytes > 0,
+            if embedding_bytes > 0 {
+                format!("{} bytes in {}", embedding_bytes, embedding_dir.display())
+            } else {
+                format!(
+                    "semantic indexing is enabled, but no model cache exists yet at {}",
+                    embedding_dir.display()
+                )
+            },
+        );
+    } else {
+        check(
+            "models:embedding-cache",
+            true,
+            format!(
+                "semantic indexing is disabled; no embedding cache required ({} bytes currently cached)",
+                embedding_bytes
+            ),
+        );
+    }
 
     let mut database = json!({"exists": cfg.db_path.is_file()});
     if cfg.db_path.is_file() {
