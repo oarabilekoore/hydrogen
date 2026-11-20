@@ -150,7 +150,10 @@ fn extract_xml_zip_text(path: &Path) -> String {
             continue;
         }
         let mut xml_bytes = Vec::with_capacity(member_limit as usize);
-        if entry.take(member_limit + 1).read_to_end(&mut xml_bytes).is_err()
+        if entry
+            .take(member_limit + 1)
+            .read_to_end(&mut xml_bytes)
+            .is_err()
             || xml_bytes.len() as u64 > member_limit
         {
             continue;
