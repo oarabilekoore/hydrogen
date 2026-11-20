@@ -48,3 +48,33 @@ the Hydrogen binary and no network access is performed during inference.
 
 Model weights retain their upstream licences. PP-OCR is Apache-2.0; Texo is
 AGPL-3.0-only. Hydrogen itself is AGPL-3.0-only.
+
+## Optional semantic embeddings and image captions
+
+Semantic indexing is opt-in so a normal Hydrogen sync does not download models or
+spend CPU time unexpectedly.
+
+Set `HYDROGEN_EMBEDDINGS=1` before `hydrogen index sync` to enable:
+- Quantized all-MiniLM-L6-v2 for document text vectors (384 dimensions).
+- CLIP ViT-B/32 text and vision encoders for a shared image/text space (512 dimensions).
+
+Both run locally through FastEmbed/ONNX Runtime with a maximum of two inference
+threads. Models are cached below `$HYDROGEN_MODELS_DIR/embeddings/fastembed`.
+Use `hydrogen query "..." --semantic` to combine lexical, document-vector and
+cross-modal image retrieval with reciprocal-rank fusion. First use downloads the
+selected model files; subsequent inference is offline.
+
+For free-form image descriptions, build with the optional pure-Rust SmolVLM
+backend and enable it explicitly:
+
+```sh
+cargo build --release --features image-captioning
+HYDROGEN_CAPTIONS=1 hydrogen index sync-images
+```
+
+The SmolVLM-256M checkpoint and its manifest belong under
+`$HYDROGEN_MODELS_DIR/argus`. Captioning is disabled by default because its
+working memory is substantially larger than OCR or embedding inference. The
+model is loaded only inside the image-sync process. CLIP vectors remain the
+primary visual retrieval signal; generated captions are optional searchable
+metadata, not a replacement for embeddings.
