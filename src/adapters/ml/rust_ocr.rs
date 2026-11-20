@@ -103,14 +103,14 @@ impl OcrProvider for RustOcrProvider {
         let mut out = HashMap::new();
         for path in paths {
             let p = Path::new(path);
-            if let Ok(boxes) = self.run_printed(p) {
-                let text = boxes
-                    .into_iter()
-                    .map(|b| b.text)
-                    .collect::<Vec<_>>()
-                    .join("\n");
-                if !text.is_empty() {
+            match self.run_printed(p) {
+                Ok(boxes) => {
+                    // A successful empty result is distinct from inference failure.
+                    let text = boxes.into_iter().map(|b| b.text).collect::<Vec<_>>().join("\n");
                     out.insert(path.clone(), text);
+                }
+                Err(error) => {
+                    eprintln!("hydrogen: printed OCR failed for {}: {error}", p.display());
                 }
             }
         }
