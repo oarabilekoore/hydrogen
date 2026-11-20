@@ -13,6 +13,7 @@ pub struct AppConfig {
     pub ics_globs: Vec<String>,
     pub evolution_db_globs: Vec<String>,
     pub default_event_duration_mins: i64,
+    pub embeddings_enabled: bool,
 }
 
 impl AppConfig {
@@ -56,6 +57,7 @@ impl AppConfig {
             evolution_db_globs: vec![format!("{home_str}/.cache/evolution/calendar/*/cache.db")],
             state_dir,
             default_event_duration_mins,
+            embeddings_enabled: env::var("HYDROGEN_EMBEDDINGS").map(|v| v == "1" || v.eq_ignore_ascii_case("true")).unwrap_or(false),
         }
     }
 }
