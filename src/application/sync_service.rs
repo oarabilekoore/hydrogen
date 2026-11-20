@@ -852,6 +852,8 @@ mod integration_tests {
         let query = QueryService::new(&repo, &models);
         let hits = query.search("thermal resistance", 10, "all", true).unwrap();
         assert!(hits.iter().any(|hit| hit.path.ends_with("lecture.txt")));
+        let image_hits = query.search_image(&root.join("diagram.png"), 10).unwrap();
+        assert!(image_hits.iter().any(|hit| hit.path.ends_with("diagram.png")));
 
         // A missing optional model must degrade to lexical retrieval, not an error.
         let unavailable = UnavailableEmbeddings;
