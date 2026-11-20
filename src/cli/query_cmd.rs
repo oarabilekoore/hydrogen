@@ -1,4 +1,5 @@
 use crate::adapters::sqlite::repo::SqliteIndexRepository;
+use crate::adapters::ml::embeddings::FastEmbedProvider;
 use crate::application::query_service::QueryService;
 use crate::config::AppConfig;
 use crate::error::Result;
@@ -14,6 +15,9 @@ pub struct QueryArgs {
     /// Restrict results to "all", "files" (filename/path), or "content" (body/OCR/caption)
     #[arg(long, default_value = "all")]
     pub mode: String,
+    /// Augment lexical search with local MiniLM and shared CLIP vectors.
+    #[arg(long)]
+    pub semantic: bool,
 }
 
 pub fn run(args: QueryArgs, cfg: &AppConfig) -> Result<()> {
