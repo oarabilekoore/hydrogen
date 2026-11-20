@@ -422,8 +422,8 @@ impl<'a> SyncService<'a> {
                     Some(_ic) if ocr_pending => {
                         queue.push((entry, true, true));
                     }
-                    Some(ic) if needs_clip_embedding => {
-                        queue.push((entry, false, true));
+                    Some(_ic) if needs_clip_embedding => {
+                        queue.push((entry, false, false));
                     }
                     Some(ic) if retag && ic.caption_text.trim().is_empty() => {
                         queue.push((entry, false, true));

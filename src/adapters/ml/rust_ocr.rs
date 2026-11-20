@@ -9,7 +9,7 @@ use crate::ports::extractor::{CaptionProvider, OcrProvider};
 #[cfg(feature = "image-captioning")]
 use ffai_argus::SmolVlm;
 #[cfg(feature = "image-captioning")]
-use ffai_core::engine::{VlmEngine, VlmOptions};
+use ffai_core::engine::{VlmEngine, VlmOptions, VlmPrompt};
 use pure_onnx_ocr::OcrEngine;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -156,7 +156,10 @@ impl OcrProvider for RustOcrProvider {
 // working set than OCR. It is loaded once per image-sync process, never at startup.
 impl CaptionProvider for RustOcrProvider {
     fn batch_captions(&self, paths: &[String]) -> HashMap<String, String> {
+        #[cfg(feature = "image-captioning")]
         let mut out = HashMap::new();
+        #[cfg(not(feature = "image-captioning"))]
+        let out = HashMap::new();
         #[cfg(feature = "image-captioning")]
         {
             if !self.captions_enabled || paths.is_empty() {
@@ -194,14 +197,13 @@ impl CaptionProvider for RustOcrProvider {
                         continue;
                     }
                 };
+                let instruction = "Describe this image in one concise factual sentence. Mention visible objects, document structure, diagrams, and readable text when relevant.";
+                let prompt = VlmPrompt::single(&image, Some(instruction));
                 let options = VlmOptions {
-                    prompt: Some(
-                        "Describe this image in one concise factual sentence. Mention visible objects, document structure, diagrams, and readable text when relevant.".into(),
-                    ),
                     max_new_tokens: Some(48),
                     ..VlmOptions::default()
                 };
-                match engine.describe_image(&image, &options) {
+                match engine.describe(&prompt, &options) {
                     Ok(caption) if !caption.trim().is_empty() => {
                         out.insert(path.clone(), caption.trim().to_string());
                     }
