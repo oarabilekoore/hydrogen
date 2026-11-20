@@ -312,7 +312,7 @@ impl IndexRepository for SqliteIndexRepository {
     ) -> Result<Vec<(String, String, String)>> {
         let conn = self.connect()?;
         let mut stmt = conn.prepare(
-            "SELECT f.path, files_fts.body, COALESCE(content_hashes.content_hash, '')
+            "SELECT f.path, substr(files_fts.body, 1, 40000), COALESCE(content_hashes.content_hash, '')
              FROM files f
              JOIN files_fts ON files_fts.path = f.path
              LEFT JOIN content_hashes ON content_hashes.path = f.path
