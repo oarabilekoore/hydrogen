@@ -211,8 +211,13 @@ pub fn extract_pdf_pages(
     if page_count == 0 {
         return Vec::new();
     }
+    // Honour the configured page budget in Poppler itself, not merely after
+    // collecting stdout. This bounds memory and CPU for very large PDFs.
+    let page_limit = max_pages.clamp(1, 500) as u32;
+    let pages_to_index = page_count.min(page_limit);
     let text_out = Command::new("pdftotext")
-        .args(["-q", "-enc", "UTF-8", "-layout"])
+        .args(["-q", "-enc", "UTF-8", "-layout", "-f", "1", "-l"])
+        .arg(pages_to_index.to_string())
         .arg(path)
         .arg("-")
         .stderr(Stdio::null())
@@ -225,10 +230,6 @@ pub fn extract_pdf_pages(
     }
     let extracted = String::from_utf8_lossy(&text_out.stdout);
     let page_texts: Vec<&str> = extracted.split('\u{000c}').collect();
-    // Honour the configured page budget. A user on an 8 GB machine should
-    // not unexpectedly render/OCR hundreds of pages in one foreground sync.
-    let page_limit = max_pages.clamp(1, 500) as u32;
-    let pages_to_index = page_count.min(page_limit);
     let mut pages = Vec::with_capacity(pages_to_index as usize);
     for page in 1..=pages_to_index {
         let text = page_texts
