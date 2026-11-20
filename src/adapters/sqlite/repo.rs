@@ -276,6 +276,46 @@ impl IndexRepository for SqliteIndexRepository {
         Ok(())
     }
 
+    fn claim_model_job(&self, path: &str, task: &str) -> Result<bool> {
+        let mut conn = self.connect()?;
+        let tx = conn.transaction()?;
+        // Recover work left in processing by a crashed process after ten minutes.
+        tx.execute(
+            "UPDATE model_jobs SET status='queued', updated_at=unixepoch()
+             WHERE status='processing' AND updated_at < unixepoch() - 600",
+            [],
+        )?;
+        let claimed = tx.execute(
+            "UPDATE model_jobs SET status='processing', attempts=attempts+1, updated_at=unixepoch()
+             WHERE path=?1 AND task=?2 AND status IN ('queued','failed') AND attempts < 3",
+            params![path, task],
+        )? > 0;
+        tx.commit()?;
+        Ok(claimed)
+    }
+
+    fn complete_model_job(&self, path: &str, task: &str) -> Result<()> {
+        let conn = self.connect()?;
+        conn.execute(
+            "UPDATE model_jobs SET status='done', updated_at=unixepoch()
+             WHERE path=?1 AND task=?2",
+            params![path, task],
+        )?;
+        Ok(())
+    }
+
+    fn fail_model_job(&self, path: &str, task: &str) -> Result<()> {
+        let conn = self.connect()?;
+        conn.execute(
+            "UPDATE model_jobs
+             SET status=CASE WHEN attempts >= 3 THEN 'failed' ELSE 'queued' END,
+                 updated_at=unixepoch()
+             WHERE path=?1 AND task=?2 AND status='processing'",
+            params![path, task],
+        )?;
+        Ok(())
+    }
+
     fn load_file_records(&self) -> Result<HashMap<String, (i64, u64)>> {
         let conn = self.connect()?;
         let mut stmt = conn.prepare("SELECT path, mtime, size FROM files")?;
