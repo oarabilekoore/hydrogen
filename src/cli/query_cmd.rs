@@ -4,11 +4,15 @@ use crate::application::query_service::QueryService;
 use crate::config::AppConfig;
 use crate::error::Result;
 use clap::Args;
+use std::path::PathBuf;
 
 #[derive(Args, Debug)]
 pub struct QueryArgs {
     /// Search query string
-    pub query: String,
+    pub query: Option<String>,
+    /// Search visually similar images using a local image as the query.
+    #[arg(long)]
+    pub image: Option<PathBuf>,
     /// Maximum number of ranked hits to return
     #[arg(long, default_value_t = 20)]
     pub limit: usize,
@@ -28,7 +32,20 @@ pub fn run(args: QueryArgs, cfg: &AppConfig) -> Result<()> {
     let repo = SqliteIndexRepository::open(&cfg.db_path)?;
     let embeddings = FastEmbedProvider::new(cfg.models_dir.clone());
     let service = QueryService::new(&repo, &embeddings);
-    let hits = service.search(&args.query, args.limit, &args.mode, args.semantic)?;
+    let hits = match (args.query.as_deref(), args.image.as_deref()) {
+        (Some(query), None) => service.search(query, args.limit, &args.mode, args.semantic)?,
+        (None, Some(image)) => service.search_image(image, args.limit)?,
+        (Some(_), Some(_)) => {
+            return Err(crate::error::HydrogenError::InvalidInput(
+                "provide either a text query or --image, not both".into(),
+            ));
+        }
+        (None, None) => {
+            return Err(crate::error::HydrogenError::InvalidInput(
+                "provide a text query or --image PATH".into(),
+            ));
+        }
+    };
     println!("{}", serde_json::to_string(&hits)?);
     Ok(())
 }
