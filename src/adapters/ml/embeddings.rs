@@ -119,27 +119,20 @@ fn normalise_mean(vectors: Vec<Vec<f32>>) -> Result<Vec<f32>> {
 }
 
 fn chunks(text: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    let mut current = String::new();
-    for word in text.split_whitespace() {
-        if current.chars().count() + word.chars().count() + 1 > DOCUMENT_CHUNK_CHARS
-            && !current.is_empty()
-        {
-            out.push(std::mem::take(&mut current));
-            if out.len() >= MAX_DOCUMENT_CHUNKS {
-                break;
-            }
-        }
-        if !current.is_empty() {
-            current.push(' ');
-        }
-        current.push_str(word);
+    let chars: Vec<char> = text.chars().collect();
+    if chars.len() <= DOCUMENT_CHUNK_CHARS {
+        return vec![text.to_string()];
     }
-    if !current.is_empty() && out.len() < MAX_DOCUMENT_CHUNKS {
-        out.push(current);
-    }
-    if out.is_empty() {
-        out.push(text.chars().take(DOCUMENT_CHUNK_CHARS).collect());
+    let total_chunks = chars.len().div_ceil(DOCUMENT_CHUNK_CHARS).min(MAX_DOCUMENT_CHUNKS);
+    let mut out = Vec::with_capacity(total_chunks);
+    for index in 0..total_chunks {
+        let start = if total_chunks == MAX_DOCUMENT_CHUNKS {
+            index * (chars.len() - DOCUMENT_CHUNK_CHARS) / (MAX_DOCUMENT_CHUNKS - 1)
+        } else {
+            index * DOCUMENT_CHUNK_CHARS
+        };
+        let end = (start + DOCUMENT_CHUNK_CHARS).min(chars.len());
+        out.push(chars[start..end].iter().collect());
     }
     out
 }
@@ -216,6 +209,7 @@ mod tests {
         let text = "engineering ".repeat(4_000);
         let parts = chunks(&text);
         assert!(parts.len() <= MAX_DOCUMENT_CHUNKS);
+        assert!(parts.last().unwrap().ends_with("engineering "));
         assert!(parts
             .iter()
             .all(|part| part.chars().count() <= DOCUMENT_CHUNK_CHARS));
