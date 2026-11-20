@@ -295,6 +295,16 @@ impl IndexRepository for SqliteIndexRepository {
         Ok(())
     }
 
+    fn has_embedding(&self, path: &str, model_id: &str, modality: &str) -> Result<bool> {
+        let conn = self.connect()?;
+        let exists: bool = conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM embedding_vectors WHERE path=?1 AND model_id=?2 AND modality=?3)",
+            params![path, model_id, modality],
+            |row| row.get(0),
+        )?;
+        Ok(exists)
+    }
+
     fn semantic_search(
         &self,
         query_vector: &[f32],
