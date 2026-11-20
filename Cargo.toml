@@ -23,6 +23,8 @@ zip = { version = "2.2", default-features = false, features = ["deflate"] }
 # CPU-only Rust OCR. Models are stored separately under HYDROGEN_MODELS_DIR.
 pure-onnx-ocr = { version = "0.3.2", default-features = false }
 texo-ocr = { git = "https://github.com/studio-ransom/best-ocr-rust", default-features = false }
+# Optional-at-runtime local embeddings; models load only when semantic indexing/search is requested.
+fastembed = "7.7.1"
 
 [profile.release]
 opt-level = 3
