@@ -98,7 +98,7 @@ pub fn run(cfg: &AppConfig) -> Result<()> {
         };
         database = json!({
             "exists": true,
-            "integrity": integrity,
+            "integrity": integrity.clone(),
             "queue": queue,
             "embeddings": vectors
         });
