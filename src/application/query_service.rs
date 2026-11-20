@@ -35,25 +35,37 @@ impl<'a> QueryService<'a> {
         let lexical = self
             .repo
             .search(trimmed, limit.saturating_mul(3).max(30), mode)?;
-        let text_vector = self.embeddings.embed_document(trimmed)?;
-        let text_hits = self.repo.semantic_search(
-            &text_vector,
-            TEXT_MODEL_ID,
-            "text",
-            limit.saturating_mul(5).max(50),
-        )?;
-        let clip_vector = self.embeddings.embed_clip_text(trimmed)?;
-        let image_hits = self.repo.semantic_search(
-            &clip_vector,
-            CLIP_MODEL_ID,
-            "clip",
-            limit.saturating_mul(5).max(50),
-        )?;
+        let mut channels = vec![lexical];
 
-        Ok(reciprocal_rank_fusion(
-            vec![lexical, text_hits, image_hits],
-            limit,
-        ))
+        // Semantic models are optional and downloaded on first use. A missing
+        // model or transient inference failure must never disable lexical search.
+        match self.embeddings.embed_document(trimmed) {
+            Ok(vector) => match self.repo.semantic_search(
+                &vector,
+                TEXT_MODEL_ID,
+                "text",
+                limit.saturating_mul(5).max(50),
+            ) {
+                Ok(hits) => channels.push(hits),
+                Err(error) => eprintln!("hydrogen: text-vector search unavailable: {error}"),
+            },
+            Err(error) => eprintln!("hydrogen: text embeddings unavailable: {error}"),
+        }
+
+        match self.embeddings.embed_clip_text(trimmed) {
+            Ok(vector) => match self.repo.semantic_search(
+                &vector,
+                CLIP_MODEL_ID,
+                "clip",
+                limit.saturating_mul(5).max(50),
+            ) {
+                Ok(hits) => channels.push(hits),
+                Err(error) => eprintln!("hydrogen: cross-modal search unavailable: {error}"),
+            },
+            Err(error) => eprintln!("hydrogen: CLIP text encoder unavailable: {error}"),
+        }
+
+        Ok(reciprocal_rank_fusion(channels, limit))
     }
 }
 
