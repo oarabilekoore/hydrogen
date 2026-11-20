@@ -43,8 +43,9 @@ the Hydrogen binary and no network access is performed during inference.
 - Handwritten prose: a dedicated TrOCR handwritten-line adapter is not wired
   yet. The PP-OCR path may read neat handwriting, but it is not advertised as
   handwriting-specialised.
-- PDF page OCR, image embeddings, text embeddings, and image-to-image retrieval
-  are represented in the architecture/schema but are not yet wired end-to-end.
+- PDF page OCR uses one-pass text extraction and renders only scanned pages that require OCR.
+- Text semantic retrieval uses MiniLM; shared CLIP vectors support image-to-text and image-to-image retrieval.
+- Hybrid search fuses lexical, document-vector, and visual-vector candidates with reciprocal-rank fusion.
 
 Model weights retain their upstream licences. PP-OCR is Apache-2.0; Texo is
 AGPL-3.0-only. Hydrogen itself is AGPL-3.0-only.
@@ -60,11 +61,12 @@ Set `HYDROGEN_EMBEDDINGS=1` before `hydrogen index sync` to enable:
 
 Both run locally through FastEmbed/ONNX Runtime with a maximum of two inference
 threads. Models are cached below `$HYDROGEN_MODELS_DIR/embeddings/fastembed`.
-Use `hydrogen query "..." --semantic` to combine lexical, document-vector and
-cross-modal image retrieval with reciprocal-rank fusion. First use downloads the
+Run `hydrogen index embed` once to backfill an existing index. Use `HYDROGEN_EMBEDDINGS=1`
+for automatic updates during future syncs. Use `hydrogen query "..." --semantic` to
+combine lexical, document-vector and cross-modal image retrieval with reciprocal-rank fusion. First use downloads the
 selected model files; subsequent inference is offline.
 
-For free-form image descriptions, build with the optional pure-Rust SmolVLM
+For free-form image descriptions, build with the optional Rust-native Candle SmolVLM
 backend and enable it explicitly:
 
 ```sh
@@ -77,4 +79,6 @@ The SmolVLM-256M checkpoint and its manifest belong under
 working memory is substantially larger than OCR or embedding inference. The
 model is loaded only inside the image-sync process. CLIP vectors remain the
 primary visual retrieval signal; generated captions are optional searchable
-metadata, not a replacement for embeddings.
+metadata, not a replacement for embeddings. `hydrogen doctor` reports model availability,
+SQLite integrity, queue state, embedding counts, recent worker latency/RSS, and the active
+resource ceilings.
