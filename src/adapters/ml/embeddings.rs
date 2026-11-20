@@ -14,12 +14,12 @@ use std::sync::{Mutex, OnceLock};
 
 pub const TEXT_MODEL_ID: &str = "all-minilm-l6-v2-q";
 pub const CLIP_MODEL_ID: &str = "clip-vit-b32";
-const THREADS: usize = 2;
 const DOCUMENT_CHUNK_CHARS: usize = 1_200;
 const MAX_DOCUMENT_CHUNKS: usize = 8;
 
 pub struct FastEmbedProvider {
     cache_dir: PathBuf,
+    threads: usize,
     text: OnceLock<std::result::Result<Mutex<TextEmbedding>, String>>,
     clip_text: OnceLock<std::result::Result<Mutex<TextEmbedding>, String>>,
     clip_image: OnceLock<std::result::Result<Mutex<ImageEmbedding>, String>>,
@@ -29,6 +29,7 @@ impl FastEmbedProvider {
     pub fn new(models_dir: PathBuf) -> Self {
         Self {
             cache_dir: models_dir.join("embeddings").join("fastembed"),
+            threads: std::env::var("HYDROGEN_INFERENCE_THREADS").ok().and_then(|v| v.parse().ok()).unwrap_or(2).clamp(1, 2),
             text: OnceLock::new(),
             clip_text: OnceLock::new(),
             clip_image: OnceLock::new(),
@@ -41,7 +42,7 @@ impl FastEmbedProvider {
                 TextEmbedding::try_new(
                     TextInitOptions::new(EmbeddingModel::AllMiniLML6V2Q)
                         .with_cache_dir(self.cache_dir.join("text-minilm"))
-                        .with_intra_threads(THREADS)
+                        .with_intra_threads(self.threads)
                         .with_show_download_progress(true),
                 )
                 .map(Mutex::new)
@@ -56,7 +57,7 @@ impl FastEmbedProvider {
             .get_or_init(|| {
                 TextEmbedding::try_new(
                     TextInitOptions::new(EmbeddingModel::ClipVitB32)
-                        .with_cache_dir(self.cache_dir.join("clip-vit-b32"))
+                        .with_cache_dir(self.cache_dir.join("clip-vit-b32-text"))
                         .with_intra_threads(THREADS)
                         .with_show_download_progress(true),
                 )
@@ -72,7 +73,7 @@ impl FastEmbedProvider {
             .get_or_init(|| {
                 ImageEmbedding::try_new(
                     ImageInitOptions::new(ImageEmbeddingModel::ClipVitB32)
-                        .with_cache_dir(self.cache_dir.join("clip-vit-b32"))
+                        .with_cache_dir(self.cache_dir.join("clip-vit-b32-image"))
                         .with_intra_threads(THREADS)
                         .with_show_download_progress(true),
                 )
