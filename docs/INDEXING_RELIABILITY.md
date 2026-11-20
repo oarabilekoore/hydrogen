@@ -15,7 +15,7 @@ another inference runtime or changing the installed OCR models.
   Failed inference is logged and is not written to the image cache as a successful
   empty result.
 - PDF and image OCR jobs are claimed atomically, attempts are recorded, stale
-  processing jobs are recovered after ten minutes, failures are retried up to
+  processing jobs are recovered after thirty minutes, failures are retried up to
   three attempts, and successful work is marked complete.
 - DOCX/ODT/EPUB/PPTX/XLSX XML extraction has per-member and aggregate
   decompressed-byte limits.
