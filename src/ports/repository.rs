@@ -19,6 +19,7 @@ pub trait IndexRepository {
     fn claim_model_job(&self, path: &str, task: &str) -> Result<bool>;
     fn complete_model_job(&self, path: &str, task: &str) -> Result<()>;
     fn fail_model_job(&self, path: &str, task: &str) -> Result<()>;
+    fn model_job_pending(&self, path: &str, task: &str) -> Result<bool>;
     fn load_file_records(&self) -> Result<HashMap<String, (i64, u64)>>;
     fn load_image_cache(&self) -> Result<HashMap<String, CachedImage>>;
     fn find_by_inode(&self, dev: u64, ino: u64) -> Result<Option<String>>;
