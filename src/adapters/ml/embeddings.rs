@@ -154,7 +154,7 @@ impl EmbeddingProvider for FastEmbedProvider {
             .lock()
             .map_err(|_| HydrogenError::ExternalTool("MiniLM model lock poisoned".into()))?;
         let vectors = model
-            .embed(inputs, Some(4))
+            .embed(inputs, None)
             .map_err(|e| HydrogenError::ExternalTool(e.to_string()))?;
         normalise_mean(vectors)
     }
