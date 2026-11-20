@@ -117,6 +117,13 @@ impl<'a> SyncService<'a> {
             };
             let is_img =
                 !entry.is_dir && self.extractor.is_indexable_image(&entry.path, entry.size);
+            let is_pdf = entry
+                .path
+                .extension()
+                .and_then(|e| e.to_str())
+                .map(|e| e.eq_ignore_ascii_case("pdf"))
+                .unwrap_or(false);
+            let file_changed = prev != Some((entry.mtime, entry.size)) || hash_changed;
             let embedding_missing = if self.cfg.embeddings_enabled && !entry.is_dir {
                 if is_img {
                     let clip_missing =
@@ -132,22 +139,24 @@ impl<'a> SyncService<'a> {
                     let text_missing = text_available
                         && !self.repo.has_embedding(&p_str, TEXT_MODEL_ID, "text")?;
                     clip_missing || text_missing
+                } else if is_pdf {
+                    // Existing PDF text is backfilled by hydrogen index embed.
+                    // Do not mistake a missing vector for a reason to rerun Poppler/OCR.
+                    false
                 } else {
                     !self.repo.has_embedding(&p_str, TEXT_MODEL_ID, "text")?
                 }
             } else {
                 false
             };
-            let content_changed =
-                prev != Some((entry.mtime, entry.size)) || hash_changed || embedding_missing;
+            let content_changed = file_changed || embedding_missing;
 
             if !entry.is_dir && content_changed {
-                let is_pdf = entry
-                    .path
-                    .extension()
-                    .and_then(|e| e.to_str())
-                    .map(|e| e.eq_ignore_ascii_case("pdf"))
-                    .unwrap_or(false);
+                if file_changed && is_pdf {
+                    self.repo.enqueue_model_job(&p_str, "pdf_pages")?;
+                } else if file_changed && is_img {
+                    self.repo.enqueue_model_job(&p_str, "image_ocr")?;
+                }
                 // For PDFs, only commit the new digest after a successful page pass.
                 // Otherwise a transient Poppler failure would suppress the retry.
                 if !is_pdf {
@@ -156,17 +165,6 @@ impl<'a> SyncService<'a> {
                             .upsert_content_hash(&p_str, hash, entry.size, entry.mtime)?;
                         content_hashes.insert(p_str.clone(), hash.to_string());
                     }
-                }
-                if entry
-                    .path
-                    .extension()
-                    .and_then(|e| e.to_str())
-                    .map(|e| e.eq_ignore_ascii_case("pdf"))
-                    .unwrap_or(false)
-                {
-                    self.repo.enqueue_model_job(&p_str, "pdf_pages")?;
-                } else if self.extractor.is_indexable_image(&entry.path, entry.size) {
-                    self.repo.enqueue_model_job(&p_str, "image_ocr")?;
                 }
             }
             let title = entry
