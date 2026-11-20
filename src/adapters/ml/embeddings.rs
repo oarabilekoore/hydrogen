@@ -58,7 +58,7 @@ impl FastEmbedProvider {
                 TextEmbedding::try_new(
                     TextInitOptions::new(EmbeddingModel::ClipVitB32)
                         .with_cache_dir(self.cache_dir.join("clip-vit-b32-text"))
-                        .with_intra_threads(THREADS)
+                        .with_intra_threads(self.threads)
                         .with_show_download_progress(true),
                 )
                 .map(Mutex::new)
