@@ -186,7 +186,7 @@ fn extract_xml_zip_text(path: &Path) -> String {
 
 /// Extract PDF text in one Poppler pass. Page previews are rendered only
 /// for image-only pages that need OCR or for pages returned by search.
-pub fn extract_pdf_pages(path: &Path, _preview_root: &Path) -> Vec<(i64, String, String)> {
+pub fn extract_pdf_pages(path: &Path, _preview_root: &Path, max_pages: usize) -> Vec<(i64, String, String)> {
     let info = Command::new("pdfinfo")
         .arg(path)
         .stderr(Stdio::null())
