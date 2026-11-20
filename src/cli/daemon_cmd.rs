@@ -1,6 +1,7 @@
 use crate::adapters::fs::inotify::LinuxInotifyWatcher;
 use crate::adapters::fs::scanner::WalkDirScanner;
 use crate::adapters::fs::text_extract::CompositeTextExtractor;
+use crate::adapters::ml::embeddings::FastEmbedProvider;
 use crate::adapters::ml::rust_ocr::RustOcrProvider;
 use crate::adapters::sqlite::repo::SqliteIndexRepository;
 use crate::application::sync_service::SyncService;
@@ -26,7 +27,8 @@ pub fn run(args: DaemonArgs, cfg: &AppConfig) -> Result<()> {
     let scanner = WalkDirScanner::new(cfg.search_roots.clone());
     let extractor = CompositeTextExtractor;
     let ml = RustOcrProvider::new(cfg.models_dir.clone());
-    let sync_service = SyncService::new(cfg, &repo, &scanner, &extractor, &ml, &ml);
+    let embeddings = FastEmbedProvider::new(cfg.models_dir.clone());
+    let sync_service = SyncService::new(cfg, &repo, &scanner, &extractor, &ml, &ml, &embeddings);
     let mut watcher = LinuxInotifyWatcher::new(cfg.search_roots.clone())?;
     let mut daemon = WatcherService::new(cfg, &repo, &sync_service, &mut watcher, !args.no_images);
     daemon.serve_forever(running)

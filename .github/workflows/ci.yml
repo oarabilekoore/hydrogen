@@ -25,3 +25,5 @@ jobs:
         run: cargo check --all-targets
       - name: Test
         run: cargo test --all-targets
+      - name: Check optional image-captioning backend
+        run: cargo check --all-targets --features image-captioning

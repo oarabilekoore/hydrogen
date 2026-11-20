@@ -6,23 +6,45 @@
 use crate::domain::ocr::layout::OcrBox;
 use crate::error::{HydrogenError, Result};
 use crate::ports::extractor::{CaptionProvider, OcrProvider};
+#[cfg(feature = "image-captioning")]
+use ffai_argus::SmolVlm;
+#[cfg(feature = "image-captioning")]
+use ffai_core::engine::{VlmEngine, VlmOptions};
 use pure_onnx_ocr::OcrEngine;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+#[cfg(feature = "image-captioning")]
+use std::sync::Mutex;
 use std::sync::{Arc, OnceLock};
 
 pub struct RustOcrProvider {
     models_dir: PathBuf,
+    inference_threads: usize,
     printed: OnceLock<std::result::Result<Arc<OcrEngine>, String>>,
     formula: OnceLock<std::result::Result<Arc<texo_ocr::Ocr>, String>>,
+    #[cfg(feature = "image-captioning")]
+    captioner: OnceLock<std::result::Result<Mutex<SmolVlm>, String>>,
+    #[cfg(feature = "image-captioning")]
+    captions_enabled: bool,
 }
 
 impl RustOcrProvider {
     pub fn new(models_dir: PathBuf) -> Self {
         Self {
             models_dir,
+            inference_threads: std::env::var("HYDROGEN_INFERENCE_THREADS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(2)
+                .clamp(1, 2),
             printed: OnceLock::new(),
             formula: OnceLock::new(),
+            #[cfg(feature = "image-captioning")]
+            captioner: OnceLock::new(),
+            #[cfg(feature = "image-captioning")]
+            captions_enabled: std::env::var("HYDROGEN_CAPTIONS")
+                .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+                .unwrap_or(false),
         }
     }
 
@@ -40,7 +62,7 @@ impl RustOcrProvider {
             pure_onnx_ocr::OcrEngineBuilder::new()
                 .det_model_dir(det)
                 .rec_model_dir(rec)
-                .inference_threads(2)
+                .inference_threads(self.inference_threads)
                 .rec_batch_size(1)
                 .plan_cache_capacity(1, 2)
                 .build()
@@ -130,11 +152,67 @@ impl OcrProvider for RustOcrProvider {
     }
 }
 
-// Caption generation is deliberately not faked with OCR text. A real joint
-// image/text encoder is provided by the embedding subsystem in the next layer.
+// SmolVLM is opt-in because even the 256M checkpoint has a much larger
+// working set than OCR. It is loaded once per image-sync process, never at startup.
 impl CaptionProvider for RustOcrProvider {
-    fn batch_captions(&self, _paths: &[String]) -> HashMap<String, String> {
-        HashMap::new()
+    fn batch_captions(&self, paths: &[String]) -> HashMap<String, String> {
+        let mut out = HashMap::new();
+        #[cfg(feature = "image-captioning")]
+        {
+            if !self.captions_enabled || paths.is_empty() {
+                return out;
+            }
+            let engine = self.captioner.get_or_init(|| {
+                let manifest_dir = self.models_dir.join("argus");
+                std::fs::create_dir_all(&manifest_dir).map_err(|e| e.to_string())?;
+                let manifest_path = manifest_dir.join("smolvlm-256m-instruct.toml");
+                if !manifest_path.is_file() {
+                    std::fs::write(
+                        &manifest_path,
+                        include_str!("../../../models/smolvlm-256m-instruct.toml"),
+                    )
+                    .map_err(|e| e.to_string())?;
+                }
+                Ok(Mutex::new(SmolVlm::with_manifest_dir(manifest_dir)))
+            });
+            let Ok(engine) = engine else {
+                eprintln!(
+                    "hydrogen: SmolVLM initialisation failed: {}",
+                    engine.as_ref().err().unwrap()
+                );
+                return out;
+            };
+            let Ok(mut engine) = engine.lock() else {
+                eprintln!("hydrogen: SmolVLM model lock poisoned");
+                return out;
+            };
+            for path in paths {
+                let image = match ffai_media::load_image(Path::new(path)) {
+                    Ok(image) => image,
+                    Err(error) => {
+                        eprintln!("hydrogen: image decode failed for {path}: {error}");
+                        continue;
+                    }
+                };
+                let options = VlmOptions {
+                    prompt: Some(
+                        "Describe this image in one concise factual sentence. Mention visible objects, document structure, diagrams, and readable text when relevant.".into(),
+                    ),
+                    max_new_tokens: Some(48),
+                    ..VlmOptions::default()
+                };
+                match engine.describe_image(&image, &options) {
+                    Ok(caption) if !caption.trim().is_empty() => {
+                        out.insert(path.clone(), caption.trim().to_string());
+                    }
+                    Ok(_) => {}
+                    Err(error) => eprintln!("hydrogen: image caption failed for {path}: {error}"),
+                }
+            }
+        }
+        #[cfg(not(feature = "image-captioning"))]
+        let _ = paths;
+        out
     }
 }
 

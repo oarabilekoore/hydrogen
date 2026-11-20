@@ -43,8 +43,50 @@ the Hydrogen binary and no network access is performed during inference.
 - Handwritten prose: a dedicated TrOCR handwritten-line adapter is not wired
   yet. The PP-OCR path may read neat handwriting, but it is not advertised as
   handwriting-specialised.
-- PDF page OCR, image embeddings, text embeddings, and image-to-image retrieval
-  are represented in the architecture/schema but are not yet wired end-to-end.
+- PDF page OCR uses one-pass text extraction and renders only scanned pages that require OCR.
+- Text semantic retrieval uses MiniLM; shared CLIP vectors support image-to-text and image-to-image retrieval.
+- Hybrid search fuses lexical, document-vector, and visual-vector candidates with reciprocal-rank fusion.
 
 Model weights retain their upstream licences. PP-OCR is Apache-2.0; Texo is
 AGPL-3.0-only. Hydrogen itself is AGPL-3.0-only.
+
+## Optional semantic embeddings and image captions
+
+Semantic indexing is opt-in so a normal Hydrogen sync does not download models or
+spend CPU time unexpectedly.
+
+Set `HYDROGEN_EMBEDDINGS=1` before `hydrogen index sync` to enable:
+- Quantized all-MiniLM-L6-v2 for document text vectors (384 dimensions).
+- CLIP ViT-B/32 text and vision encoders for a shared image/text space (512 dimensions).
+
+Both run locally through FastEmbed/ONNX Runtime with a maximum of two inference
+threads. Models are cached below `$HYDROGEN_MODELS_DIR/embeddings/fastembed`.
+Run `hydrogen index embed` once to backfill an existing index. Use `HYDROGEN_EMBEDDINGS=1`
+for automatic updates during future syncs. Use `hydrogen query "..." --semantic` to combine lexical, document-vector and
+cross-modal image retrieval with reciprocal-rank fusion. Use `hydrogen query --image ./query.png` for image-to-image retrieval. First use downloads the
+selected model files; subsequent inference is offline.
+
+For free-form image descriptions, build with the optional Rust-native Candle SmolVLM
+backend and enable it explicitly:
+
+```sh
+cargo build --release --features image-captioning
+FFAI_CACHE="$HYDROGEN_MODELS_DIR/argus/cache" HYDROGEN_CAPTIONS=1 hydrogen index sync-images
+```
+
+The manifest is included in Hydrogen and copied into
+`$HYDROGEN_MODELS_DIR/argus` on first use. Fetch the checkpoint into the same
+local model tree before enabling captions:
+
+```sh
+cargo install ffai-cli
+FFAI_CACHE="$HYDROGEN_MODELS_DIR/argus/cache" ffai models --fetch smolvlm-256m-instruct
+```
+
+Captioning is disabled by default because its working memory is substantially
+larger than OCR or embedding inference. The model is loaded only inside the
+image-sync process. CLIP vectors remain the primary visual retrieval signal;
+generated captions are optional searchable metadata, not a replacement for
+embeddings. `hydrogen doctor` reports model availability, SQLite integrity,
+queue state, embedding counts, recent worker latency/RSS, and active resource
+ceilings.
