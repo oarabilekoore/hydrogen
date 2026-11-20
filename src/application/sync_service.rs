@@ -34,6 +34,7 @@ impl<'a> SyncService<'a> {
         extractor: &'a dyn TextExtractor,
         ocr: &'a dyn OcrProvider,
         captioner: &'a dyn CaptionProvider,
+        embeddings: &'a dyn EmbeddingProvider,
     ) -> Self {
         Self {
             cfg,
@@ -42,6 +43,7 @@ impl<'a> SyncService<'a> {
             extractor,
             ocr,
             captioner,
+            embeddings,
         }
     }
 
