@@ -26,3 +26,10 @@ pub trait OcrProvider {
 pub trait CaptionProvider {
     fn batch_captions(&self, paths: &[String]) -> HashMap<String, String>;
 }
+
+/// Local dense-vector inference. Implementations must be lazy and CPU-bounded.
+pub trait EmbeddingProvider {
+    fn embed_document(&self, text: &str) -> Result<Vec<f32>>;
+    fn embed_clip_text(&self, text: &str) -> Result<Vec<f32>>;
+    fn embed_image(&self, path: &Path) -> Result<Vec<f32>>;
+}
