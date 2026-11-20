@@ -74,11 +74,19 @@ cargo build --release --features image-captioning
 HYDROGEN_CAPTIONS=1 hydrogen index sync-images
 ```
 
-The SmolVLM-256M checkpoint and its manifest belong under
-`$HYDROGEN_MODELS_DIR/argus`. Captioning is disabled by default because its
-working memory is substantially larger than OCR or embedding inference. The
-model is loaded only inside the image-sync process. CLIP vectors remain the
-primary visual retrieval signal; generated captions are optional searchable
-metadata, not a replacement for embeddings. `hydrogen doctor` reports model availability,
-SQLite integrity, queue state, embedding counts, recent worker latency/RSS, and the active
-resource ceilings.
+The manifest is included in Hydrogen and copied into
+`$HYDROGEN_MODELS_DIR/argus` on first use. Fetch the checkpoint into the same
+local model tree before enabling captions:
+
+```sh
+cargo install ffai-cli
+FFAI_CACHE="$HYDROGEN_MODELS_DIR/argus/cache" ffai models --fetch smolvlm-256m-instruct
+```
+
+Captioning is disabled by default because its working memory is substantially
+larger than OCR or embedding inference. The model is loaded only inside the
+image-sync process. CLIP vectors remain the primary visual retrieval signal;
+generated captions are optional searchable metadata, not a replacement for
+embeddings. `hydrogen doctor` reports model availability, SQLite integrity,
+queue state, embedding counts, recent worker latency/RSS, and active resource
+ceilings.
