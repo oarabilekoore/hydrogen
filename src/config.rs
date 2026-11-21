@@ -392,3 +392,42 @@ impl AppConfig {
         fs::write(&self.config_path, content).map_err(|e| e.to_string())
     }
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn partial_toml_preserves_unmentioned_defaults() {
+        let settings: HydrogenSettings = toml::from_str(
+            "[answer]\nmodel = \"qwen3.5:2b-q4_K_M\"\n",
+        )
+        .unwrap();
+        assert_eq!(settings.answer.model, "qwen3.5:2b-q4_K_M");
+        assert!(settings.indexing.pdf.enabled);
+        assert!(settings.indexing.pdf.ocr_scanned_pages);
+        assert!(settings.indexing.images.enabled);
+        assert!(settings.indexing.images.ocr);
+        assert_eq!(settings.search.scan_max_depth, 6);
+        assert_eq!(settings.answer.retrieval_limit, 8);
+    }
+
+    #[test]
+    fn default_configuration_is_local_and_resource_bounded() {
+        let settings = HydrogenSettings::default();
+        assert_eq!(settings.answer.provider, "ollama");
+        assert_eq!(settings.answer.endpoint, "http://127.0.0.1:11434");
+        assert_eq!(settings.models.inference_threads, 2);
+        assert_eq!(settings.resources.max_inference_threads, 2);
+        assert!(settings.indexing.pdf.ocr_scanned_pages);
+        assert!(!settings.indexing.embeddings_enabled);
+    }
+
+    #[test]
+    fn home_relative_paths_expand_without_touching_absolute_paths() {
+        let home = PathBuf::from("/home/tester");
+        assert_eq!(expand_home(Path::new("~/Notes"), &home), home.join("Notes"));
+        assert_eq!(expand_home(Path::new("/mnt/data"), &home), PathBuf::from("/mnt/data"));
+    }
+}
