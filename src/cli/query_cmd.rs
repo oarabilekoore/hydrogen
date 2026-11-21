@@ -14,8 +14,8 @@ pub struct QueryArgs {
     #[arg(long)]
     pub image: Option<PathBuf>,
     /// Maximum number of ranked hits to return
-    #[arg(long, default_value_t = 20)]
-    pub limit: usize,
+    #[arg(long)]
+    pub limit: Option<usize>,
     /// Restrict results to "all", "files" (filename/path), or "content" (body/OCR/caption)
     #[arg(long, default_value = "all")]
     pub mode: String,
@@ -32,9 +32,10 @@ pub fn run(args: QueryArgs, cfg: &AppConfig) -> Result<()> {
     let repo = SqliteIndexRepository::open(&cfg.db_path)?;
     let embeddings = FastEmbedProvider::new(cfg.models_dir.clone());
     let service = QueryService::new(&repo, &embeddings);
+    let limit = args.limit.unwrap_or(cfg.settings.search.default_limit);
     let hits = match (args.query.as_deref(), args.image.as_deref()) {
-        (Some(query), None) => service.search(query, args.limit, &args.mode, args.semantic)?,
-        (None, Some(image)) => service.search_image(image, args.limit)?,
+        (Some(query), None) => service.search(query, limit, &args.mode, args.semantic)?,
+        (None, Some(image)) => service.search_image(image, limit)?,
         (Some(_), Some(_)) => {
             return Err(crate::error::HydrogenError::InvalidInput(
                 "provide either a text query or --image, not both".into(),
