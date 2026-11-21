@@ -82,7 +82,11 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
     // Search individual PDF pages, not just one best page per PDF. This is
     // essential when a definition appears in lecture notes far from the title.
     for variant in &variants {
-        let page_hits = repo.search_pdf_passages(variant, answer_cfg.candidate_limit)?;
+        let page_hits = if cfg.settings.indexing.pdf.enabled {
+            repo.search_pdf_passages(variant, answer_cfg.candidate_limit)?
+        } else {
+            Vec::new()
+        };
         for (rank, hit) in page_hits.into_iter().enumerate() {
             let key = passage_key(&hit);
             let entry = candidates.entry(key).or_insert_with(|| (hit.clone(), 0, rank));
