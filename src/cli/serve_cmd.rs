@@ -275,7 +275,30 @@ fn handle_api(mut request: Request, cfg: &AppConfig, store: &KnowledgeStore) {
     if parts.as_slice() == ["api", "search"] && method == Method::Get {
         let query = url.split_once("?q=").map(|(_, q)| q.replace('+', " ")).unwrap_or_default();
         match store.search_saved_knowledge(&query, 30) {
-            Ok(results) => json(request, 200, json!({"results":results})),
+            Ok(saved) => {
+                let mut results: Vec<Value> = saved.into_iter()
+                    .map(|hit| serde_json::to_value(hit).unwrap_or_else(|_| json!({})))
+                    .collect();
+                if let Ok(output) = run_cli(&["query", &query]) {
+                    if output.status.success() {
+                        if let Ok(files) = serde_json::from_slice::<Vec<Value>>(&output.stdout) {
+                            for file in files {
+                                let path = file.get("path").and_then(Value::as_str).unwrap_or("");
+                                results.push(json!({
+                                    "kind":"file",
+                                    "id":path,
+                                    "title":file.get("name").and_then(Value::as_str).unwrap_or(path),
+                                    "snippet":file.get("snippet").and_then(Value::as_str).unwrap_or(""),
+                                    "path":path,
+                                    "page":file.get("page"),
+                                    "updated_at":0
+                                }));
+                            }
+                        }
+                    }
+                }
+                json(request, 200, json!({"results":results}));
+            }
             Err(error) => json(request, 400, json!({"error":error.to_string()})),
         }
         return;
