@@ -179,6 +179,7 @@ fn handle_api(mut request: Request, cfg: &AppConfig, store: &KnowledgeStore) {
             input.get("published_at").and_then(Value::as_str),
             input.get("site_name").and_then(Value::as_str),
             &hash,
+            cfg.settings.web.version_pages,
         ) {
             Ok(id) => {
                 if cfg.settings.web.track_visits {
