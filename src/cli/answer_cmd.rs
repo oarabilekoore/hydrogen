@@ -13,11 +13,11 @@ pub struct AnswerArgs {
     /// Question to answer from indexed local documents
     pub query: String,
     /// Maximum number of retrieved passages used as context
-    #[arg(long, default_value_t = 8)]
-    pub limit: usize,
+    #[arg(long)]
+    pub limit: Option<usize>,
     /// Ollama model tag
-    #[arg(long, default_value = "qwen3.5:2b-q4_K_M")]
-    pub model: String,
+    #[arg(long)]
+    pub model: Option<String>,
 }
 
 fn query_variants(query: &str) -> Vec<String> {
@@ -68,6 +68,12 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
         return Ok(());
     }
 
+    let model = args.model.as_deref().unwrap_or(&cfg.settings.answer.model);
+    let limit = args.limit.unwrap_or(cfg.settings.answer.retrieval_limit).clamp(1, 16);
+    let answer_cfg = &cfg.settings.answer;
+    if !answer_cfg.provider.eq_ignore_ascii_case("ollama") {
+        return Err(crate::error::HydrogenError::Config(format!("unsupported answer provider: {}", answer_cfg.provider)));
+    }
     let repo = SqliteIndexRepository::open(&cfg.db_path)?;
     let variants = query_variants(query);
     let mut candidates: HashMap<String, (crate::domain::document::SearchHit, usize, usize)> =
@@ -120,7 +126,7 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
             .then_with(|| b.0.coverage.total_cmp(&a.0.coverage))
             .then_with(|| b.0.score.total_cmp(&a.0.score))
     });
-    ranked.truncate(args.limit.clamp(1, 8));
+    ranked.truncate(limit);
 
     let mut sources = Vec::new();
     let mut context = String::new();
@@ -131,7 +137,7 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
             .map(|page| format!("page {page}"))
             .or_else(|| hit.line.map(|line| format!("line {line}")))
             .unwrap_or_else(|| "indexed text".to_string());
-        let snippet: String = hit.snippet.chars().take(1600).collect();
+        let snippet: String = hit.snippet.chars().take(answer_cfg.context_chars_per_passage).collect();
         if snippet.trim().is_empty() {
             continue;
         }
@@ -164,15 +170,16 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
          QUESTION:\n{query}\n\nRETRIEVED COURSE EXCERPTS:\n{context}\nANSWER:"
     );
     let payload = json!({
-        "model": &args.model,
+        "model": model,
         "prompt": prompt,
         "stream": false,
         "options": {
             "temperature": 0.0,
-            "num_ctx": 4096,
-            "num_predict": 180,
-            "top_p": 0.7,
-            "repeat_penalty": 1.08
+            "num_ctx": answer_cfg.context_window,
+            "num_predict": answer_cfg.max_output_tokens,
+            "temperature": answer_cfg.temperature,
+            "top_p": answer_cfg.top_p,
+            "repeat_penalty": answer_cfg.repeat_penalty
         }
     })
     .to_string();
@@ -185,8 +192,8 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
             "--connect-timeout",
             "2",
             "--max-time",
-            "60",
-            "http://127.0.0.1:11434/api/generate",
+            &answer_cfg.timeout_seconds.to_string(),
+            &format!("{}/api/generate", answer_cfg.endpoint.trim_end_matches('/')),
             "-H",
             "Content-Type: application/json",
             "--data-binary",
@@ -212,7 +219,7 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
                 "{}",
                 json!({
                     "status": "ready",
-                    "model": args.model,
+                    "model": model,
                     "answer": answer.trim(),
                     "sources": sources
                 })
@@ -226,7 +233,7 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
                     "model": args.model,
                     "answer": "",
                     "sources": sources,
-                    "error": "Could not reach Ollama at http://127.0.0.1:11434 or the requested model is unavailable."
+                    "error": format!("Could not reach Ollama at {} or the requested model is unavailable.", answer_cfg.endpoint)
                 })
             );
         }
