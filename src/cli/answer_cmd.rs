@@ -68,7 +68,7 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
     }
 
     let prompt = format!(
-        "You answer questions using ONLY the supplied source excerpts.\\nIf the excerpts do not contain enough information, say that the indexed documents do not provide enough information.\\nDo not use outside knowledge, do not guess, and do not invent facts.\\nWrite a concise, direct answer. Add inline source citations such as [1] after each supported claim.\\n\\nQUESTION:\\n{query}\\n\\nRETRIEVED DOCUMENT EXCERPTS:\\n{context}\\nANSWER:"
+        "You answer questions using ONLY the supplied source excerpts.\nIf the excerpts do not contain enough information, say that the indexed documents do not provide enough information.\nDo not use outside knowledge, do not guess, and do not invent facts.\nWrite a concise, direct answer. Add inline source citations such as [1] after each supported claim.\n\nQUESTION:\n{query}\n\nRETRIEVED DOCUMENT EXCERPTS:\n{context}\nANSWER:"
     );
     let payload = json!({
         "model": &args.model,
@@ -81,13 +81,14 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
         }
     });
 
+    let payload = payload.to_string();
     let output = Command::new("curl")
         .args([
             "--silent", "--show-error", "--fail-with-body",
             "--connect-timeout", "2", "--max-time", "50",
             "http://127.0.0.1:11434/api/generate",
             "-H", "Content-Type: application/json",
-            "--data-binary", &payload.to_string()
+            "--data-binary", &payload
         ])
         .output();
 
