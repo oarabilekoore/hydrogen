@@ -15,6 +15,7 @@ A Manifest V3 extension for Chromium and Firefox-compatible WebExtension environ
 - Sends captured content only to the Hydrogen service at `127.0.0.1:17891`.
 - Uses canonical URLs for article deduplication and a stable conversation URL for snapshot replacement.
 - Supports pausing capture and disabling articles or AI chats separately.
+- Supports user-managed excluded hostnames, including subdomains, from the extension popup.
 - Can explicitly import a limited set of recent browser-history URLs by opening them in inactive tabs one at a time; only pages passing the normal article qualification rules are saved.
 
 ## Limitations
