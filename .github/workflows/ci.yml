@@ -34,7 +34,7 @@ jobs:
           scripts = re.findall(r"<script>(.*?)</script>", html, flags=re.S)
           if not scripts:
               raise SystemExit("No bundled frontend script found")
-          Path("/tmp/hydrogen-frontend.js").write_text("\\n".join(scripts))
+          Path("/tmp/hydrogen-frontend.js").write_text("\n".join(scripts))
           PY
           node --check /tmp/hydrogen-frontend.js
       - name: Validate browser extension manifests
