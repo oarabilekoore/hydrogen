@@ -89,10 +89,7 @@ fn ollama_empty_diagnostic(value: &Value) -> String {
         .and_then(Value::as_str)
         .map(str::len)
         .unwrap_or(0);
-    let eval_count = value
-        .get("eval_count")
-        .and_then(Value::as_u64)
-        .unwrap_or(0);
+    let eval_count = value.get("eval_count").and_then(Value::as_u64).unwrap_or(0);
     format!(
         "Ollama completed without answer text (done_reason={done_reason}, thinking_chars={thinking_chars}, eval_count={eval_count}). The thinking channel is not treated as an answer. Try a non-thinking model or increase answer.max_output_tokens."
     )
@@ -472,55 +469,59 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
         ])
         .output();
 
-    let (response, generation_error) = match output {
-        Ok(output) => {
-            let body = String::from_utf8_lossy(&output.stdout).to_string();
-            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-            let parsed = serde_json::from_str::<Value>(&body).ok();
-            if output.status.success() {
-                let answer = parsed.as_ref().and_then(extract_ollama_answer);
-                let error = if answer.as_deref().unwrap_or("").trim().is_empty() {
-                    Some(parsed.as_ref().map(ollama_empty_diagnostic).unwrap_or_else(|| {
-                        format!(
-                            "Ollama returned a non-JSON response: {}",
-                            body.chars().take(240).collect::<String>()
-                        )
-                    }))
-                } else {
-                    None
-                };
-                (answer, error)
-            } else {
-                let api_error = parsed
-                    .as_ref()
-                    .and_then(|value| value.get("error"))
-                    .and_then(Value::as_str)
-                    .map(str::to_owned);
-                let detail = api_error
-                    .or_else(|| {
-                        if !stderr.is_empty() {
-                            Some(stderr)
-                        } else if !body.trim().is_empty() {
-                            Some(body.trim().to_string())
+    let (response, generation_error) =
+        match output {
+            Ok(output) => {
+                let body = String::from_utf8_lossy(&output.stdout).to_string();
+                let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+                let parsed = serde_json::from_str::<Value>(&body).ok();
+                if output.status.success() {
+                    let answer = parsed.as_ref().and_then(extract_ollama_answer);
+                    let error =
+                        if answer.as_deref().unwrap_or("").trim().is_empty() {
+                            Some(parsed.as_ref().map(ollama_empty_diagnostic).unwrap_or_else(
+                                || {
+                                    format!(
+                                        "Ollama returned a non-JSON response: {}",
+                                        body.chars().take(240).collect::<String>()
+                                    )
+                                },
+                            ))
                         } else {
                             None
-                        }
-                    })
-                    .unwrap_or_else(|| format!("curl exited with {}", output.status));
-                (
-                    None,
-                    Some(format!(
-                        "Ollama request to {} failed: {}",
-                        answer_cfg.endpoint, detail
-                    )),
-                )
+                        };
+                    (answer, error)
+                } else {
+                    let api_error = parsed
+                        .as_ref()
+                        .and_then(|value| value.get("error"))
+                        .and_then(Value::as_str)
+                        .map(str::to_owned);
+                    let detail = api_error
+                        .or_else(|| {
+                            if !stderr.is_empty() {
+                                Some(stderr)
+                            } else if !body.trim().is_empty() {
+                                Some(body.trim().to_string())
+                            } else {
+                                None
+                            }
+                        })
+                        .unwrap_or_else(|| format!("curl exited with {}", output.status));
+                    (
+                        None,
+                        Some(format!(
+                            "Ollama request to {} failed: {}",
+                            answer_cfg.endpoint, detail
+                        )),
+                    )
+                }
             }
-        }
-        Err(error) => (
-            None,
-            Some(format!("Could not start curl for Ollama request: {error}")),
-        ),
-    };
+            Err(error) => (
+                None,
+                Some(format!("Could not start curl for Ollama request: {error}")),
+            ),
+        };
 
     match response {
         Some(answer) if !answer.trim().is_empty() => {
@@ -581,13 +582,19 @@ mod html_tests {
     #[test]
     fn extracts_ollama_chat_content() {
         let value = json!({"message":{"role":"assistant","content":"  grounded answer  "}});
-        assert_eq!(extract_ollama_answer(&value).as_deref(), Some("grounded answer"));
+        assert_eq!(
+            extract_ollama_answer(&value).as_deref(),
+            Some("grounded answer")
+        );
     }
 
     #[test]
     fn extracts_legacy_generate_content() {
         let value = json!({"response":"legacy answer"});
-        assert_eq!(extract_ollama_answer(&value).as_deref(), Some("legacy answer"));
+        assert_eq!(
+            extract_ollama_answer(&value).as_deref(),
+            Some("legacy answer")
+        );
     }
 
     #[test]

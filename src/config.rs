@@ -395,10 +395,7 @@ impl Default for WebConfig {
             feed_interval_hours: 12,
             allow_domains: Vec::new(),
             exclude_domains: Vec::new(),
-            exclude_patterns: vec![
-                "*/login/*".into(),
-                "*/checkout/*".into(),
-            ],
+            exclude_patterns: vec!["*/login/*".into(), "*/checkout/*".into()],
         }
     }
 }
@@ -522,7 +519,7 @@ impl AppConfig {
         if !settings.frontend.bind_address.starts_with("127.0.0.1:") {
             settings.frontend.bind_address = FrontendConfig::default().bind_address;
         }
-                settings.search.default_limit = settings.search.default_limit.clamp(1, 100);
+        settings.search.default_limit = settings.search.default_limit.clamp(1, 100);
         settings.search.scan_max_depth = settings.search.scan_max_depth.clamp(1, 32);
         settings.search.scan_max_results = settings.search.scan_max_results.clamp(1, 100_000);
 

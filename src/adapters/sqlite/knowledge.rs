@@ -57,11 +57,12 @@ pub struct KnowledgeStore {
 impl KnowledgeStore {
     pub fn open(db_path: &Path) -> rusqlite::Result<Self> {
         if let Some(parent) = db_path.parent() {
-            std::fs::create_dir_all(parent).map_err(|error| {
-                rusqlite::Error::ToSqlConversionFailure(Box::new(error))
-            })?;
+            std::fs::create_dir_all(parent)
+                .map_err(|error| rusqlite::Error::ToSqlConversionFailure(Box::new(error)))?;
         }
-        let store = Self { db_path: db_path.to_path_buf() };
+        let store = Self {
+            db_path: db_path.to_path_buf(),
+        };
         let conn = store.connect()?;
         ensure_schema(&conn)?;
         Ok(store)
@@ -70,13 +71,19 @@ impl KnowledgeStore {
     fn connect(&self) -> rusqlite::Result<Connection> {
         let conn = Connection::open(&self.db_path)?;
         conn.busy_timeout(std::time::Duration::from_secs(15))?;
-        conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA foreign_keys=ON;")?;
+        conn.execute_batch(
+            "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA foreign_keys=ON;",
+        )?;
         Ok(conn)
     }
 
     pub fn create_conversation(&self, title: &str) -> rusqlite::Result<String> {
         let id = new_id("conv");
-        let title = if title.trim().is_empty() { "New conversation" } else { title.trim() };
+        let title = if title.trim().is_empty() {
+            "New conversation"
+        } else {
+            title.trim()
+        };
         let conn = self.connect()?;
         conn.execute(
             "INSERT INTO conversations(id,title) VALUES(?1,?2)",
@@ -104,10 +111,14 @@ impl KnowledgeStore {
         sources: Option<&serde_json::Value>,
     ) -> rusqlite::Result<String> {
         if !matches!(role, "system" | "user" | "assistant") {
-            return Err(rusqlite::Error::InvalidParameterName("role must be system, user, or assistant".into()));
+            return Err(rusqlite::Error::InvalidParameterName(
+                "role must be system, user, or assistant".into(),
+            ));
         }
         if content.trim().is_empty() {
-            return Err(rusqlite::Error::InvalidParameterName("message content cannot be empty".into()));
+            return Err(rusqlite::Error::InvalidParameterName(
+                "message content cannot be empty".into(),
+            ));
         }
         let id = new_id("msg");
         let mut conn = self.connect()?;
@@ -167,7 +178,9 @@ impl KnowledgeStore {
                 role: row.get(2)?,
                 content: row.get(3)?,
                 model: row.get(4)?,
-                sources: row.get::<_, Option<String>>(5)?.and_then(|raw| serde_json::from_str(&raw).ok()),
+                sources: row
+                    .get::<_, Option<String>>(5)?
+                    .and_then(|raw| serde_json::from_str(&raw).ok()),
                 created_at: row.get(6)?,
             })
         })?;
@@ -183,22 +196,33 @@ impl KnowledgeStore {
         messages: &[(String, String, Option<String>)],
     ) -> rusqlite::Result<String> {
         if source_key.trim().is_empty() {
-            return Err(rusqlite::Error::InvalidParameterName("source_key cannot be empty".into()));
+            return Err(rusqlite::Error::InvalidParameterName(
+                "source_key cannot be empty".into(),
+            ));
         }
         let mut conn = self.connect()?;
         let tx = conn.transaction()?;
-        let existing: Option<String> = tx.query_row(
-            "SELECT conversation_id FROM captured_conversations WHERE source_key=?1",
-            params![source_key],
-            |row| row.get(0),
-        ).optional()?;
+        let existing: Option<String> = tx
+            .query_row(
+                "SELECT conversation_id FROM captured_conversations WHERE source_key=?1",
+                params![source_key],
+                |row| row.get(0),
+            )
+            .optional()?;
         let conversation_id = match existing {
             Some(id) => id,
             None => {
                 let id = new_id("capture");
                 tx.execute(
                     "INSERT INTO conversations(id,title) VALUES(?1,?2)",
-                    params![id, if title.trim().is_empty() { "Captured conversation" } else { title.trim() }],
+                    params![
+                        id,
+                        if title.trim().is_empty() {
+                            "Captured conversation"
+                        } else {
+                            title.trim()
+                        }
+                    ],
                 )?;
                 tx.execute(
                     "INSERT INTO captured_conversations(source_key,conversation_id) VALUES(?1,?2)",
@@ -207,7 +231,10 @@ impl KnowledgeStore {
                 id
             }
         };
-        tx.execute("DELETE FROM messages WHERE conversation_id=?1", params![conversation_id])?;
+        tx.execute(
+            "DELETE FROM messages WHERE conversation_id=?1",
+            params![conversation_id],
+        )?;
         for (role, content, model) in messages {
             if !matches!(role.as_str(), "user" | "assistant") || content.trim().is_empty() {
                 continue;
@@ -219,7 +246,14 @@ impl KnowledgeStore {
         }
         tx.execute(
             "UPDATE conversations SET title=?2,updated_at=unixepoch() WHERE id=?1",
-            params![conversation_id, if title.trim().is_empty() { "Captured conversation" } else { title.trim() }],
+            params![
+                conversation_id,
+                if title.trim().is_empty() {
+                    "Captured conversation"
+                } else {
+                    title.trim()
+                }
+            ],
         )?;
         tx.commit()?;
         Ok(conversation_id)
@@ -239,11 +273,13 @@ impl KnowledgeStore {
     ) -> rusqlite::Result<i64> {
         let conn = self.connect()?;
         if keep_version {
-            let previous: Option<(i64, String, String, String)> = conn.query_row(
-                "SELECT id,content_hash,title,content FROM web_pages WHERE canonical_url=?1",
-                params![canonical_url],
-                |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?)),
-            ).optional()?;
+            let previous: Option<(i64, String, String, String)> = conn
+                .query_row(
+                    "SELECT id,content_hash,title,content FROM web_pages WHERE canonical_url=?1",
+                    params![canonical_url],
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+                )
+                .optional()?;
             if let Some((page_id, old_hash, old_title, old_content)) = previous {
                 if old_hash != content_hash {
                     conn.execute(
@@ -295,13 +331,18 @@ impl KnowledgeStore {
 
     pub fn record_visit(&self, canonical_url: &str) -> rusqlite::Result<()> {
         let conn = self.connect()?;
-        let page_id: Option<i64> = conn.query_row(
-            "SELECT id FROM web_pages WHERE canonical_url=?1",
-            params![canonical_url],
-            |row| row.get(0),
-        ).optional()?;
+        let page_id: Option<i64> = conn
+            .query_row(
+                "SELECT id FROM web_pages WHERE canonical_url=?1",
+                params![canonical_url],
+                |row| row.get(0),
+            )
+            .optional()?;
         if let Some(page_id) = page_id {
-            conn.execute("INSERT INTO web_visits(page_id) VALUES(?1)", params![page_id])?;
+            conn.execute(
+                "INSERT INTO web_visits(page_id) VALUES(?1)",
+                params![page_id],
+            )?;
             conn.execute(
                 "UPDATE web_pages SET last_visited_at=unixepoch(),visit_count=visit_count+1 WHERE id=?1",
                 params![page_id],
@@ -310,14 +351,20 @@ impl KnowledgeStore {
         Ok(())
     }
 
-    pub fn search_saved_knowledge(&self, query: &str, limit: usize) -> rusqlite::Result<Vec<KnowledgeHit>> {
+    pub fn search_saved_knowledge(
+        &self,
+        query: &str,
+        limit: usize,
+    ) -> rusqlite::Result<Vec<KnowledgeHit>> {
         let conn = self.connect()?;
         let terms: Vec<String> = query
             .split(|character: char| !character.is_alphanumeric())
             .filter(|term| term.chars().count() >= 2)
             .map(|term| format!("\"{}\"", term.replace('"', "")))
             .collect();
-        if terms.is_empty() { return Ok(Vec::new()); }
+        if terms.is_empty() {
+            return Ok(Vec::new());
+        }
         let fts_query = terms.join(" OR ");
         let mut hits = Vec::new();
         {
@@ -474,7 +521,10 @@ fn new_id(prefix: &str) -> String {
         .as_nanos();
     let sequence = NEXT_ID.fetch_add(1, Ordering::Relaxed);
     let material = format!("{prefix}:{now}:{}:{sequence}", std::process::id());
-    format!("{prefix}_{}", &blake3::hash(material.as_bytes()).to_hex()[..24])
+    format!(
+        "{prefix}_{}",
+        &blake3::hash(material.as_bytes()).to_hex()[..24]
+    )
 }
 
 #[cfg(test)]
@@ -494,26 +544,56 @@ mod tests {
     fn conversations_persist_and_are_searchable() {
         let store = test_store("conversation");
         let id = store.create_conversation("New conversation").unwrap();
-        store.append_message(&id, "user", "What is a throttling device?", None).unwrap();
-        store.append_message(&id, "assistant", "A restriction that reduces pressure [1].", Some("qwen3.5:2b-q4_K_M")).unwrap();
+        store
+            .append_message(&id, "user", "What is a throttling device?", None)
+            .unwrap();
+        store
+            .append_message(
+                &id,
+                "assistant",
+                "A restriction that reduces pressure [1].",
+                Some("qwen3.5:2b-q4_K_M"),
+            )
+            .unwrap();
         let messages = store.get_messages(&id).unwrap();
         assert_eq!(messages.len(), 2);
         assert_eq!(messages[0].role, "user");
-        assert!(store.search_saved_knowledge("throttling", 10).unwrap().iter().any(|hit| hit.id == id));
+        assert!(store
+            .search_saved_knowledge("throttling", 10)
+            .unwrap()
+            .iter()
+            .any(|hit| hit.id == id));
     }
 
     #[test]
     fn web_pages_are_deduplicated_by_canonical_url() {
         let store = test_store("web");
-        let first = store.save_web_page(
-            "https://example.test/post?utm_source=x", "https://example.test/post",
-            "A useful article", "Readable article body about thermodynamics.",
-            Some("Author"), None, Some("Example"), "hash-a", true
-        ).unwrap();
-        let second = store.save_web_page(
-            "https://example.test/post", "https://example.test/post",
-            "Updated title", "Updated article body.", None, None, None, "hash-b", true
-        ).unwrap();
+        let first = store
+            .save_web_page(
+                "https://example.test/post?utm_source=x",
+                "https://example.test/post",
+                "A useful article",
+                "Readable article body about thermodynamics.",
+                Some("Author"),
+                None,
+                Some("Example"),
+                "hash-a",
+                true,
+            )
+            .unwrap();
+        let second = store
+            .save_web_page(
+                "https://example.test/post",
+                "https://example.test/post",
+                "Updated title",
+                "Updated article body.",
+                None,
+                None,
+                None,
+                "hash-b",
+                true,
+            )
+            .unwrap();
         assert_eq!(first, second);
     }
 }

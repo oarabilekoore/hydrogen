@@ -114,7 +114,9 @@ fn set_value(settings: &mut HydrogenSettings, key: &str, value: &str) -> Result<
         "watch.poll_interval_ms" => settings.watch.poll_interval_ms = number!(u64),
         "frontend.bind_address" => settings.frontend.bind_address = value.to_string(),
         "frontend.auto_start" => settings.frontend.auto_start = parse_bool(value)?,
-        "frontend.open_existing_window" => settings.frontend.open_existing_window = parse_bool(value)?,
+        "frontend.open_existing_window" => {
+            settings.frontend.open_existing_window = parse_bool(value)?
+        }
         "web.enabled" => settings.web.enabled = parse_bool(value)?,
         "web.auto_index" => settings.web.auto_index = parse_bool(value)?,
         "web.minimum_text_length" => settings.web.minimum_text_length = number!(usize),
@@ -129,10 +131,16 @@ fn set_value(settings: &mut HydrogenSettings, key: &str, value: &str) -> Result<
         "web.exclude_domains" => settings.web.exclude_domains = parse_list(value)?,
         "web.exclude_patterns" => settings.web.exclude_patterns = parse_list(value)?,
         "conversations.enabled" => settings.conversations.enabled = parse_bool(value)?,
-        "conversations.index_messages" => settings.conversations.index_messages = parse_bool(value)?,
-        "conversations.index_attachments" => settings.conversations.index_attachments = parse_bool(value)?,
+        "conversations.index_messages" => {
+            settings.conversations.index_messages = parse_bool(value)?
+        }
+        "conversations.index_attachments" => {
+            settings.conversations.index_attachments = parse_bool(value)?
+        }
         "conversations.deduplicate" => settings.conversations.deduplicate = parse_bool(value)?,
-        "conversations.capture_ai_chats" => settings.conversations.capture_ai_chats = parse_bool(value)?,
+        "conversations.capture_ai_chats" => {
+            settings.conversations.capture_ai_chats = parse_bool(value)?
+        }
         _ => {
             return Err(HydrogenError::InvalidInput(format!(
                 "unknown or non-writable config key: {key}"
