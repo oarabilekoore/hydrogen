@@ -25,5 +25,23 @@ jobs:
         run: cargo check --all-targets
       - name: Test
         run: cargo test --all-targets
+      - name: Validate bundled frontend JavaScript
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          html = Path("src/frontend/index.html").read_text()
+          scripts = re.findall(r"<script>(.*?)</script>", html, flags=re.S)
+          if not scripts:
+              raise SystemExit("No bundled frontend script found")
+          Path("/tmp/hydrogen-frontend.js").write_text("\n".join(scripts))
+          PY
+          node --check /tmp/hydrogen-frontend.js
+      - name: Validate browser extension
+        run: |
+          python3 -m json.tool browser-extension/manifest.json >/dev/null
+          node --check browser-extension/background.js
+          node --check browser-extension/content.js
+          node --check browser-extension/popup.js
       - name: Check optional image-captioning backend
         run: cargo check --all-targets --features image-captioning
