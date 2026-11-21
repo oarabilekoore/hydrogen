@@ -316,15 +316,24 @@ impl AppConfig {
             }
         }
 
-        settings.models.inference_threads = settings.models.inference_threads.clamp(1, settings.resources.max_inference_threads.max(1));
+        settings.models.inference_threads = settings.models.inference_threads.clamp(1, settings.resources.max_inference_threads.clamp(1, 8));
         settings.indexing.pdf.page_limit = settings.indexing.pdf.page_limit.clamp(1, 500);
         settings.indexing.images.batch_size = settings.indexing.images.batch_size.clamp(1, 4);
+        settings.indexing.images.min_file_bytes = settings.indexing.images.min_file_bytes.max(1);
+        settings.indexing.images.max_file_bytes = settings.indexing.images.max_file_bytes.max(settings.indexing.images.min_file_bytes);
         settings.answer.retrieval_limit = settings.answer.retrieval_limit.clamp(1, 16);
+        settings.answer.context_chars_per_passage = settings.answer.context_chars_per_passage.clamp(100, 12000);
+        settings.answer.context_window = settings.answer.context_window.clamp(512, 32768);
+        settings.answer.max_output_tokens = settings.answer.max_output_tokens.clamp(16, 2048);
+        settings.answer.timeout_seconds = settings.answer.timeout_seconds.clamp(5, 300);
+        if settings.answer.model.trim().is_empty() { settings.answer.model = AnswerConfig::default().model; }
+        if settings.answer.endpoint.trim().is_empty() { settings.answer.endpoint = AnswerConfig::default().endpoint; }
         settings.answer.candidate_limit = settings.answer.candidate_limit.clamp(1, 100);
         settings.answer.max_query_variants = settings.answer.max_query_variants.clamp(1, 12);
         settings.watch.debounce_ms = settings.watch.debounce_ms.clamp(50, 5000);
         settings.watch.reconcile_interval_seconds = settings.watch.reconcile_interval_seconds.clamp(5, 3600);
         settings.watch.poll_interval_ms = settings.watch.poll_interval_ms.clamp(25, 2000);
+        settings.search.default_limit = settings.search.default_limit.clamp(1, 100);
         settings.search.scan_max_depth = settings.search.scan_max_depth.clamp(1, 32);
         settings.search.scan_max_results = settings.search.scan_max_results.clamp(1, 100_000);
 
