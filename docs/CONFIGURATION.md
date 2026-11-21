@@ -104,8 +104,9 @@ home directory; Hydrogen expands a leading `~` in configured search roots.
 - `indexing.pdf.enabled`: whether PDF page indexing is enabled.
 - `indexing.pdf.ocr_scanned_pages`: render and OCR image-only/scanned PDF pages.
   Enabled by default, so image-only lecture PDFs are not silently ignored.
-- `indexing.images.*`: standalone image indexing, printed OCR, optional
-  captioning, size/dimension thresholds, batch size and skipped directories.
+- `indexing.images.*`: standalone image content indexing, printed OCR, optional
+  captioning, size/dimension thresholds, batch size and skipped directories. Disabling
+  this turns off image OCR/caption/embedding work; ordinary file metadata remains searchable.
 - `indexing.embeddings_enabled`: whether semantic text and visual embeddings
   are maintained and used by default search.
 - `models.*` and `resources.*`: OCR model paths and the CPU inference budget.
@@ -155,3 +156,14 @@ RAG limits, search limits or indexing environment variables:
 Those commands use the effective Hydrogen configuration. The launcher reads
 `hydrogen config show` to reflect whether semantic indexing is enabled, and
 changes that setting through `hydrogen config set`.
+
+
+## Intentionally fixed implementation boundaries
+
+Not every constant should become a user preference. Supported file-format lists,
+SQLite schema details, parser/decompression safety ceilings, and low-level OCR
+engine invariants remain code-owned. They protect correctness and memory use
+rather than express ordinary user policy. The configurable limits are validated
+and clamped to safe ranges. If a new backend or file format is added, it should
+extend the schema deliberately instead of adding another unrelated environment
+variable or launcher-only constant.
