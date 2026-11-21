@@ -6,7 +6,7 @@ browser.runtime.onMessage.addListener(async(message)=>{
   if(message.kind==="article"&&!cfg.captureArticles)return {status:"disabled"};
   if(message.kind==="conversation"&&!cfg.captureChats)return {status:"disabled"};
   try{
-    const route=message.kind==="article"?"/api/web-pages":"/api/capture/conversation";
+    const route=message.kind==="article"?"/api/web-pages":message.kind==="feed"?"/api/feeds":"/api/capture/conversation";
     const response=await fetch(cfg.endpoint.replace(/\/$/,"")+route,{
       method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(message.payload)
     });
