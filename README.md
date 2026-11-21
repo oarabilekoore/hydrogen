@@ -37,3 +37,19 @@ is larger than the OCR and embedding models.
 ## Licence
 Hydrogen is distributed under AGPL-3.0-only. See [LICENSE](LICENSE).
 Model weights remain subject to their own upstream licences.
+
+
+## Personal Knowledge Frontend
+
+Hydrogen includes a bundled local chat and knowledge frontend:
+
+```sh
+hydrogen --frontend
+hydrogen --frontend --ask "What is a throttling device?"
+hydrogen answer --browser "What is a throttling device?"
+```
+
+The optional Hydrogen Capture browser extension is in `browser-extension/`. It can save readable articles and rendered AI conversations to the local SQLite knowledge index.
+
+See [Personal Knowledge Engine](docs/PERSONAL_KNOWLEDGE.md) for setup, configuration and current implementation boundaries.
+
