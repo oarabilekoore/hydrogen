@@ -263,7 +263,19 @@ pub fn run(cfg: &AppConfig) -> Result<()> {
     Ok(())
 }
 
-pub fn open_frontend(cfg: &AppConfig) -> Result<()> {
+fn encode_query(value: &str) -> String {
+    let mut encoded = String::new();
+    for byte in value.bytes() {
+        if byte.is_ascii_alphanumeric() || b"-_.~".contains(&byte) {
+            encoded.push(byte as char);
+        } else {
+            encoded.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    encoded
+}
+
+pub fn open_frontend(cfg: &AppConfig, ask: Option<&str>) -> Result<()> {
     let address = cfg.settings.frontend.bind_address.as_str();
     if TcpStream::connect(address).is_err() {
         if !cfg.settings.frontend.auto_start {
@@ -289,8 +301,11 @@ pub fn open_frontend(cfg: &AppConfig) -> Result<()> {
             return Err(HydrogenError::Config(format!("Hydrogen frontend service did not become ready at {address}")));
         }
     }
+    let url = ask
+        .map(|question| format!("http://{address}/?ask={}", encode_query(question)))
+        .unwrap_or_else(|| format!("http://{address}/"));
     Command::new("xdg-open")
-        .arg(format!("http://{address}/"))
+        .arg(url)
         .spawn()
         .map_err(|error| HydrogenError::Config(format!("could not open Hydrogen in the browser: {error}")))?;
     Ok(())
