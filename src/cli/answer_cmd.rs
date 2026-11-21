@@ -21,6 +21,9 @@ pub struct AnswerArgs {
     /// Write a formatted local HTML answer and include its path in the JSON response
     #[arg(long)]
     pub html: bool,
+    /// Generate the HTML answer and open it in the default browser
+    #[arg(long)]
+    pub browser: bool,
 }
 
 fn query_variants(query: &str, max_variants: usize) -> Vec<String> {
@@ -522,7 +525,7 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
     match response {
         Some(answer) if !answer.trim().is_empty() => {
             let answer = answer.trim();
-            let html_path = if args.html {
+            let html_path = if args.html || args.browser {
                 Some(
                     write_answer_html(cfg, query, answer, model, &sources).map_err(|error| {
                         crate::error::HydrogenError::Config(format!(
@@ -533,11 +536,27 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
             } else {
                 None
             };
+            let browser_opened = if args.browser {
+                if let Some(path) = html_path.as_deref() {
+                    match Command::new("xdg-open").arg(path).spawn() {
+                        Ok(_) => true,
+                        Err(error) => {
+                            eprintln!("Hydrogen could not open the answer in a browser: {error}");
+                            false
+                        }
+                    }
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
             println!(
                 "{}",
                 json!({
                     "status": "ready", "model": model, "answer": answer,
-                    "sources": sources, "html_path": html_path
+                    "sources": sources, "html_path": html_path,
+                    "browser_opened": browser_opened
                 })
             );
         }
