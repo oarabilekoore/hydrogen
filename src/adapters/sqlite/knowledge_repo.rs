@@ -440,3 +440,83 @@ impl KnowledgeRepository {
         if is_new || inserted > 0 { Ok(Some(conversation_id)) } else { Ok(None) }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temporary_db() -> PathBuf {
+        let stamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        std::env::temp_dir().join(format!("hydrogen-knowledge-{}-{stamp}.db", std::process::id()))
+    }
+
+    fn cleanup(path: &Path) {
+        let _ = std::fs::remove_file(path);
+        let _ = std::fs::remove_file(path.with_extension("db-wal"));
+        let _ = std::fs::remove_file(path.with_extension("db-shm"));
+    }
+
+    #[test]
+    fn additive_migration_preserves_existing_file_index() {
+        let path = temporary_db();
+        let conn = Connection::open(&path).unwrap();
+        conn.execute_batch("CREATE TABLE files(path TEXT PRIMARY KEY, mtime INTEGER NOT NULL, size INTEGER NOT NULL, is_dir INTEGER NOT NULL DEFAULT 0); INSERT INTO files(path,mtime,size) VALUES('/tmp/keep.txt',1,4);").unwrap();
+        drop(conn);
+
+        let repo = KnowledgeRepository::open(&path).unwrap();
+        let conn = Connection::open(&path).unwrap();
+        let count: i64 = conn.query_row("SELECT COUNT(*) FROM files WHERE path='/tmp/keep.txt'", [], |row| row.get(0)).unwrap();
+        assert_eq!(count, 1);
+        assert_eq!(repo.list_conversations(10).unwrap().len(), 0);
+        cleanup(&path);
+    }
+
+    #[test]
+    fn conversations_are_persisted_and_searchable() {
+        let path = temporary_db();
+        let repo = KnowledgeRepository::open(&path).unwrap();
+        let id = repo.create_conversation("Thermodynamics", "qwen3.5:2b-q4_K_M").unwrap();
+        repo.append_message(id, "user", "What is a throttling device?", None, None).unwrap();
+        repo.append_message(id, "assistant", "A throttling device reduces pressure.", Some("qwen3.5:2b-q4_K_M"), Some("[]")).unwrap();
+
+        let conversation = repo.get_conversation(id).unwrap().unwrap();
+        assert_eq!(conversation.messages.len(), 2);
+        let hits = repo.search_knowledge("throttling device", 10).unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].conversation_id, Some(id));
+        cleanup(&path);
+    }
+
+    #[test]
+    fn captured_conversations_accept_incremental_updates_without_duplicates() {
+        let path = temporary_db();
+        let repo = KnowledgeRepository::open(&path).unwrap();
+        let first = vec![("user".into(), "Explain pressure reduction".into())];
+        let id = repo.import_captured_conversation("chatgpt:https://chatgpt.com/c/1", "Chat", "chatgpt", &first).unwrap().unwrap();
+        let updated = vec![
+            ("user".into(), "Explain pressure reduction".into()),
+            ("assistant".into(), "A throttling device reduces pressure.".into()),
+        ];
+        assert_eq!(repo.import_captured_conversation("chatgpt:https://chatgpt.com/c/1", "Chat", "chatgpt", &updated).unwrap(), Some(id));
+        assert_eq!(repo.import_captured_conversation("chatgpt:https://chatgpt.com/c/1", "Chat", "chatgpt", &updated).unwrap(), None);
+        assert_eq!(repo.get_conversation(id).unwrap().unwrap().messages.len(), 2);
+        cleanup(&path);
+    }
+
+    #[test]
+    fn saved_web_pages_are_searchable_and_readable_offline() {
+        let path = temporary_db();
+        let repo = KnowledgeRepository::open(&path).unwrap();
+        let id = repo.save_web_page(
+            "https://example.com/throttling", "https://example.com/throttling",
+            "Throttling devices explained", "Author", "2026-11-21", "Example",
+            "A throttling device reduces pressure. It is commonly used in refrigeration systems.",
+            "", "hash-1", false, true, true
+        ).unwrap();
+        let page = repo.get_web_page(id).unwrap().unwrap();
+        assert_eq!(page["title"], "Throttling devices explained");
+        assert_eq!(repo.search_knowledge("throttling pressure", 10).unwrap().len(), 1);
+        cleanup(&path);
+    }
+}
