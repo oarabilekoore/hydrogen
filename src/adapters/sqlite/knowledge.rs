@@ -613,15 +613,23 @@ mod tests {
         let store = test_store("capture");
         let first = vec![
             ("user".to_string(), "Explain throttling".to_string(), None),
-            ("assistant".to_string(), "A pressure-reducing process.".to_string(), Some("model-a".to_string())),
+            (
+                "assistant".to_string(),
+                "A pressure-reducing process.".to_string(),
+                Some("model-a".to_string()),
+            ),
         ];
-        let id = store.capture_conversation("https://chatgpt.com/c/example", "Study chat", &first).unwrap();
+        let id = store
+            .capture_conversation("https://chatgpt.com/c/example", "Study chat", &first)
+            .unwrap();
         let updated = vec![
             ("user".to_string(), "Explain throttling".to_string(), None),
             ("assistant".to_string(), "A pressure-reducing process.".to_string(), Some("model-a".to_string())),
             ("user".to_string(), "What is enthalpy?".to_string(), None),
         ];
-        let same_id = store.capture_conversation("https://chatgpt.com/c/example", "Study chat", &updated).unwrap();
+        let same_id = store
+            .capture_conversation("https://chatgpt.com/c/example", "Study chat", &updated)
+            .unwrap();
         assert_eq!(id, same_id);
         assert_eq!(store.list_conversations(10).unwrap().len(), 1);
         assert_eq!(store.get_messages(&id).unwrap().len(), 3);
