@@ -88,8 +88,6 @@ pub struct ImageIndexingConfig {
 #[serde(default)]
 pub struct ModelsConfig {
     pub inference_threads: usize,
-    pub text_embedding: String,
-    pub image_embedding: String,
     pub ocr_printed: String,
     pub ocr_formula: String,
 }
@@ -234,8 +232,6 @@ impl Default for ModelsConfig {
     fn default() -> Self {
         Self {
             inference_threads: 2,
-            text_embedding: "all-minilm-l6-v2-q".into(),
-            image_embedding: "clip-vit-b32".into(),
             ocr_printed: "ppocr".into(),
             ocr_formula: "texo-distill-f16.gguf".into(),
         }
@@ -309,6 +305,9 @@ impl AppConfig {
             if let Ok(value) = raw.parse::<usize>() {
                 settings.models.inference_threads = value;
             }
+        }
+        if let Ok(raw) = env::var("HYDROGEN_CAPTIONS") {
+            settings.indexing.images.captions = raw == "1" || raw.eq_ignore_ascii_case("true");
         }
         if let Ok(raw) = env::var("HYDROGEN_PDF_PAGE_LIMIT") {
             if let Ok(value) = raw.parse::<usize>() {
