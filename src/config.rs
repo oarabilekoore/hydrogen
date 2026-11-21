@@ -47,6 +47,7 @@ pub struct PathsConfig {
 #[serde(default)]
 pub struct SearchConfig {
     pub default_limit: usize,
+    pub include_hidden: bool,
     pub scan_max_depth: usize,
     pub scan_max_results: usize,
     pub excluded_directories: Vec<String>,
@@ -180,6 +181,7 @@ impl Default for SearchConfig {
     fn default() -> Self {
         Self {
             default_limit: 20,
+            include_hidden: false,
             scan_max_depth: 6,
             scan_max_results: 5000,
             excluded_directories: vec![
