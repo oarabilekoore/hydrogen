@@ -150,6 +150,17 @@ impl KnowledgeRepository {
              );
              CREATE INDEX IF NOT EXISTS idx_web_visits_page
                 ON web_visits(page_id, visited_at DESC);
+             CREATE TABLE IF NOT EXISTS browser_history (
+                id INTEGER PRIMARY KEY,
+                url TEXT NOT NULL UNIQUE,
+                title TEXT NOT NULL DEFAULT '',
+                last_visit_time INTEGER NOT NULL DEFAULT 0,
+                visit_count INTEGER NOT NULL DEFAULT 1,
+                typed_count INTEGER NOT NULL DEFAULT 0
+             );
+             CREATE VIRTUAL TABLE IF NOT EXISTS browser_history_fts USING fts5(
+                history_id UNINDEXED, title, url UNINDEXED, tokenize='porter unicode61'
+             );
              CREATE TABLE IF NOT EXISTS feed_sources (
                 id INTEGER PRIMARY KEY,
                 url TEXT NOT NULL UNIQUE,
@@ -326,6 +337,33 @@ impl KnowledgeRepository {
         hits.retain(|hit| seen.insert((hit.kind.clone(), hit.id)));
         hits.truncate(limit.clamp(1, 100));
         Ok(hits)
+    }
+
+    pub fn import_browser_history(&self, entries: &[(String, String, i64, i64, i64)]) -> Result<usize> {
+        let conn = self.connect()?;
+        let tx = conn.unchecked_transaction()?;
+        let mut imported = 0usize;
+        for (url, title, last_visit_time, visit_count, typed_count) in entries {
+            tx.execute(
+                "INSERT INTO browser_history(url,title,last_visit_time,visit_count,typed_count)
+                 VALUES(?1,?2,?3,?4,?5)
+                 ON CONFLICT(url) DO UPDATE SET
+                    title=CASE WHEN excluded.title='' THEN browser_history.title ELSE excluded.title END,
+                    last_visit_time=MAX(browser_history.last_visit_time,excluded.last_visit_time),
+                    visit_count=MAX(browser_history.visit_count,excluded.visit_count),
+                    typed_count=MAX(browser_history.typed_count,excluded.typed_count)",
+                params![url,title,last_visit_time,visit_count,typed_count],
+            )?;
+            let id: i64 = tx.query_row("SELECT id FROM browser_history WHERE url=?1",[url],|row|row.get(0))?;
+            tx.execute("DELETE FROM browser_history_fts WHERE history_id=?1",[id.to_string()])?;
+            tx.execute(
+                "INSERT INTO browser_history_fts(history_id,title,url) VALUES(?1,?2,?3)",
+                params![id,title,url],
+            )?;
+            imported += 1;
+        }
+        tx.commit()?;
+        Ok(imported)
     }
 
     pub fn add_feed(&self, url: &str) -> Result<i64> {
