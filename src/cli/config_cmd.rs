@@ -156,7 +156,16 @@ pub fn run(args: ConfigArgs, cfg: &AppConfig) -> Result<()> {
             );
         }
         ConfigAction::Set { key, value } => {
-            let mut settings = cfg.settings.clone();
+            // Read the persisted TOML, not environment-overridden runtime settings.
+            // This prevents temporary service overrides from being written back to disk.
+            let mut settings = if cfg.config_path.is_file() {
+                let raw = std::fs::read_to_string(&cfg.config_path)?;
+                toml::from_str::<HydrogenSettings>(&raw).map_err(|error| {
+                    HydrogenError::Config(format!("invalid {}: {error}", cfg.config_path.display()))
+                })?
+            } else {
+                HydrogenSettings::default()
+            };
             set_value(&mut settings, &key, &value)?;
             cfg.write_settings(&settings)
                 .map_err(HydrogenError::Config)?;
