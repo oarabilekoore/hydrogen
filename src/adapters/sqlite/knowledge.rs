@@ -420,6 +420,23 @@ pub fn ensure_schema(conn: &Connection) -> rusqlite::Result<()> {
             UNIQUE(page_id,content_hash)
          );"
     )?;
+    // Additive compatibility migration for databases created by early builds of
+    // this feature branch, before answer citations were persisted.
+    let has_sources_column = {
+        let mut statement = conn.prepare("PRAGMA table_info(messages)")?;
+        let rows = statement.query_map([], |row| row.get::<_, String>(1))?;
+        let mut found = false;
+        for column in rows {
+            if column? == "sources_json" {
+                found = true;
+                break;
+            }
+        }
+        found
+    };
+    if !has_sources_column {
+        conn.execute("ALTER TABLE messages ADD COLUMN sources_json TEXT", [])?;
+    }
     Ok(())
 }
 
