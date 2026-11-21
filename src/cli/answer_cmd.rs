@@ -20,7 +20,7 @@ pub struct AnswerArgs {
     pub model: Option<String>,
 }
 
-fn query_variants(query: &str) -> Vec<String> {
+fn query_variants(query: &str, max_variants: usize) -> Vec<String> {
     const STOP: &[&str] = &[
         "what", "which", "where", "when", "who", "why", "how", "is", "are", "was",
         "were", "the", "a", "an", "in", "on", "of", "for", "to", "and", "or",
@@ -53,7 +53,7 @@ fn query_variants(query: &str) -> Vec<String> {
         }
     }
     drop(push);
-    variants.truncate(6);
+    variants.truncate(max_variants);
     variants
 }
 
@@ -63,7 +63,7 @@ fn passage_key(hit: &crate::domain::document::SearchHit) -> String {
 
 pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
     let query = args.query.trim();
-    if query.chars().count() < 3 || !cfg.db_path.exists() {
+    if query.chars().count() < cfg.settings.answer.min_query_chars || !cfg.db_path.exists() {
         println!("{}", json!({"status":"no_context","answer":"","sources":[]}));
         return Ok(());
     }
@@ -75,14 +75,14 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
         return Err(crate::error::HydrogenError::Config(format!("unsupported answer provider: {}", answer_cfg.provider)));
     }
     let repo = SqliteIndexRepository::open(&cfg.db_path)?;
-    let variants = query_variants(query);
+    let variants = query_variants(query, cfg.settings.answer.max_query_variants);
     let mut candidates: HashMap<String, (crate::domain::document::SearchHit, usize, usize)> =
         HashMap::new();
 
     // Search individual PDF pages, not just one best page per PDF. This is
     // essential when a definition appears in lecture notes far from the title.
     for variant in &variants {
-        let page_hits = repo.search_pdf_passages(variant, 16)?;
+        let page_hits = repo.search_pdf_passages(variant, answer_cfg.candidate_limit)?;
         for (rank, hit) in page_hits.into_iter().enumerate() {
             let key = passage_key(&hit);
             let entry = candidates.entry(key).or_insert_with(|| (hit.clone(), 0, rank));
@@ -95,7 +95,7 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
 
         // Also retrieve ordinary indexed text documents (Markdown, TXT, DOCX
         // extracts, etc.). PDFs are handled by the page-level index above.
-        let text_hits = repo.search(variant, 16, "all")?;
+        let text_hits = repo.search(variant, answer_cfg.candidate_limit, "all")?;
         for (rank, hit) in text_hits.into_iter().enumerate() {
             if hit.is_dir
                 || hit.source == "image"
