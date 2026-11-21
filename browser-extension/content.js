@@ -24,7 +24,7 @@
         if (parsed?.textContent?.trim()) {
           const articleDocument = new DOMParser().parseFromString(parsed.content || "", "text/html");
           return {
-            text: parsed.textContent.replace(/\\n{3,}/g, "\\n\\n").trim(),
+            text: parsed.textContent.replace(/\n{3,}/g, "\n\n").trim(),
             paragraphs: articleDocument.querySelectorAll("p").length,
             metadata: {
               title: parsed.title || "",
