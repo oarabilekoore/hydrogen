@@ -427,7 +427,7 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
         })?;
         let remaining = limit.saturating_sub(sources.len());
         for page in knowledge.search_web_pages(query, remaining)? {
-            let id = sources.len() + 1;
+            let id = sources.iter().filter_map(|source| source.get("id").and_then(Value::as_u64)).max().unwrap_or(0) + 1;
             let snippet: String = page
                 .content
                 .chars()
