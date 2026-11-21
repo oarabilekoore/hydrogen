@@ -6,8 +6,8 @@ pub mod doctor_cmd;
 pub mod index_cmd;
 pub mod ocr_cmd;
 pub mod query_cmd;
-pub mod serve_cmd;
 pub mod search_cmd;
+pub mod serve_cmd;
 
 use crate::config::AppConfig;
 use crate::error::Result;
