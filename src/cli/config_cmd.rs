@@ -112,6 +112,25 @@ fn set_value(settings: &mut HydrogenSettings, key: &str, value: &str) -> Result<
             settings.watch.reconcile_interval_seconds = number!(u64)
         }
         "watch.poll_interval_ms" => settings.watch.poll_interval_ms = number!(u64),
+
+        "web.enabled" => settings.web.enabled = parse_bool(value)?,
+        "web.auto_index" => settings.web.auto_index = parse_bool(value)?,
+        "web.minimum_text_length" => settings.web.minimum_text_length = number!(usize),
+        "web.minimum_paragraphs" => settings.web.minimum_paragraphs = number!(usize),
+        "web.max_page_size_mb" => settings.web.max_page_size_mb = number!(usize),
+        "web.save_html" => settings.web.save_html = parse_bool(value)?,
+        "web.save_readable_snapshot" => settings.web.save_readable_snapshot = parse_bool(value)?,
+        "web.track_visits" => settings.web.track_visits = parse_bool(value)?,
+        "web.version_pages" => settings.web.version_pages = parse_bool(value)?,
+        "conversations.enabled" => settings.conversations.enabled = parse_bool(value)?,
+        "conversations.capture_ai_chats" => settings.conversations.capture_ai_chats = parse_bool(value)?,
+        "conversations.index_attachments" => settings.conversations.index_attachments = parse_bool(value)?,
+        "conversations.deduplicate" => settings.conversations.deduplicate = parse_bool(value)?,
+        "frontend.enabled" => settings.frontend.enabled = parse_bool(value)?,
+        "frontend.bind" => settings.frontend.bind = value.to_string(),
+        "frontend.port" => settings.frontend.port = number!(u16),
+        "frontend.auto_open" => settings.frontend.auto_open = parse_bool(value)?,
+
         _ => {
             return Err(HydrogenError::InvalidInput(format!(
                 "unknown or non-writable config key: {key}"
