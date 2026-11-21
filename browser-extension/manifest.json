@@ -3,7 +3,7 @@
   "name": "Hydrogen Capture",
   "version": "0.1.0",
   "description": "Save readable articles and visible AI conversations to your local Hydrogen knowledge engine.",
-  "permissions": ["storage", "activeTab"],
+  "permissions": ["storage", "activeTab", "history"],
   "host_permissions": [
     "http://127.0.0.1:17843/*",
     "http://localhost:17843/*"
