@@ -37,9 +37,11 @@
     let nodes=[];
     if(p==="chatgpt")nodes=[...document.querySelectorAll("[data-message-author-role]")].map(n=>({role:n.getAttribute("data-message-author-role")==="user"?"user":"assistant",content:n.innerText.trim()}));
     if(p==="gemini"){
-      nodes=[...document.querySelectorAll("user-query, .user-query, [data-test-id*=user-query], .query-text")].map(n=>({role:"user",content:n.innerText.trim()}));
-      const answers=[...document.querySelectorAll("model-response, .model-response-text, [data-test-id*=response]")].map(n=>({role:"assistant",content:n.innerText.trim()}));
-      nodes=nodes.concat(answers).sort((a,b)=>0);
+      nodes=[...document.querySelectorAll("user-query, model-response, .user-query, .model-response-text, [data-test-id*=user-query], [data-test-id*=response], .query-text")].map(n=>{
+        const tag=n.tagName.toLowerCase(), cls=String(n.className||"");
+        const user=tag==="user-query"||cls.includes("user-query")||n.matches("[data-test-id*=user-query],.query-text");
+        return {role:user?"user":"assistant",content:n.innerText.trim()};
+      });
     }
     if(p==="claude")nodes=[...document.querySelectorAll('[data-testid="chat-message"], .font-user-message, .font-claude-message')].map(n=>({role:n.className.toString().includes("user")?"user":"assistant",content:n.innerText.trim()}));
     const messages=nodes.filter(n=>n.content&&n.content.length>0);
