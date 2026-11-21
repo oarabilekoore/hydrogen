@@ -25,7 +25,7 @@ ollama run qwen3.5:2b-q4_K_M
 hydrogen answer "what is a throttling device" --model qwen3.5:2b-q4_K_M
 
 # Also write a browser-ready local HTML answer page
-hydrogen answer "what is a throttling device" --html
+hydrogen answer --browser "what is a throttling device"
 ```
 
 Optional flags:
