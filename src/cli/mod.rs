@@ -50,7 +50,7 @@ pub enum Commands {
 
 pub fn dispatch(cli: Cli, cfg: &AppConfig) -> Result<()> {
     if cli.frontend {
-        return serve_cmd::open_frontend();
+        return serve_cmd::open_frontend(cfg);
     }
     match cli.command {
         Some(Commands::Config(args)) => config_cmd::run(args, cfg),
