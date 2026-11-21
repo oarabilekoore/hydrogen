@@ -206,7 +206,7 @@ fn handle_request(mut request: Request, cfg: &mut AppConfig) {
                 .rev()
                 .map(|message| format!("{}: {}", message.role, message.content))
                 .collect::<Vec<_>>()
-                .join("\\n"),
+                .join("\n"),
             Ok(None) => return json_response(json!({"error":"conversation not found"}), 404, origin_ref),
             Err(error) => return json_response(json!({"error":error.to_string()}), 500, origin_ref),
         };
