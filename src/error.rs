@@ -14,6 +14,9 @@ pub enum HydrogenError {
     #[error("Invalid input: {0}")]
     InvalidInput(String),
 
+    #[error("Configuration error: {0}")]
+    Config(String),
+
     #[error("External tool failed: {0}")]
     ExternalTool(String),
 }
