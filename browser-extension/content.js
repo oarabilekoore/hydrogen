@@ -6,6 +6,19 @@
     || /(^|\.)(accounts\.google|login\.live|auth0)\./.test(host);
   if(excluded)return;
   const send=(kind,payload)=>browser.runtime.sendMessage({type:"hydrogen-capture",kind,payload}).catch(()=>{});
+  browser.runtime.onMessage.addListener((message)=>{
+    if(!message||message.type!=="hydrogen-save-current")return;
+    const text=clean();
+    if(!text)return {status:"skipped",reason:"No readable page text found"};
+    const payload={
+      url:location.href,canonicalUrl:canonical,title:document.title,
+      author:document.querySelector('meta[name="author"]')?.content||"",
+      publishedAt:document.querySelector('meta[property="article:published_time"]')?.content||"",
+      siteName:document.querySelector('meta[property="og:site_name"]')?.content||host,
+      text,html:"",manual:true
+    };
+    return send("article",payload);
+  });
   const canonical=document.querySelector('link[rel="canonical"]')?.href||location.href;
   const clean=()=> {
     const root=document.querySelector("article")||document.querySelector("main")||document.body;
