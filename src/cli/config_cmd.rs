@@ -69,6 +69,9 @@ fn set_value(settings: &mut HydrogenSettings, key: &str, value: &str) -> Result<
         "answer.endpoint" => settings.answer.endpoint = value.to_string(),
         "answer.model" => settings.answer.model = value.to_string(),
         "answer.retrieval_limit" => settings.answer.retrieval_limit = number!(usize),
+        "answer.candidate_limit" => settings.answer.candidate_limit = number!(usize),
+        "answer.max_query_variants" => settings.answer.max_query_variants = number!(usize),
+        "answer.min_query_chars" => settings.answer.min_query_chars = number!(usize),
         "answer.context_chars_per_passage" => settings.answer.context_chars_per_passage = number!(usize),
         "answer.context_window" => settings.answer.context_window = number!(usize),
         "answer.max_output_tokens" => settings.answer.max_output_tokens = number!(usize),
@@ -77,6 +80,9 @@ fn set_value(settings: &mut HydrogenSettings, key: &str, value: &str) -> Result<
         "answer.repeat_penalty" => settings.answer.repeat_penalty = number!(f32),
         "answer.timeout_seconds" => settings.answer.timeout_seconds = number!(u64),
         "calendar.default_event_duration_mins" => settings.calendar.default_event_duration_mins = number!(i64),
+        "watch.debounce_ms" => settings.watch.debounce_ms = number!(u64),
+        "watch.reconcile_interval_seconds" => settings.watch.reconcile_interval_seconds = number!(u64),
+        "watch.poll_interval_ms" => settings.watch.poll_interval_ms = number!(u64),
         _ => return Err(HydrogenError::InvalidInput(format!("unknown or non-writable config key: {key}"))),
     }
     Ok(())
