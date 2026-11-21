@@ -123,6 +123,75 @@ fn handle_api(mut request: Request, cfg: &AppConfig, store: &KnowledgeStore) {
         return;
     }
 
+    if parts.as_slice() == ["api", "web-pages"] && method == Method::Post {
+        let body = match read_body(&mut request) {
+            Ok(body) => body,
+            Err(error) => { json(request, 400, json!({"error":error.to_string()})); return; }
+        };
+        let input: Value = match serde_json::from_str(&body) {
+            Ok(input) => input,
+            Err(error) => { json(request, 400, json!({"error":error.to_string()})); return; }
+        };
+        let url = input.get("url").and_then(Value::as_str).unwrap_or("");
+        let title = input.get("title").and_then(Value::as_str).unwrap_or("");
+        let content = input.get("content").and_then(Value::as_str).unwrap_or("");
+        let canonical = input.get("canonical_url").and_then(Value::as_str).unwrap_or(url);
+        if url.is_empty() || title.is_empty() || content.trim().is_empty() {
+            json(request, 400, json!({"error":"url, title and readable content are required"}));
+            return;
+        }
+        let hash = blake3::hash(content.as_bytes()).to_hex().to_string();
+        match store.save_web_page(
+            url, canonical, title, content,
+            input.get("author").and_then(Value::as_str),
+            input.get("published_at").and_then(Value::as_str),
+            input.get("site_name").and_then(Value::as_str),
+            &hash,
+        ) {
+            Ok(id) => {
+                if cfg.settings.web.track_visits {
+                    let _ = store.record_visit(canonical);
+                }
+                json(request, 201, json!({"status":"saved","id":id,"canonical_url":canonical,"content_hash":hash}));
+            }
+            Err(error) => json(request, 500, json!({"error":error.to_string()})),
+        }
+        return;
+    }
+
+    if parts.as_slice() == ["api", "capture", "conversation"] && method == Method::Post {
+        let body = match read_body(&mut request) {
+            Ok(body) => body,
+            Err(error) => { json(request, 400, json!({"error":error.to_string()})); return; }
+        };
+        let input: Value = match serde_json::from_str(&body) {
+            Ok(input) => input,
+            Err(error) => { json(request, 400, json!({"error":error.to_string()})); return; }
+        };
+        let source_key = input.get("source_key").and_then(Value::as_str).unwrap_or("");
+        let title = input.get("title").and_then(Value::as_str).unwrap_or("Captured conversation");
+        let messages: Vec<(String, String, Option<String>)> = input.get("messages")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|message| {
+                let role = message.get("role")?.as_str()?.to_string();
+                let content = message.get("content")?.as_str()?.to_string();
+                let model = message.get("model").and_then(Value::as_str).map(str::to_owned);
+                Some((role, content, model))
+            })
+            .collect();
+        if !cfg.settings.conversations.capture_ai_chats {
+            json(request, 403, json!({"error":"AI conversation capture is disabled in Hydrogen configuration"}));
+            return;
+        }
+        match store.capture_conversation(source_key, title, &messages) {
+            Ok(id) => json(request, 200, json!({"status":"captured","conversation_id":id,"message_count":messages.len()})),
+            Err(error) => json(request, 400, json!({"error":error.to_string()})),
+        }
+        return;
+    }
+
     if parts.as_slice() == ["api", "settings"] && method == Method::Get {
         match run_cli(&["config", "show"]) {
             Ok(output) if output.status.success() => {
