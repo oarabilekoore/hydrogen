@@ -242,6 +242,35 @@ fn handle_request(mut request: Request, cfg: &mut AppConfig) {
         }), 200, origin_ref);
     }
 
+
+    if method == "POST" && path == "/api/capture/conversation" {
+        if !cfg.settings.conversations.enabled || !cfg.settings.conversations.capture_ai_chats {
+            return json_response(json!({"error":"AI conversation capture is disabled in Hydrogen configuration"}), 403, origin_ref);
+        }
+        let body = match read_json(&mut request) {
+            Ok(value) => value,
+            Err(error) => return json_response(json!({"error":error}), 400, origin_ref),
+        };
+        let platform = body.get("platform").and_then(Value::as_str).unwrap_or("unknown");
+        let url = body.get("url").and_then(Value::as_str).unwrap_or("");
+        let title = body.get("title").and_then(Value::as_str).unwrap_or("Imported conversation");
+        let raw_messages = body.get("messages").and_then(Value::as_array).cloned().unwrap_or_default();
+        if url.is_empty() || raw_messages.is_empty() || raw_messages.len() > 500 {
+            return json_response(json!({"error":"conversation URL and 1 to 500 messages are required"}), 400, origin_ref);
+        }
+        let messages: Vec<(String, String)> = raw_messages.iter().filter_map(|message| {
+            let role = message.get("role")?.as_str()?.to_string();
+            let content = message.get("content")?.as_str()?.to_string();
+            Some((role, content))
+        }).collect();
+        let source_key = format!("{platform}:{url}");
+        return match knowledge.import_captured_conversation(&source_key, title, platform, &messages) {
+            Ok(Some(id)) => json_response(json!({"status":"saved","conversation_id":id}), 201, origin_ref),
+            Ok(None) => json_response(json!({"status":"already_saved"}), 200, origin_ref),
+            Err(error) => json_response(json!({"error":error.to_string()}), 500, origin_ref),
+        };
+    }
+
     if method == "POST" && path == "/api/web-pages" {
         if !cfg.settings.web.enabled || !cfg.settings.web.auto_index {
             return json_response(json!({"error":"automatic web capture is disabled"}), 403, origin_ref);
