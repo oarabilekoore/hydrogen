@@ -45,14 +45,14 @@ pub enum IndexAction {
 
 pub fn run(args: IndexArgs, cfg: &AppConfig) -> Result<()> {
     let repo = SqliteIndexRepository::open(&cfg.db_path)?;
-    let scanner = WalkDirScanner::new(cfg.search_roots.clone());
-    let extractor = CompositeTextExtractor;
-    let ml = RustOcrProvider::new(cfg.models_dir.clone());
-    let embeddings = FastEmbedProvider::new(cfg.models_dir.clone());
+    let scanner = WalkDirScanner::new(cfg.search_roots.clone(), cfg.settings.search.excluded_directories.clone(), cfg.settings.search.excluded_extensions.clone());
+    let extractor = CompositeTextExtractor { images: cfg.settings.indexing.images.clone() };
+    let ml = RustOcrProvider::new(cfg.models_dir.clone(), cfg.inference_threads, cfg.settings.indexing.images.captions);
+    let embeddings = FastEmbedProvider::new(cfg.models_dir.clone(), cfg.inference_threads);
     let service = SyncService::new(cfg, &repo, &scanner, &extractor, &ml, &ml, &embeddings);
     match args.action {
         IndexAction::Sync { no_images } => {
-            let summary = service.sync(!no_images)?;
+            let summary = service.sync(!no_images && cfg.settings.indexing.images.enabled)?;
             println!("{}", serde_json::to_string(&summary)?);
         }
         IndexAction::SyncImages { retag, limit } => {
