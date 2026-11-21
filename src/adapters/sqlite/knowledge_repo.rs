@@ -39,6 +39,7 @@ pub struct KnowledgeHit {
     pub updated_at: i64,
     pub url: Option<String>,
     pub conversation_id: Option<i64>,
+    pub score: f64,
 }
 
 pub struct KnowledgeRepository {
@@ -262,18 +263,19 @@ impl KnowledgeRepository {
     }
 
     pub fn search_knowledge(&self, query: &str, limit: usize) -> Result<Vec<KnowledgeHit>> {
+        const STOP: &[&str] = &["what","which","where","when","who","why","how","is","are","was","were","the","a","an","in","on","of","for","to","and","or","with","from","explain","define","describe","about"];
         let terms: Vec<String> = query.split_whitespace()
-            .map(|term| term.chars().filter(|c| c.is_alphanumeric()).collect::<String>())
-            .filter(|term| !term.is_empty())
+            .map(|term| term.chars().filter(|c| c.is_alphanumeric()).collect::<String>().to_lowercase())
+            .filter(|term| term.chars().count() >= 2 && !STOP.contains(&term.as_str()))
             .take(12).collect();
         if terms.is_empty() { return Ok(Vec::new()); }
-        let fts_query = terms.iter().map(|term| format!("\"{}\"*", term.replace('"', ""))).collect::<Vec<_>>().join(" AND ");
+        let fts_query = terms.iter().map(|term| format!("\"{}\"*", term.replace('"', ""))).collect::<Vec<_>>().join(" OR ");
         let conn = self.connect()?;
         let mut hits = Vec::new();
         {
             let mut stmt = conn.prepare(
                 "SELECT m.message_id, c.title, snippet(messages_fts, 3, '', '', '…', 24),
-                        c.updated_at, m.conversation_id
+                        c.updated_at, m.conversation_id, bm25(messages_fts)
                  FROM messages_fts m JOIN conversations c ON c.id=m.conversation_id
                  WHERE messages_fts MATCH ?1 ORDER BY bm25(messages_fts) LIMIT ?2"
             )?;
@@ -281,13 +283,14 @@ impl KnowledgeRepository {
                 kind: "conversation".into(), id: row.get(0)?, title: row.get(1)?,
                 excerpt: row.get(2)?, updated_at: row.get(3)?, url: None,
                 conversation_id: Some(row.get(4)?),
+                score: -row.get::<_, f64>(5)?,
             }))?;
             hits.extend(rows.collect::<std::result::Result<Vec<_>, _>>()?);
         }
         {
             let mut stmt = conn.prepare(
                 "SELECT p.id, p.title, snippet(web_pages_fts, 5, '', '', '…', 24),
-                        p.last_seen, p.url
+                        p.last_seen, p.url, bm25(web_pages_fts)
                  FROM web_pages_fts f JOIN web_pages p ON p.id=CAST(f.page_id AS INTEGER)
                  WHERE web_pages_fts MATCH ?1 ORDER BY bm25(web_pages_fts) LIMIT ?2"
             )?;
@@ -295,10 +298,11 @@ impl KnowledgeRepository {
                 kind: "web_page".into(), id: row.get(0)?, title: row.get(1)?,
                 excerpt: row.get(2)?, updated_at: row.get(3)?, url: Some(row.get(4)?),
                 conversation_id: None,
+                score: -row.get::<_, f64>(5)?,
             }))?;
             hits.extend(rows.collect::<std::result::Result<Vec<_>, _>>()?);
         }
-        hits.sort_by(|a,b| b.updated_at.cmp(&a.updated_at));
+        hits.sort_by(|a,b| b.score.total_cmp(&a.score).then_with(|| b.updated_at.cmp(&a.updated_at)));
         hits.truncate(limit.clamp(1, 100));
         Ok(hits)
     }
