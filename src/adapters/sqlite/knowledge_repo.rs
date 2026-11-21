@@ -332,6 +332,20 @@ impl KnowledgeRepository {
             }))?;
             hits.extend(rows.collect::<std::result::Result<Vec<_>, _>>()?);
         }
+        {
+            let mut stmt = conn.prepare(
+                "SELECT h.id,h.title,snippet(browser_history_fts,1,'','','…',24),
+                        h.last_visit_time,h.url,bm25(browser_history_fts)
+                 FROM browser_history_fts f JOIN browser_history h ON h.id=CAST(f.history_id AS INTEGER)
+                 WHERE browser_history_fts MATCH ?1 ORDER BY bm25(browser_history_fts) LIMIT ?2"
+            )?;
+            let rows = stmt.query_map(params![fts_query, limit.clamp(1, 100) as i64], |row| Ok(KnowledgeHit {
+                kind: "history".into(), id: row.get(0)?, title: row.get(1)?,
+                excerpt: row.get(2)?, updated_at: row.get(3)?, url: Some(row.get(4)?),
+                conversation_id: None, score: -row.get::<_, f64>(5)?,
+            }))?;
+            hits.extend(rows.collect::<std::result::Result<Vec<_>, _>>()?);
+        }
         hits.sort_by(|a,b| b.score.total_cmp(&a.score).then_with(|| b.updated_at.cmp(&a.updated_at)));
         let mut seen = HashSet::new();
         hits.retain(|hit| seen.insert((hit.kind.clone(), hit.id)));
