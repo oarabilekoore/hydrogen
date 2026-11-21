@@ -24,6 +24,9 @@ pub struct AnswerArgs {
     /// Generate the answer HTML and open it in the default browser
     #[arg(long)]
     pub browser: bool,
+    /// Recent conversation context as plain text (not used as factual evidence)
+    #[arg(long)]
+    pub history: Option<String>,
 }
 
 fn query_variants(query: &str, max_variants: usize) -> Vec<String> {
@@ -447,7 +450,10 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
             },
             {
                 "role": "user",
-                "content": format!("QUESTION:\n{query}\n\nRETRIEVED COURSE EXCERPTS:\n{context}")
+                "content": format!(
+                    "RECENT CONVERSATION (context only; not factual evidence):\n{}\n\nCURRENT QUESTION:\n{query}\n\nRETRIEVED COURSE EXCERPTS:\n{context}",
+                    args.history.as_deref().unwrap_or("").chars().take(8000).collect::<String>()
+                )
             }
         ],
         "stream": false,
