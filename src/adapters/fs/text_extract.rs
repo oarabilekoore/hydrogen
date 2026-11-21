@@ -10,9 +10,6 @@ use std::process::{Command, Stdio};
 use zip::ZipArchive;
 
 const MAX_EXTRACT_BYTES: u64 = 15 * 1024 * 1024;
-const MIN_IMAGE_BYTES: u64 = 10 * 1024;
-const MAX_IMAGE_BYTES: u64 = 25 * 1024 * 1024;
-const MIN_IMAGE_DIM: u32 = 128;
 const MAX_TEXT_CHARS: usize = 120_000;
 const MAX_ARCHIVE_XML_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_ARCHIVE_TOTAL_XML_BYTES: u64 = 24 * 1024 * 1024;
@@ -26,19 +23,6 @@ const TEXT_EXTS: &[&str] = &[
 
 const XML_ZIP_EXTS: &[&str] = &["docx", "odt", "epub", "pptx", "xlsx"];
 
-const IMAGE_SKIP_DIRS: &[&str] = &[
-    "assets",
-    "asset",
-    "cursors",
-    "cursor",
-    "icons",
-    "icon",
-    "themes",
-    "theme",
-    "sprites",
-    "thumbnails",
-    ".thumbnails",
-];
 
 /// True for files whose indexed body is the raw file text, so a body line number
 /// is also the line number in the file (not PDFs or zipped XML formats).
@@ -49,7 +33,9 @@ pub fn is_plain_text_path(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
-pub struct CompositeTextExtractor;
+pub struct CompositeTextExtractor {
+    pub images: crate::config::ImageIndexingConfig,
+}
 
 impl TextExtractor for CompositeTextExtractor {
     fn extract_text(&self, path: &Path, size: u64) -> String {
@@ -79,23 +65,23 @@ impl TextExtractor for CompositeTextExtractor {
     }
 
     fn is_indexable_image(&self, path: &Path, size: u64) -> bool {
-        if !is_image_extension(path) {
+        if !self.images.enabled || !is_image_extension(path) {
             return false;
         }
-        if !(MIN_IMAGE_BYTES..=MAX_IMAGE_BYTES).contains(&size) {
+        if !(self.images.min_file_bytes..=self.images.max_file_bytes).contains(&size) {
             return false;
         }
         if let Some(parent) = path.parent() {
             for comp in parent.components() {
-                if let Some(s) = comp.as_os_str().to_str() {
-                    if IMAGE_SKIP_DIRS.contains(&s.to_ascii_lowercase().as_str()) {
+                if let Some(name) = comp.as_os_str().to_str() {
+                    if self.images.excluded_directories.iter().any(|excluded| excluded.eq_ignore_ascii_case(name)) {
                         return false;
                     }
                 }
             }
         }
         if let Some((w, h)) = get_image_dimensions(path) {
-            if w < MIN_IMAGE_DIM || h < MIN_IMAGE_DIM {
+            if w < self.images.min_dimension || h < self.images.min_dimension {
                 return false;
             }
         }
