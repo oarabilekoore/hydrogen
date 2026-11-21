@@ -24,10 +24,10 @@ pub fn run(args: DaemonArgs, cfg: &AppConfig) -> Result<()> {
     let _ = ctrlc::set_handler(move || r_flag.store(false, Ordering::SeqCst));
 
     let repo = SqliteIndexRepository::open(&cfg.db_path)?;
-    let scanner = WalkDirScanner::new(cfg.search_roots.clone());
-    let extractor = CompositeTextExtractor;
-    let ml = RustOcrProvider::new(cfg.models_dir.clone());
-    let embeddings = FastEmbedProvider::new(cfg.models_dir.clone());
+    let scanner = WalkDirScanner::new(cfg.search_roots.clone(), cfg.settings.search.excluded_directories.clone(), cfg.settings.search.excluded_extensions.clone());
+    let extractor = CompositeTextExtractor { images: cfg.settings.indexing.images.clone() };
+    let ml = RustOcrProvider::new(cfg.models_dir.clone(), cfg.inference_threads, cfg.settings.indexing.images.captions);
+    let embeddings = FastEmbedProvider::new(cfg.models_dir.clone(), cfg.inference_threads);
     let sync_service = SyncService::new(cfg, &repo, &scanner, &extractor, &ml, &ml, &embeddings);
     let mut watcher = LinuxInotifyWatcher::new(cfg.search_roots.clone())?;
     let mut daemon = WatcherService::new(cfg, &repo, &sync_service, &mut watcher, !args.no_images);
