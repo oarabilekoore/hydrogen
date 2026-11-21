@@ -417,7 +417,12 @@ impl KnowledgeStore {
             let rows = stmt.query_map(params![fts_query, limit.clamp(1, 100) as i64], |row| {
                 let role: String = row.get(4)?;
                 Ok(KnowledgeHit {
-                    kind: if role == "assistant" { "answer" } else { "conversation" }.into(),
+                    kind: if role == "assistant" {
+                        "answer"
+                    } else {
+                        "conversation"
+                    }
+                    .into(),
                     id: row.get(0)?,
                     title: row.get(1)?,
                     snippet: row.get(2)?,
@@ -603,7 +608,9 @@ mod tests {
         assert_eq!(messages[0].role, "user");
         assert_eq!(messages[1].sources.as_ref(), Some(&sources));
         let hits = store.search_saved_knowledge("throttling", 10).unwrap();
-        assert!(hits.iter().any(|hit| hit.id == id && hit.kind == "conversation"));
+        assert!(hits
+            .iter()
+            .any(|hit| hit.id == id && hit.kind == "conversation"));
         assert!(hits.iter().any(|hit| hit.id == id && hit.kind == "answer"));
     }
 
