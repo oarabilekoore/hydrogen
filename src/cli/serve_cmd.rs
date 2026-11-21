@@ -198,6 +198,7 @@ fn handle_api(mut request: Request, cfg: &AppConfig, store: &KnowledgeStore, job
         set_job(jobs, &job_id, json!({"id":job_id,"status":"queued"}));
 
         let worker_jobs = Arc::clone(jobs);
+        let worker_conversation = conversation.clone();
         let db_path = cfg.db_path.clone();
         let model = cfg.settings.answer.model.clone();
         let worker_id = job_id.clone();
@@ -235,7 +236,7 @@ fn handle_api(mut request: Request, cfg: &AppConfig, store: &KnowledgeStore, job
                 let sources = result.get("sources");
                 let saved = KnowledgeStore::open(&db_path).and_then(|knowledge| {
                     knowledge.append_message_with_sources(
-                        &conversation,
+                        &worker_conversation,
                         "assistant",
                         answer,
                         model,
