@@ -1,3 +1,4 @@
+use crate::adapters::sqlite::knowledge::KnowledgeStore;
 use crate::adapters::sqlite::repo::SqliteIndexRepository;
 use crate::config::AppConfig;
 use crate::error::Result;
@@ -236,6 +237,12 @@ fn write_answer_html(
         let name = source.get("name").and_then(Value::as_str).unwrap_or(path);
         let page = source.get("page").and_then(Value::as_u64);
         let line = source.get("line").and_then(Value::as_u64);
+        let source_url = source
+            .get("url")
+            .and_then(Value::as_str)
+            .filter(|url| !url.is_empty())
+            .map(str::to_owned)
+            .unwrap_or_else(|| source_file_url(path, page));
         let snippet = source.get("snippet").and_then(Value::as_str).unwrap_or("");
         let location = page
             .map(|n| format!("Page {n}"))
@@ -243,7 +250,7 @@ fn write_answer_html(
             .unwrap_or_else(|| "Indexed passage".to_string());
         source_html.push_str(&format!(
             "<article class=\"source\" id=\"source-{id}\"><div class=\"source-head\"><a href=\"{}\">{}</a><span>{}</span></div><p>{}</p><pre>{}</pre></article>",
-            escape_html(&source_file_url(path, page)),
+            escape_html(&source_url),
             escape_html(name),
             escape_html(&location),
             escape_html(path),
@@ -412,6 +419,38 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
         }));
     }
 
+    // Include saved web articles when the local file index did not fill the
+    // configured retrieval budget. Captured pages remain offline and searchable.
+    if sources.len() < limit {
+        let knowledge = KnowledgeStore::open(&cfg.db_path).map_err(|error| {
+            crate::error::HydrogenError::Config(format!("could not open saved knowledge: {error}"))
+        })?;
+        let remaining = limit.saturating_sub(sources.len());
+        for page in knowledge.search_web_pages(query, remaining)? {
+            let id = sources.len() + 1;
+            let snippet: String = page.content.chars()
+                .take(answer_cfg.context_chars_per_passage)
+                .collect();
+            if snippet.trim().is_empty() {
+                continue;
+            }
+            context.push_str(&format!(
+                "[{id}] {} ({})\\n{}\\n\\n",
+                page.title, page.url, snippet
+            ));
+            sources.push(json!({
+                "id": id,
+                "kind": "web_page",
+                "path": "",
+                "name": page.title,
+                "url": page.url,
+                "page": null,
+                "line": null,
+                "snippet": snippet
+            }));
+        }
+    }
+
     if sources.is_empty() {
         println!(
             "{}",
@@ -427,7 +466,7 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
          If no excerpt actually explains or defines the requested concept, respond exactly: 'I cannot find an explanation in the indexed sources.'\n\
          Every factual sentence must end with a citation to the excerpt that directly supports it, such as [1]. Never invent citations.\n\
          If sources disagree or are incomplete, explicitly say so. Keep the answer concise.\n\n\
-         QUESTION:\n{query}\n\nRETRIEVED COURSE EXCERPTS:\n{context}\nANSWER:"
+         QUESTION:\n{query}\n\nRETRIEVED INDEXED EXCERPTS:\n{context}\nANSWER:"
     );
     // Use /api/chat and explicitly disable thinking for this source-grounded
     // answer path. Small local models can otherwise spend the entire output
