@@ -302,6 +302,30 @@ fn handle_request(mut request: Request, cfg: &mut AppConfig) {
         };
     }
 
+    if method == "POST" && path == "/api/history/import" {
+        let body = match read_json(&mut request) {
+            Ok(value) => value,
+            Err(error) => return json_response(json!({"error":error}), 400, origin_ref),
+        };
+        let raw = body.get("entries").and_then(Value::as_array).cloned().unwrap_or_default();
+        if raw.len() > 1000 {
+            return json_response(json!({"error":"history import is limited to 1000 entries per batch"}), 413, origin_ref);
+        }
+        let entries: Vec<(String,String,i64,i64,i64)> = raw.iter().filter_map(|entry| {
+            let url = entry.get("url")?.as_str()?.to_string();
+            if !(url.starts_with("http://") || url.starts_with("https://")) { return None; }
+            let title = entry.get("title").and_then(Value::as_str).unwrap_or("").to_string();
+            let last_visit = entry.get("lastVisitTime").and_then(Value::as_i64).unwrap_or(0) / 1000;
+            let visits = entry.get("visitCount").and_then(Value::as_i64).unwrap_or(1).max(1);
+            let typed = entry.get("typedCount").and_then(Value::as_i64).unwrap_or(0).max(0);
+            Some((url,title,last_visit,visits,typed))
+        }).collect();
+        return match knowledge.import_browser_history(&entries) {
+            Ok(imported) => json_response(json!({"status":"imported","entries":imported}), 200, origin_ref),
+            Err(error) => json_response(json!({"error":error.to_string()}), 500, origin_ref),
+        };
+    }
+
     if method == "POST" && path == "/api/feeds" {
         if !cfg.settings.web.enabled || !cfg.settings.web.feeds_enabled {
             return json_response(json!({"error":"RSS and Atom feeds are disabled"}), 403, origin_ref);
