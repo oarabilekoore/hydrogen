@@ -23,6 +23,74 @@ pub struct AppConfig {
     pub settings: HydrogenSettings,
 }
 
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct WebConfig {
+    pub enabled: bool,
+    pub auto_index: bool,
+    pub minimum_text_length: usize,
+    pub minimum_paragraphs: usize,
+    pub max_page_size_mb: usize,
+    pub save_html: bool,
+    pub save_readable_snapshot: bool,
+    pub track_visits: bool,
+    pub version_pages: bool,
+}
+impl Default for WebConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            auto_index: true,
+            minimum_text_length: 800,
+            minimum_paragraphs: 4,
+            max_page_size_mb: 10,
+            save_html: false,
+            save_readable_snapshot: true,
+            track_visits: true,
+            version_pages: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ConversationConfig {
+    pub enabled: bool,
+    pub capture_ai_chats: bool,
+    pub index_attachments: bool,
+    pub deduplicate: bool,
+}
+impl Default for ConversationConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            capture_ai_chats: true,
+            index_attachments: true,
+            deduplicate: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct FrontendConfig {
+    pub enabled: bool,
+    pub bind: String,
+    pub port: u16,
+    pub auto_open: bool,
+}
+impl Default for FrontendConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            bind: "127.0.0.1".into(),
+            port: 17843,
+            auto_open: true,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct HydrogenSettings {
@@ -34,6 +102,9 @@ pub struct HydrogenSettings {
     pub answer: AnswerConfig,
     pub calendar: CalendarConfig,
     pub watch: WatchConfig,
+    pub web: WebConfig,
+    pub conversations: ConversationConfig,
+    pub frontend: FrontendConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -186,6 +257,9 @@ impl Default for HydrogenSettings {
             resources: ResourceConfig::default(),
             answer: AnswerConfig::default(),
             watch: WatchConfig::default(),
+            web: WebConfig::default(),
+            conversations: ConversationConfig::default(),
+            frontend: FrontendConfig::default(),
             calendar: CalendarConfig {
                 default_event_duration_mins: 60,
                 ics_globs: default_ics_globs(&home),
@@ -431,6 +505,10 @@ impl AppConfig {
             settings.watch.reconcile_interval_seconds.clamp(5, 3600);
         settings.watch.poll_interval_ms = settings.watch.poll_interval_ms.clamp(25, 2000);
         settings.search.default_limit = settings.search.default_limit.clamp(1, 100);
+        settings.web.minimum_text_length = settings.web.minimum_text_length.clamp(100, 100_000);
+        settings.web.minimum_paragraphs = settings.web.minimum_paragraphs.clamp(1, 100);
+        settings.web.max_page_size_mb = settings.web.max_page_size_mb.clamp(1, 100);
+        settings.frontend.port = settings.frontend.port.max(1024);
         settings.search.scan_max_depth = settings.search.scan_max_depth.clamp(1, 32);
         settings.search.scan_max_results = settings.search.scan_max_results.clamp(1, 100_000);
 
@@ -504,6 +582,9 @@ mod tests {
         assert!(settings.indexing.images.ocr);
         assert_eq!(settings.search.scan_max_depth, 6);
         assert_eq!(settings.answer.retrieval_limit, 8);
+        assert!(settings.web.auto_index);
+        assert!(settings.conversations.enabled);
+        assert_eq!(settings.frontend.port, 17843);
     }
 
     #[test]
