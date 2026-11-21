@@ -124,6 +124,7 @@ fn set_value(settings: &mut HydrogenSettings, key: &str, value: &str) -> Result<
         "web.save_readable_snapshot" => settings.web.save_readable_snapshot = parse_bool(value)?,
         "web.track_visits" => settings.web.track_visits = parse_bool(value)?,
         "web.version_pages" => settings.web.version_pages = parse_bool(value)?,
+        "web.max_versions_per_page" => settings.web.max_versions_per_page = number!(usize),
         "web.max_page_size_mb" => settings.web.max_page_size_mb = number!(usize),
         "web.feed_enabled" => settings.web.feed_enabled = parse_bool(value)?,
         "web.feed_interval_hours" => settings.web.feed_interval_hours = number!(u64),
