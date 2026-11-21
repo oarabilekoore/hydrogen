@@ -47,6 +47,23 @@
     return ranked[0] || { text: cleanText(document.body), paragraphs: document.querySelectorAll("p").length, metadata: {} };
   }
 
+  function isSupportedChatHost() {
+    const host = location.hostname.toLowerCase();
+    return [
+      "chatgpt.com",
+      "chat.openai.com",
+      "claude.ai",
+      "gemini.google.com",
+      "perplexity.ai",
+      "deepseek.com",
+      "copilot.microsoft.com",
+      "bing.com",
+      "grok.com",
+      "poe.com",
+      "chat.mistral.ai"
+    ].some(domain => host === domain || host.endsWith("." + domain));
+  }
+
   function pageMetadata(article = {}) {
     const get = selector => document.querySelector(selector)?.content?.trim() || "";
     const canonical = document.querySelector('link[rel="canonical"]')?.href || location.href;
