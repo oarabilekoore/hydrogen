@@ -26,8 +26,6 @@ hydrogen config path
 
 ```toml
 [paths]
-state_dir = "~/.local/state/hydrogen"
-models_dir = "~/.local/share/hydrogen/models"
 roots = [
   "~/Documents",
   "~/Downloads",
