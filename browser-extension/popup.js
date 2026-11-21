@@ -30,4 +30,8 @@ document.getElementById("importHistory").addEventListener("click", async () => {
     status.textContent = "History import failed: " + error.message;
   }
 });
-\ndocument.getElementById("apiBase").addEventListener("change", async event => {\n  await chrome.storage.local.set({ apiBase: event.target.value.trim() || "http://127.0.0.1:17891" });\n  document.getElementById("status").textContent = "Hydrogen service address saved.";\n});\n
+
+document.getElementById("apiBase").addEventListener("change", async event => {
+  await chrome.storage.local.set({ apiBase: event.target.value.trim() || "http://127.0.0.1:17891" });
+  document.getElementById("status").textContent = "Hydrogen service address saved.";
+});

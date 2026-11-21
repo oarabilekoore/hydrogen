@@ -1,5 +1,6 @@
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::Serialize;
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -410,22 +411,26 @@ impl KnowledgeStore {
         {
             let mut stmt = conn.prepare(
                 "SELECT m.conversation_id,c.title,
-                        COALESCE(
-                            (SELECT substr(a.content,1,240) FROM messages a
-                             WHERE a.conversation_id=m.conversation_id AND a.role='assistant'
-                             ORDER BY a.rowid DESC LIMIT 1),
-                            snippet(messages_fts,2,'','','…',24)
-                        ),
+                        CASE
+                            WHEN m.role='assistant' THEN substr(m.content,1,240)
+                            ELSE COALESCE(
+                                (SELECT substr(a.content,1,240) FROM messages a
+                                 WHERE a.conversation_id=m.conversation_id
+                                   AND a.role='assistant' AND a.rowid > m.rowid
+                                 ORDER BY a.rowid ASC LIMIT 1),
+                                snippet(messages_fts,2,'','','…',24)
+                            )
+                        END,
                         c.updated_at,
                         EXISTS(SELECT 1 FROM messages a
                                WHERE a.conversation_id=m.conversation_id AND a.role='assistant')
                  FROM messages_fts JOIN messages m ON m.rowid=messages_fts.rowid
                  JOIN conversations c ON c.id=m.conversation_id
                  WHERE messages_fts MATCH ?1
-                 GROUP BY m.conversation_id
                  ORDER BY bm25(messages_fts) LIMIT ?2",
             )?;
-            let rows = stmt.query_map(params![fts_query, limit.clamp(1, 100) as i64], |row| {
+            let scan_limit = limit.clamp(1, 100).saturating_mul(5);
+            let rows = stmt.query_map(params![fts_query, scan_limit as i64], |row| {
                 let has_answer: bool = row.get(4)?;
                 Ok(KnowledgeHit {
                     kind: if has_answer { "answer" } else { "conversation" }.into(),
@@ -436,7 +441,16 @@ impl KnowledgeStore {
                     updated_at: row.get(3)?,
                 })
             })?;
-            hits.extend(rows.collect::<rusqlite::Result<Vec<_>>>()?);
+            let mut seen_conversations = HashSet::new();
+            for row in rows {
+                let hit = row?;
+                if seen_conversations.insert(hit.id.clone()) {
+                    hits.push(hit);
+                    if hits.len() >= limit.clamp(1, 100) {
+                        break;
+                    }
+                }
+            }
         }
         {
             let mut stmt = conn.prepare(
@@ -621,6 +635,43 @@ mod tests {
         assert!(answer_hit
             .snippet
             .contains("A restriction that reduces pressure"));
+    }
+
+    #[test]
+    fn question_search_returns_the_answer_that_follows_that_question() {
+        let store = test_store("answer-pairing");
+        let id = store.create_conversation("Study session").unwrap();
+        store
+            .append_message(&id, "user", "What is throttling?", None)
+            .unwrap();
+        store
+            .append_message(
+                &id,
+                "assistant",
+                "Throttling is a pressure-reducing process.",
+                Some("local-model"),
+            )
+            .unwrap();
+        store
+            .append_message(&id, "user", "What is enthalpy?", None)
+            .unwrap();
+        store
+            .append_message(
+                &id,
+                "assistant",
+                "Enthalpy is a thermodynamic property.",
+                Some("local-model"),
+            )
+            .unwrap();
+
+        let hits = store.search_saved_knowledge("throttling", 10).unwrap();
+        let hit = hits
+            .iter()
+            .find(|hit| hit.id == id)
+            .expect("the conversation should be searchable");
+        assert_eq!(hit.kind, "answer");
+        assert!(hit.snippet.contains("pressure-reducing"));
+        assert!(!hit.snippet.contains("thermodynamic property"));
     }
 
     #[test]
