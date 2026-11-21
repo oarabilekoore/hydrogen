@@ -125,6 +125,8 @@ pub(crate) fn set_value(settings: &mut HydrogenSettings, key: &str, value: &str)
         "web.allow_domains" => settings.web.allow_domains = parse_list(value)?,
         "web.exclude_domains" => settings.web.exclude_domains = parse_list(value)?,
         "web.exclude_patterns" => settings.web.exclude_patterns = parse_list(value)?,
+        "web.feeds_enabled" => settings.web.feeds_enabled = parse_bool(value)?,
+        "web.feed_check_interval_hours" => settings.web.feed_check_interval_hours = number!(u64),
         "conversations.enabled" => settings.conversations.enabled = parse_bool(value)?,
         "conversations.capture_ai_chats" => settings.conversations.capture_ai_chats = parse_bool(value)?,
         "conversations.index_attachments" => settings.conversations.index_attachments = parse_bool(value)?,
