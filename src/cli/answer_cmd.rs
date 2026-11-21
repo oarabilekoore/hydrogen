@@ -72,7 +72,7 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
          QUESTION:\n{query}\n\nRETRIEVED DOCUMENT EXCERPTS:\n{context}\nANSWER:"
     );
     let payload = json!({
-        "model": args.model,
+        "model": &args.model,
         "prompt": prompt,
         "stream": false,
         "options": {
