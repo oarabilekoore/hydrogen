@@ -17,8 +17,62 @@ async function post(path, payload) {
   return body;
 }
 
+async function waitForTab(tabId, timeoutMs = 20000) {
+  const current = await chrome.tabs.get(tabId);
+  if (current.status === "complete") return;
+  await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      chrome.tabs.onUpdated.removeListener(listener);
+      reject(new Error("Timed out loading a history page"));
+    }, timeoutMs);
+    const listener = (id, change) => {
+      if (id === tabId && change.status === "complete") {
+        clearTimeout(timer);
+        chrome.tabs.onUpdated.removeListener(listener);
+        resolve();
+      }
+    };
+    chrome.tabs.onUpdated.addListener(listener);
+  });
+}
+
+async function importRecentHistory() {
+  const prefs = await settings();
+  const days = 30;
+  const entries = await chrome.history.search({
+    text: "",
+    startTime: Date.now() - days * 24 * 60 * 60 * 1000,
+    maxResults: 20
+  });
+  let captured = 0;
+  let skipped = 0;
+  for (const entry of entries) {
+    if (!entry.url || !/^https?:\/\//i.test(entry.url)) { skipped++; continue; }
+    const host = new URL(entry.url).hostname;
+    if (prefs.excludedHosts.some(item => host === item || host.endsWith("." + item))) { skipped++; continue; }
+    let tab;
+    try {
+      tab = await chrome.tabs.create({ url: entry.url, active: false });
+      await waitForTab(tab.id);
+      await chrome.tabs.sendMessage(tab.id, { type: "CAPTURE_HISTORY" });
+      await new Promise(resolve => setTimeout(resolve, 1200));
+      captured++;
+    } catch (_) {
+      skipped++;
+    } finally {
+      if (tab?.id) await chrome.tabs.remove(tab.id).catch(() => {});
+    }
+  }
+  return { captured, skipped, considered: entries.length };
+}
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   (async () => {
+    if (message.type === "IMPORT_HISTORY") {
+      const result = await importRecentHistory();
+      sendResponse({ ok: true, result });
+      return;
+    }
     if (message.type === "GET_CONFIG") {
       const response = await fetch(API + "/api/settings");
       if (!response.ok) throw new Error("Hydrogen settings are unavailable");
