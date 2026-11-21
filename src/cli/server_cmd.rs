@@ -337,7 +337,7 @@ fn encode_query(value: &str) -> String {
     encoded
 }
 
-pub fn run(cfg: &AppConfig, ask: Option<&str>, conversation: Option<i64>) -> Result<()> {
+pub fn run(cfg: &AppConfig, ask: Option<&str>, conversation: Option<i64>, page: Option<i64>) -> Result<()> {
     if !cfg.settings.frontend.enabled {
         return Err(HydrogenError::Config("frontend is disabled in Hydrogen configuration".into()));
     }
@@ -352,6 +352,8 @@ pub fn run(cfg: &AppConfig, ask: Option<&str>, conversation: Option<i64>) -> Res
         url.push_str(&encode_query(question.trim()));
     } else if let Some(id) = conversation {
         url.push_str(&format!("?conversation={id}"));
+    } else if let Some(id) = page {
+        url.push_str(&format!("?page={id}"));
     }
 
     if TcpStream::connect_timeout(
