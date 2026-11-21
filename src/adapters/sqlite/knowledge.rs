@@ -46,6 +46,7 @@ pub struct KnowledgeHit {
     pub id: String,
     pub title: String,
     pub snippet: String,
+    pub url: Option<String>,
     pub updated_at: i64,
 }
 
@@ -310,6 +311,7 @@ impl KnowledgeStore {
                     id: row.get(0)?,
                     title: row.get(1)?,
                     snippet: row.get(2)?,
+                    url: None,
                     updated_at: row.get(3)?,
                 })
             })?;
@@ -317,8 +319,10 @@ impl KnowledgeStore {
         }
         {
             let mut stmt = conn.prepare(
-                "SELECT CAST(id AS TEXT),title,snippet(web_pages_fts,2,'','','…',24),updated_at
-                 FROM web_pages_fts WHERE web_pages_fts MATCH ?1
+                "SELECT CAST(web_pages.id AS TEXT),web_pages.title,
+                        snippet(web_pages_fts,2,'','','…',24),web_pages.updated_at,web_pages.url
+                 FROM web_pages_fts JOIN web_pages ON web_pages.id=web_pages_fts.rowid
+                 WHERE web_pages_fts MATCH ?1
                  ORDER BY bm25(web_pages_fts) LIMIT ?2",
             )?;
             let rows = stmt.query_map(params![fts_query, limit.clamp(1, 100) as i64], |row| {
@@ -328,6 +332,7 @@ impl KnowledgeStore {
                     title: row.get(1)?,
                     snippet: row.get(2)?,
                     updated_at: row.get(3)?,
+                    url: Some(row.get(4)?),
                 })
             })?;
             hits.extend(rows.collect::<rusqlite::Result<Vec<_>>>()?);
