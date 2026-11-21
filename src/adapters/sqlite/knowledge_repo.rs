@@ -275,9 +275,11 @@ impl KnowledgeRepository {
         {
             let mut stmt = conn.prepare(
                 "SELECT m.conversation_id, c.title, snippet(messages_fts, 3, '', '', '…', 24),
-                        c.updated_at, m.conversation_id, bm25(messages_fts)
+                        c.updated_at, m.conversation_id, MIN(bm25(messages_fts))
                  FROM messages_fts m JOIN conversations c ON c.id=m.conversation_id
-                 WHERE messages_fts MATCH ?1 ORDER BY bm25(messages_fts) LIMIT ?2"
+                 WHERE messages_fts MATCH ?1
+                 GROUP BY m.conversation_id
+                 ORDER BY MIN(bm25(messages_fts)) LIMIT ?2"
             )?;
             let rows = stmt.query_map(params![fts_query, limit.clamp(1, 100) as i64], |row| Ok(KnowledgeHit {
                 kind: "conversation".into(), id: row.get(0)?, title: row.get(1)?,
