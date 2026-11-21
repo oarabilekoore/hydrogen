@@ -36,7 +36,7 @@ impl RustOcrProvider {
             models_dir,
             printed_model_dir,
             formula_model_file,
-            inference_threads: inference_threads.clamp(1, 2),
+            inference_threads,
             printed: OnceLock::new(),
             formula: OnceLock::new(),
             #[cfg(feature = "image-captioning")]
