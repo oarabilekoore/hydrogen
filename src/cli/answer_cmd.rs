@@ -229,7 +229,9 @@ fn write_answer_html(
 main {{ width:min(900px,calc(100% - 36px)); margin:48px auto 80px; }} header {{ border-bottom:1px solid var(--line); padding-bottom:22px; margin-bottom:28px; }}
 .eyebrow {{ color:var(--accent); text-transform:uppercase; letter-spacing:.12em; font-size:12px; font-weight:700; }}
 h1 {{ font-size:clamp(25px,4vw,38px); line-height:1.2; margin:10px 0; }} .meta {{ color:var(--muted); font-size:13px; }}
-.answer {{ background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:clamp(20px,4vw,36px); overflow-wrap:anywhere; }}\n.answer p {{ margin:0 0 16px; }} .answer p:last-child {{ margin-bottom:0; }} .answer h2,.answer h3 {{ line-height:1.3; margin:26px 0 12px; }}\n.answer ul {{ padding-left:24px; }} .answer li {{ margin:6px 0; }} .answer pre {{ overflow:auto; padding:16px; background:#0b0c0e; border-radius:8px; white-space:pre-wrap; }}
+.answer {{ background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:clamp(20px,4vw,36px); overflow-wrap:anywhere; }}
+.answer p {{ margin:0 0 16px; }} .answer p:last-child {{ margin-bottom:0; }} .answer h2,.answer h3 {{ line-height:1.3; margin:26px 0 12px; }}
+.answer ul {{ padding-left:24px; }} .answer li {{ margin:6px 0; }} .answer pre {{ overflow:auto; padding:16px; background:#0b0c0e; border-radius:8px; white-space:pre-wrap; }}
 .sources {{ margin-top:38px; }} .source {{ background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:16px 18px; margin:12px 0; }}
 .source-head {{ display:flex; flex-wrap:wrap; gap:12px; justify-content:space-between; }} a {{ color:var(--accent); text-decoration:none; }} a:hover {{ text-decoration:underline; }}
 .source-head span {{ color:var(--muted); font-size:13px; }} .source p {{ color:var(--muted); font-size:12px; overflow-wrap:anywhere; }}
