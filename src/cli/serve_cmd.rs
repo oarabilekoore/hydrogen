@@ -43,6 +43,50 @@ fn read_body(request: &mut Request) -> std::io::Result<String> {
     Ok(body)
 }
 
+fn decode_query_component(value: &str) -> String {
+    let bytes = value.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        match bytes[index] {
+            b'+' => {
+                decoded.push(b' ');
+                index += 1;
+            }
+            b'%' if index + 2 < bytes.len() => {
+                let hex = |byte: u8| match byte {
+                    b'0'..=b'9' => Some(byte - b'0'),
+                    b'a'..=b'f' => Some(byte - b'a' + 10),
+                    b'A'..=b'F' => Some(byte - b'A' + 10),
+                    _ => None,
+                };
+                if let (Some(high), Some(low)) = (hex(bytes[index + 1]), hex(bytes[index + 2])) {
+                    decoded.push((high << 4) | low);
+                    index += 3;
+                } else {
+                    decoded.push(bytes[index]);
+                    index += 1;
+                }
+            }
+            byte => {
+                decoded.push(byte);
+                index += 1;
+            }
+        }
+    }
+    String::from_utf8_lossy(&decoded).into_owned()
+}
+
+fn query_parameter(url: &str, name: &str) -> Option<String> {
+    url.split_once('?')?
+        .1
+        .split('&')
+        .filter_map(|pair| pair.split_once('='))
+        .find_map(|(key, value)| {
+            (decode_query_component(key) == name).then(|| decode_query_component(value))
+        })
+}
+
 fn run_cli(args: &[&str]) -> std::io::Result<std::process::Output> {
     let executable = std::env::current_exe()?;
     Command::new(executable).args(args).output()
@@ -554,10 +598,7 @@ fn handle_api(mut request: Request, cfg: &AppConfig, store: &KnowledgeStore, job
     }
 
     if parts.as_slice() == ["api", "search"] && method == Method::Get {
-        let query = url
-            .split_once("?q=")
-            .map(|(_, q)| q.replace('+', " "))
-            .unwrap_or_default();
+        let query = query_parameter(&url, "q").unwrap_or_default();
         match store.search_saved_knowledge(&query, 30) {
             Ok(saved) => {
                 let mut results: Vec<Value> = saved
