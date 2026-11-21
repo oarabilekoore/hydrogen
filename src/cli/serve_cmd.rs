@@ -2,10 +2,10 @@ use crate::adapters::sqlite::knowledge::KnowledgeStore;
 use crate::config::AppConfig;
 use crate::error::{HydrogenError, Result};
 use serde_json::{json, Value};
+use std::collections::HashMap;
 use std::io::Read;
 use std::net::TcpStream;
 use std::process::Command;
-use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
@@ -202,7 +202,11 @@ fn handle_api(mut request: Request, cfg: &AppConfig, store: &KnowledgeStore, job
         let model = cfg.settings.answer.model.clone();
         let worker_id = job_id.clone();
         thread::spawn(move || {
-            set_job(&worker_jobs, &worker_id, json!({"id":worker_id,"status":"generating","model":model}));
+            set_job(
+                &worker_jobs,
+                &worker_id,
+                json!({"id":worker_id,"status":"generating","model":model}),
+            );
             let output = run_cli(&["answer", "--no-save", &question]);
             let result = match output {
                 Ok(output) => match serde_json::from_slice::<Value>(&output.stdout) {
@@ -229,31 +233,55 @@ fn handle_api(mut request: Request, cfg: &AppConfig, store: &KnowledgeStore, job
                 let answer = result.get("answer").and_then(Value::as_str).unwrap_or("");
                 let model = result.get("model").and_then(Value::as_str);
                 let sources = result.get("sources");
-                let saved = KnowledgeStore::open(&db_path)
-                    .and_then(|knowledge| knowledge.append_message_with_sources(
-                        &conversation, "assistant", answer, model, sources
-                    ));
+                let saved = KnowledgeStore::open(&db_path).and_then(|knowledge| {
+                    knowledge.append_message_with_sources(
+                        &conversation,
+                        "assistant",
+                        answer,
+                        model,
+                        sources,
+                    )
+                });
                 if let Err(error) = saved {
-                    set_job(&worker_jobs, &worker_id, json!({
-                        "id":worker_id,
-                        "status":"failed",
-                        "error":format!("answer generated but could not be saved: {error}"),
-                        "generation":result
-                    }));
+                    set_job(
+                        &worker_jobs,
+                        &worker_id,
+                        json!({
+                            "id":worker_id,
+                            "status":"failed",
+                            "error":format!("answer generated but could not be saved: {error}"),
+                            "generation":result
+                        }),
+                    );
                     return;
                 }
             }
 
-            let status = result.get("status").and_then(Value::as_str).unwrap_or("unavailable");
-            let final_status = if status == "ready" { "ready" } else { "unavailable" };
-            set_job(&worker_jobs, &worker_id, json!({
-                "id":worker_id,
-                "status":final_status,
-                "result":result
-            }));
+            let status = result
+                .get("status")
+                .and_then(Value::as_str)
+                .unwrap_or("unavailable");
+            let final_status = if status == "ready" {
+                "ready"
+            } else {
+                "unavailable"
+            };
+            set_job(
+                &worker_jobs,
+                &worker_id,
+                json!({
+                    "id":worker_id,
+                    "status":final_status,
+                    "result":result
+                }),
+            );
         });
 
-        json(request, 202, json!({"status":"queued","job_id":job_id,"conversation_id":conversation}));
+        json(
+            request,
+            202,
+            json!({"status":"queued","job_id":job_id,"conversation_id":conversation}),
+        );
         return;
     }
 
