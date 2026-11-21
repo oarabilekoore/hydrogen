@@ -344,6 +344,32 @@ impl KnowledgeRepository {
         Ok(page_id)
     }
 
+    pub fn get_web_page(&self, id: i64) -> Result<Option<serde_json::Value>> {
+        let conn = self.connect()?;
+        conn.query_row(
+            "SELECT id,canonical_url,url,title,author,published_at,site_name,readable_text,
+                    saved_html,content_hash,first_seen,last_seen,visits,manually_saved
+             FROM web_pages WHERE id=?1",
+            [id],
+            |row| Ok(serde_json::json!({
+                "id":row.get::<_,i64>(0)?,
+                "canonical_url":row.get::<_,String>(1)?,
+                "url":row.get::<_,String>(2)?,
+                "title":row.get::<_,String>(3)?,
+                "author":row.get::<_,String>(4)?,
+                "published_at":row.get::<_,String>(5)?,
+                "site_name":row.get::<_,String>(6)?,
+                "readable_text":row.get::<_,String>(7)?,
+                "saved_html":row.get::<_,String>(8)?,
+                "content_hash":row.get::<_,String>(9)?,
+                "first_seen":row.get::<_,i64>(10)?,
+                "last_seen":row.get::<_,i64>(11)?,
+                "visits":row.get::<_,i64>(12)?,
+                "manually_saved":row.get::<_,i64>(13)? != 0
+            }))
+        ).optional().map_err(Into::into)
+    }
+
     pub fn import_captured_conversation(
         &self,
         source_key: &str,
