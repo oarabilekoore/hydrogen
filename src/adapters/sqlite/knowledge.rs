@@ -307,7 +307,11 @@ impl KnowledgeStore {
         )
     }
 
-    pub fn search_web_pages(&self, query: &str, limit: usize) -> rusqlite::Result<Vec<WebPageRecord>> {
+    pub fn search_web_pages(
+        &self,
+        query: &str,
+        limit: usize,
+    ) -> rusqlite::Result<Vec<WebPageRecord>> {
         let terms: Vec<String> = query
             .split(|character: char| !character.is_alphanumeric())
             .filter(|term| term.chars().count() >= 2)
