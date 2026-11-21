@@ -17,6 +17,9 @@ pub struct AnswerArgs {
     /// Ollama model tag (defaults to the installed lightweight Gemma model)
     #[arg(long, default_value = "gemma3:1b")]
     pub model: String,
+    /// Use enabled local MiniLM/CLIP vectors as additional retrieval channels.
+    #[arg(long)]
+    pub semantic: bool,
 }
 
 pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
@@ -35,7 +38,7 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
     let service = QueryService::new(&repo, &embeddings);
     // Keep RAG retrieval deterministic and cheap. It uses the same indexed
     // lexical/FTS5 passages as launcher search and does not download encoders.
-    let hits = service.search(query, args.limit.clamp(1, 8), "all", false)?;
+    let hits = service.search(query, args.limit.clamp(1, 8), "all", args.semantic)?;
 
     let mut sources = Vec::new();
     let mut context = String::new();
@@ -65,11 +68,7 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
     }
 
     let prompt = format!(
-        "You answer questions using ONLY the supplied source excerpts.\n\
-         If the excerpts do not contain enough information, say that the indexed documents do not provide enough information.\n\
-         Do not use outside knowledge, do not guess, and do not invent facts.\n\
-         Write a concise, direct answer. Add inline source citations such as [1] after each supported claim.\n\n\
-         QUESTION:\n{query}\n\nRETRIEVED DOCUMENT EXCERPTS:\n{context}\nANSWER:"
+        "You answer questions using ONLY the supplied source excerpts.\\nIf the excerpts do not contain enough information, say that the indexed documents do not provide enough information.\\nDo not use outside knowledge, do not guess, and do not invent facts.\\nWrite a concise, direct answer. Add inline source citations such as [1] after each supported claim.\\n\\nQUESTION:\\n{query}\\n\\nRETRIEVED DOCUMENT EXCERPTS:\\n{context}\\nANSWER:"
     );
     let payload = json!({
         "model": &args.model,
