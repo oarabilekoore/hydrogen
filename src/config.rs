@@ -39,6 +39,8 @@ pub struct WebConfig {
     pub allow_domains: Vec<String>,
     pub exclude_domains: Vec<String>,
     pub exclude_patterns: Vec<String>,
+    pub feeds_enabled: bool,
+    pub feed_check_interval_hours: u64,
 }
 impl Default for WebConfig {
     fn default() -> Self {
@@ -55,6 +57,8 @@ impl Default for WebConfig {
             allow_domains: Vec::new(),
             exclude_domains: Vec::new(),
             exclude_patterns: vec!["*/login/*".into(), "*/checkout/*".into()],
+            feeds_enabled: true,
+            feed_check_interval_hours: 12,
         }
     }
 }
