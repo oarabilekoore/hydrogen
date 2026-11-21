@@ -5,6 +5,7 @@ use serde_json::{json, Value};
 use std::io::Read;
 use std::net::TcpStream;
 use std::process::Command;
+use std::thread;
 use std::time::Duration;
 use tiny_http::{Header, Request, Response, Server, StatusCode};
 
@@ -413,6 +414,17 @@ pub fn run(cfg: &AppConfig, ask: Option<&str>, conversation: Option<i64>, page: 
         let _ = Command::new("xdg-open").arg(&url).spawn();
     }
     println!("{}", json!({"status":"ready","url":url,"database":cfg.db_path}));
+    let _feed_worker = thread::spawn(|| loop {
+        if let Ok(active) = AppConfig::load() {
+            if active.settings.web.enabled && active.settings.web.feeds_enabled {
+                let _ = crate::cli::web_cmd::sync_feeds(&active);
+            }
+            let hours = active.settings.web.feed_check_interval_hours.clamp(1, 168);
+            thread::sleep(Duration::from_secs(hours.saturating_mul(3600)));
+        } else {
+            thread::sleep(Duration::from_secs(3600));
+        }
+    });
     let mut active_config = cfg.clone();
     for request in server.incoming_requests() {
         handle_request(request, &mut active_config);
