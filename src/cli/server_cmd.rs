@@ -92,7 +92,8 @@ fn run_cli_json(args: &[&str]) -> std::result::Result<Value, String> {
         .map_err(|error| format!("Hydrogen CLI returned invalid JSON: {error}"))
 }
 
-fn handle_request(mut request: Request, cfg: &mut AppConfig) -> Response<std::io::Cursor<Vec<u8>>> {
+fn handle_request(mut request: Request, cfg: &mut AppConfig) {
+    let response = (|| -> Response<std::io::Cursor<Vec<u8>>> {
     let origin = request_origin(&request);
     let origin_ref = origin.as_deref();
     if !origin_allowed(origin_ref) {
@@ -281,6 +282,8 @@ fn handle_request(mut request: Request, cfg: &mut AppConfig) -> Response<std::io
     }
 
     json_response(json!({"error":"not found"}), 404, origin_ref)
+    })();
+    let _ = request.respond(response);
 }
 
 pub fn run(cfg: &AppConfig) -> Result<()> {
@@ -288,11 +291,11 @@ pub fn run(cfg: &AppConfig) -> Result<()> {
         return Err(HydrogenError::Config("frontend is disabled in Hydrogen configuration".into()));
     }
     let bind = cfg.settings.frontend.bind.as_str();
-    if !matches!(bind, "127.0.0.1" | "localhost" | "::1") {
+    if !matches!(bind, "127.0.0.1" | "localhost") {
         return Err(HydrogenError::Config("Hydrogen frontend may only bind to loopback addresses".into()));
     }
     let address = format!("{bind}:{}", cfg.settings.frontend.port);
-    let url = format!("http://{}:{}/", if bind == "::1" { "[::1]" } else { bind }, cfg.settings.frontend.port);
+    let url = format!("http://{}:{}/", bind, cfg.settings.frontend.port);
 
     if TcpStream::connect_timeout(
         &format!("{bind}:{}", cfg.settings.frontend.port).parse().map_err(|error| HydrogenError::Config(format!("invalid frontend address: {error}")))?,
@@ -313,10 +316,7 @@ pub fn run(cfg: &AppConfig) -> Result<()> {
     println!("{}", json!({"status":"ready","url":url,"database":cfg.db_path}));
     let mut active_config = cfg.clone();
     for request in server.incoming_requests() {
-        let response = handle_request(request, &mut active_config);
-        // A browser closing a tab should not terminate the local knowledge service.
-        // The request is already complete; ignore a disconnected client.
-        let _ = response;
+        handle_request(request, &mut active_config);
     }
     Ok(())
 }
