@@ -638,6 +638,43 @@ mod tests {
     }
 
     #[test]
+    fn question_search_returns_the_answer_that_follows_that_question() {
+        let store = test_store("answer-pairing");
+        let id = store.create_conversation("Study session").unwrap();
+        store
+            .append_message(&id, "user", "What is throttling?", None)
+            .unwrap();
+        store
+            .append_message(
+                &id,
+                "assistant",
+                "Throttling is a pressure-reducing process.",
+                Some("local-model"),
+            )
+            .unwrap();
+        store
+            .append_message(&id, "user", "What is enthalpy?", None)
+            .unwrap();
+        store
+            .append_message(
+                &id,
+                "assistant",
+                "Enthalpy is a thermodynamic property.",
+                Some("local-model"),
+            )
+            .unwrap();
+
+        let hits = store.search_saved_knowledge("throttling", 10).unwrap();
+        let hit = hits
+            .iter()
+            .find(|hit| hit.id == id)
+            .expect("the conversation should be searchable");
+        assert_eq!(hit.kind, "answer");
+        assert!(hit.snippet.contains("pressure-reducing"));
+        assert!(!hit.snippet.contains("thermodynamic property"));
+    }
+
+    #[test]
     fn captured_conversations_update_in_place() {
         let store = test_store("capture");
         let first = vec![
