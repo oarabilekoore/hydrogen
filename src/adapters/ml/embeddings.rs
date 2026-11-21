@@ -26,14 +26,10 @@ pub struct FastEmbedProvider {
 }
 
 impl FastEmbedProvider {
-    pub fn new(models_dir: PathBuf) -> Self {
+    pub fn new(models_dir: PathBuf, threads: usize) -> Self {
         Self {
             cache_dir: models_dir.join("embeddings").join("fastembed"),
-            threads: std::env::var("HYDROGEN_INFERENCE_THREADS")
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(2)
-                .clamp(1, 2),
+            threads: threads.clamp(1, 2),
             text: OnceLock::new(),
             clip_text: OnceLock::new(),
             clip_image: OnceLock::new(),
@@ -201,7 +197,7 @@ mod tests {
 
     #[test]
     fn provider_is_lazy() {
-        let provider = FastEmbedProvider::new(PathBuf::from("/tmp/hydrogen-models"));
+        let provider = FastEmbedProvider::new(PathBuf::from("/tmp/hydrogen-models"), 2);
         assert!(provider.text.get().is_none());
         assert!(provider.clip_text.get().is_none());
         assert!(provider.clip_image.get().is_none());
