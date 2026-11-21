@@ -136,8 +136,40 @@ fn handle_api(mut request: Request, cfg: &AppConfig, store: &KnowledgeStore) {
         let title = input.get("title").and_then(Value::as_str).unwrap_or("");
         let content = input.get("content").and_then(Value::as_str).unwrap_or("");
         let canonical = input.get("canonical_url").and_then(Value::as_str).unwrap_or(url);
+        let manual = input.get("manual").and_then(Value::as_bool).unwrap_or(false);
+        if !cfg.settings.web.enabled || (!cfg.settings.web.auto_index && !manual) {
+            json(request, 403, json!({"error":"automatic web indexing is disabled in Hydrogen configuration"}));
+            return;
+        }
         if url.is_empty() || title.is_empty() || content.trim().is_empty() {
             json(request, 400, json!({"error":"url, title and readable content are required"}));
+            return;
+        }
+        let host = url.split_once("://").map(|(_, rest)| rest).unwrap_or(&url)
+            .split('/').next().unwrap_or("").split(':').next().unwrap_or("").to_ascii_lowercase();
+        let domain_matches = |domain: &str| host == domain || host.ends_with(&format!(".{domain}"));
+        if cfg.settings.web.exclude_domains.iter().any(|domain| domain_matches(&domain.to_ascii_lowercase())) {
+            json(request, 403, json!({"error":"this domain is excluded by Hydrogen configuration"}));
+            return;
+        }
+        if !cfg.settings.web.allow_domains.is_empty()
+            && !cfg.settings.web.allow_domains.iter().any(|domain| domain_matches(&domain.to_ascii_lowercase()))
+        {
+            json(request, 403, json!({"error":"this domain is not in web.allow_domains"}));
+            return;
+        }
+        let excluded_url = cfg.settings.web.exclude_patterns.iter().any(|pattern| {
+            pattern.split('*').filter(|part| !part.is_empty()).all(|part| url.contains(part))
+        });
+        if excluded_url {
+            json(request, 403, json!({"error":"this URL matches a Hydrogen exclusion rule"}));
+            return;
+        }
+        let max_bytes = cfg.settings.web.max_page_size_mb.saturating_mul(1024 * 1024);
+        let text_length = content.chars().count();
+        let paragraphs = input.get("paragraph_count").and_then(Value::as_u64).unwrap_or(0) as usize;
+        if content.len() > max_bytes || (!manual && (text_length < cfg.settings.web.minimum_text_length || paragraphs < cfg.settings.web.minimum_paragraphs)) {
+            json(request, 422, json!({"error":"page did not meet Hydrogen's readable-content qualification limits","text_length":text_length,"paragraphs":paragraphs}));
             return;
         }
         let hash = blake3::hash(content.as_bytes()).to_hex().to_string();
