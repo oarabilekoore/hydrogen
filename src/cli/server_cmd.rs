@@ -314,6 +314,12 @@ fn handle_request(mut request: Request, cfg: &mut AppConfig) {
         let entries: Vec<(String,String,i64,i64,i64)> = raw.iter().filter_map(|entry| {
             let url = entry.get("url")?.as_str()?.to_string();
             if !(url.starts_with("http://") || url.starts_with("https://")) { return None; }
+            let host = url.split("://").nth(1).unwrap_or("").split('/').next().unwrap_or("")
+                .split(':').next().unwrap_or("").to_ascii_lowercase();
+            if cfg.settings.web.exclude_domains.iter().any(|rule| {
+                host == rule.to_ascii_lowercase()
+                    || host.ends_with(&format!(".{}", rule.to_ascii_lowercase()))
+            }) { return None; }
             let title = entry.get("title").and_then(Value::as_str).unwrap_or("").to_string();
             let last_visit = entry.get("lastVisitTime").and_then(Value::as_i64).unwrap_or(0) / 1000;
             let visits = entry.get("visitCount").and_then(Value::as_i64).unwrap_or(1).max(1);
