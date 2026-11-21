@@ -36,6 +36,9 @@ pub struct WebConfig {
     pub save_readable_snapshot: bool,
     pub track_visits: bool,
     pub version_pages: bool,
+    pub allow_domains: Vec<String>,
+    pub exclude_domains: Vec<String>,
+    pub exclude_patterns: Vec<String>,
 }
 impl Default for WebConfig {
     fn default() -> Self {
@@ -49,6 +52,9 @@ impl Default for WebConfig {
             save_readable_snapshot: true,
             track_visits: true,
             version_pages: true,
+            allow_domains: Vec::new(),
+            exclude_domains: Vec::new(),
+            exclude_patterns: vec!["*/login/*".into(), "*/checkout/*".into()],
         }
     }
 }
