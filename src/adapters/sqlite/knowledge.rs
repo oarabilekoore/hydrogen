@@ -1,6 +1,6 @@
 use rusqlite::{params, Connection, OptionalExtension};
-use std::collections::HashSet;
 use serde::Serialize;
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
