@@ -438,15 +438,6 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
         return Ok(());
     }
 
-    let prompt = format!(
-        "You are a source-grounded study assistant. The excerpts below are the ONLY permitted evidence.\n\
-         Answer the exact question, using the terminology and meaning in the supplied course notes.\n\
-         Do not answer from general knowledge or memory. Do not infer a definition from a question that merely mentions the term.\n\
-         If no excerpt actually explains or defines the requested concept, respond exactly: 'I cannot find an explanation in the indexed sources.'\n\
-         Every factual sentence must end with a citation to the excerpt that directly supports it, such as [1]. Never invent citations.\n\
-         If sources disagree or are incomplete, explicitly say so. Keep the answer concise.\n\n\
-         QUESTION:\n{query}\n\nRETRIEVED COURSE EXCERPTS:\n{context}\nANSWER:"
-    );
     let payload = json!({
         "model": model,
         "messages": [
@@ -456,7 +447,7 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
             },
             {
                 "role": "user",
-                "content": format!("QUESTION:\\n{query}\\n\\nRETRIEVED COURSE EXCERPTS:\\n{context}")
+                "content": format!("QUESTION:\n{query}\n\nRETRIEVED COURSE EXCERPTS:\n{context}")
             }
         ],
         "stream": false,
