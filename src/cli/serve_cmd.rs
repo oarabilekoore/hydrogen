@@ -742,7 +742,6 @@ pub fn open_frontend(
     Ok(())
 }
 
-
 #[cfg(test)]
 mod query_tests {
     use super::{decode_query_component, query_parameter};
@@ -758,8 +757,7 @@ mod query_tests {
     #[test]
     fn finds_query_parameter_without_consuming_following_parameters() {
         assert_eq!(
-            query_parameter("/api/search?kind=all&q=throttling%20device&limit=10", "q")
-                .as_deref(),
+            query_parameter("/api/search?kind=all&q=throttling%20device&limit=10", "q").as_deref(),
             Some("throttling device")
         );
     }
