@@ -409,20 +409,26 @@ impl KnowledgeStore {
         let mut hits = Vec::new();
         {
             let mut stmt = conn.prepare(
-                "SELECT m.conversation_id,c.title,snippet(messages_fts,2,'','','…',24),c.updated_at,m.role
+                "SELECT m.conversation_id,c.title,
+                        COALESCE(
+                            (SELECT substr(a.content,1,240) FROM messages a
+                             WHERE a.conversation_id=m.conversation_id AND a.role='assistant'
+                             ORDER BY a.rowid DESC LIMIT 1),
+                            snippet(messages_fts,2,'','','…',24)
+                        ),
+                        c.updated_at,
+                        EXISTS(SELECT 1 FROM messages a
+                               WHERE a.conversation_id=m.conversation_id AND a.role='assistant')
                  FROM messages_fts JOIN messages m ON m.rowid=messages_fts.rowid
                  JOIN conversations c ON c.id=m.conversation_id
-                 WHERE messages_fts MATCH ?1 ORDER BY bm25(messages_fts) LIMIT ?2",
+                 WHERE messages_fts MATCH ?1
+                 GROUP BY m.conversation_id
+                 ORDER BY bm25(messages_fts) LIMIT ?2",
             )?;
             let rows = stmt.query_map(params![fts_query, limit.clamp(1, 100) as i64], |row| {
-                let role: String = row.get(4)?;
+                let has_answer: bool = row.get(4)?;
                 Ok(KnowledgeHit {
-                    kind: if role == "assistant" {
-                        "answer"
-                    } else {
-                        "conversation"
-                    }
-                    .into(),
+                    kind: if has_answer { "answer" } else { "conversation" }.into(),
                     id: row.get(0)?,
                     title: row.get(1)?,
                     snippet: row.get(2)?,
@@ -608,10 +614,11 @@ mod tests {
         assert_eq!(messages[0].role, "user");
         assert_eq!(messages[1].sources.as_ref(), Some(&sources));
         let hits = store.search_saved_knowledge("throttling", 10).unwrap();
-        assert!(hits
+        let answer_hit = hits
             .iter()
-            .any(|hit| hit.id == id && hit.kind == "conversation"));
-        assert!(hits.iter().any(|hit| hit.id == id && hit.kind == "answer"));
+            .find(|hit| hit.id == id && hit.kind == "answer")
+            .expect("searching the question should return its saved answer");
+        assert!(answer_hit.snippet.contains("A restriction that reduces pressure"));
     }
 
     #[test]
