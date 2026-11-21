@@ -52,7 +52,7 @@ impl<'a> SyncService<'a> {
     pub fn sync(&self, spawn_images: bool) -> Result<SyncSummary> {
         let sync_started = Instant::now();
         fs::create_dir_all(&self.cfg.state_dir)?;
-        let entries = self.scanner.scan(6, 5000);
+        let entries = self.scanner.scan(self.cfg.settings.search.scan_max_depth, self.cfg.settings.search.scan_max_results);
 
         let mut existing = self.repo.load_file_records()?;
         let mut content_hashes = self.repo.load_content_hashes()?;
@@ -238,7 +238,7 @@ impl<'a> SyncService<'a> {
                 }
                 let body = if entry.is_dir {
                     String::new()
-                } else if entry
+                } else if self.cfg.settings.indexing.pdf.enabled && entry
                     .path
                     .extension()
                     .and_then(|e| e.to_str())
@@ -258,7 +258,7 @@ impl<'a> SyncService<'a> {
                     let mut indexed = Vec::with_capacity(pages.len());
                     let mut extraction_failed = false;
                     for (page_no, mut page_text, preview_path) in pages {
-                        let preview_path = if page_text.trim().is_empty() {
+                        let preview_path = if page_text.trim().is_empty() && self.cfg.settings.indexing.pdf.ocr_scanned_pages {
                             crate::adapters::fs::text_extract::render_pdf_page(
                                 &entry.path,
                                 page_no,
@@ -284,7 +284,7 @@ impl<'a> SyncService<'a> {
                                     extraction_failed = true;
                                 }
                             }
-                        } else if page_text.trim().is_empty() {
+                        } else if page_text.trim().is_empty() && self.cfg.settings.indexing.pdf.ocr_scanned_pages {
                             extraction_failed = true;
                         }
                         indexed.push((page_no, page_text, preview_path));
@@ -376,6 +376,9 @@ impl<'a> SyncService<'a> {
     }
 
     pub fn sync_images(&self, retag: bool, limit: usize) -> Result<String> {
+        if !self.cfg.settings.indexing.images.enabled {
+            return Ok(json!({ "status": "disabled", "processed": 0 }).to_string());
+        }
         if self.is_image_sync_running() {
             return Ok(json!({ "status": "already_running" }).to_string());
         }
@@ -415,12 +418,12 @@ impl<'a> SyncService<'a> {
                 };
                 let ocr_pending = self.repo.model_job_pending(&p_str, "image_ocr")?;
                 match img_cached.get(&p_str) {
-                    None => queue.push((entry, true, true)),
+                    None => queue.push((entry, self.cfg.settings.indexing.images.ocr, self.cfg.settings.indexing.images.captions)),
                     Some(ic) if ic.mtime != entry.mtime || ic.size != entry.size => {
-                        queue.push((entry, true, true));
+                        queue.push((entry, self.cfg.settings.indexing.images.ocr, self.cfg.settings.indexing.images.captions));
                     }
-                    Some(_ic) if ocr_pending => {
-                        queue.push((entry, true, true));
+                    Some(_ic) if ocr_pending && self.cfg.settings.indexing.images.ocr => {
+                        queue.push((entry, true, self.cfg.settings.indexing.images.captions));
                     }
                     Some(_ic) if needs_clip_embedding => {
                         queue.push((entry, false, false));
