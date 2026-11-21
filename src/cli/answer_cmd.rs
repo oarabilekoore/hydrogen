@@ -116,16 +116,14 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
         .output();
 
     let response = match output {
-        Ok(output) if output.status.success() => {
-            serde_json::from_slice::<Value>(&output.stdout)
-                .ok()
-                .and_then(|value| {
-                    value
-                        .get("response")
-                        .and_then(Value::as_str)
-                        .map(str::to_owned)
-                })
-        }
+        Ok(output) if output.status.success() => serde_json::from_slice::<Value>(&output.stdout)
+            .ok()
+            .and_then(|value| {
+                value
+                    .get("response")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned)
+            }),
         _ => None,
     };
 
