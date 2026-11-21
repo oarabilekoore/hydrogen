@@ -172,7 +172,8 @@ impl Default for HydrogenSettings {
 
 impl Default for PathsConfig {
     fn default() -> Self {
-        Self { state_dir: None, models_dir: None, roots: Vec::new() }
+        let home = env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/tmp"));
+        Self { state_dir: None, models_dir: None, roots: default_roots(&home) }
     }
 }
 impl Default for SearchConfig {
@@ -247,7 +248,12 @@ impl Default for AnswerConfig {
 }
 impl Default for CalendarConfig {
     fn default() -> Self {
-        Self { default_event_duration_mins: 60, ics_globs: Vec::new(), evolution_db_globs: Vec::new() }
+        let home = env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/tmp"));
+        Self {
+            default_event_duration_mins: 60,
+            ics_globs: default_ics_globs(&home),
+            evolution_db_globs: default_evolution_globs(&home),
+        }
     }
 }
 
