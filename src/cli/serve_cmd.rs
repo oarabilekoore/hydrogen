@@ -508,6 +508,36 @@ fn handle_api(mut request: Request, cfg: &AppConfig, store: &KnowledgeStore) {
         return;
     }
 
+    if parts.as_slice() == ["api", "open-file"] && method == Method::Post {
+        let body = match read_body(&mut request) {
+            Ok(body) => body,
+            Err(error) => {
+                json(request, 400, json!({"error":error.to_string()}));
+                return;
+            }
+        };
+        let input: Value = serde_json::from_str(&body).unwrap_or_else(|_| json!({}));
+        let raw_path = input.get("path").and_then(Value::as_str).unwrap_or("");
+        let path = match std::path::Path::new(raw_path).canonicalize() {
+            Ok(path) if path.is_file() => path,
+            _ => {
+                json(request, 404, json!({"error":"file does not exist"}));
+                return;
+            }
+        };
+        let allowed = cfg.search_roots.iter().filter_map(|root| root.canonicalize().ok())
+            .any(|root| path.starts_with(root));
+        if !allowed {
+            json(request, 403, json!({"error":"file is outside Hydrogen's indexed directories"}));
+            return;
+        }
+        match Command::new("xdg-open").arg(&path).spawn() {
+            Ok(_) => json(request, 200, json!({"status":"opened"})),
+            Err(error) => json(request, 500, json!({"error":error.to_string()})),
+        }
+        return;
+    }
+
     if parts.as_slice() == ["api", "search"] && method == Method::Get {
         let query = url
             .split_once("?q=")
