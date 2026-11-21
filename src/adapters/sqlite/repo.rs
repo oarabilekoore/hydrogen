@@ -13,7 +13,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const SCHEMA_VERSION: i32 = 6;
+const SCHEMA_VERSION: i32 = 7;
 
 pub struct SqliteIndexRepository {
     db_path: PathBuf,
@@ -29,6 +29,8 @@ impl SqliteIndexRepository {
         };
         let conn = repo.connect()?;
         repo.init_schema(&conn)?;
+        super::knowledge::ensure_schema(&conn)?;
+        conn.execute_batch("PRAGMA user_version = 7;")?;
         Ok(repo)
     }
 
