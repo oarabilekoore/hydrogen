@@ -23,7 +23,7 @@ pub enum WebCommands {
     FeedSync,
 }
 
-#[derive(Debug, Default, Serialize)]
+#[derive(Debug, Default)]
 struct FeedItem {
     title: String,
     link: String,
