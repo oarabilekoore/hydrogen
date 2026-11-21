@@ -307,6 +307,42 @@ impl KnowledgeStore {
         )
     }
 
+    pub fn search_web_pages(&self, query: &str, limit: usize) -> rusqlite::Result<Vec<WebPageRecord>> {
+        let terms: Vec<String> = query
+            .split(|character: char| !character.is_alphanumeric())
+            .filter(|term| term.chars().count() >= 2)
+            .map(|term| format!("\\"{}\\"", term.replace('"', "")))
+            .collect();
+        if terms.is_empty() {
+            return Ok(Vec::new());
+        }
+        let fts_query = terms.join(" OR ");
+        let conn = self.connect()?;
+        let mut statement = conn.prepare(
+            "SELECT web_pages.id,web_pages.url,web_pages.canonical_url,web_pages.title,
+                    web_pages.content,web_pages.author,web_pages.published_at,web_pages.site_name,
+                    web_pages.content_hash,web_pages.captured_at,web_pages.updated_at
+             FROM web_pages_fts JOIN web_pages ON web_pages.id=web_pages_fts.rowid
+             WHERE web_pages_fts MATCH ?1 ORDER BY bm25(web_pages_fts) LIMIT ?2",
+        )?;
+        let rows = statement.query_map(params![fts_query, limit.clamp(1, 100) as i64], |row| {
+            Ok(WebPageRecord {
+                id: row.get(0)?,
+                url: row.get(1)?,
+                canonical_url: row.get(2)?,
+                title: row.get(3)?,
+                content: row.get(4)?,
+                author: row.get(5)?,
+                published_at: row.get(6)?,
+                site_name: row.get(7)?,
+                content_hash: row.get(8)?,
+                captured_at: row.get(9)?,
+                updated_at: row.get(10)?,
+            })
+        })?;
+        rows.collect()
+    }
+
     pub fn get_web_page(&self, id: i64) -> rusqlite::Result<Option<WebPageRecord>> {
         let conn = self.connect()?;
         conn.query_row(
