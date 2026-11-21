@@ -7,6 +7,7 @@ pub mod index_cmd;
 pub mod ocr_cmd;
 pub mod query_cmd;
 pub mod server_cmd;
+pub mod search_cmd;
 
 use crate::config::AppConfig;
 use crate::error::Result;
@@ -46,6 +47,8 @@ pub enum Commands {
     Daemon(daemon_cmd::DaemonArgs),
     /// Extract Markdown with Pix2Text, TrOCR, or legacy RapidOCR
     Ocr(ocr_cmd::OcrArgs),
+    /// Search files, saved web pages and conversations
+    Search(search_cmd::SearchArgs),
     /// Start the bundled Hydrogen web application and local API
     Frontend,
     /// Diagnose local dependencies, models, database and worker state
@@ -64,6 +67,7 @@ pub fn dispatch(cli: Cli, cfg: &AppConfig) -> Result<()> {
         Some(Commands::Index(args)) => index_cmd::run(args, cfg),
         Some(Commands::Query(args)) => query_cmd::run(args, cfg),
         Some(Commands::Daemon(args)) => daemon_cmd::run(args, cfg),
+        Some(Commands::Search(args)) => search_cmd::run(args, cfg),
         Some(Commands::Frontend) => server_cmd::run(cfg, None, None),
         Some(Commands::Doctor) => doctor_cmd::run(cfg),
         Some(Commands::Ocr(args)) => ocr_cmd::run(args, cfg),
