@@ -383,28 +383,43 @@ impl KnowledgeRepository {
     ) -> Result<Option<i64>> {
         let conn = self.connect()?;
         let tx = conn.unchecked_transaction()?;
-        let exists: bool = tx.query_row(
-            "SELECT EXISTS(SELECT 1 FROM capture_sources WHERE source_key=?1)",
+        let metadata: Option<String> = tx.query_row(
+            "SELECT metadata_json FROM capture_sources WHERE source_key=?1",
             [source_key], |row| row.get(0)
-        )?;
-        if exists {
+        ).optional()?;
+
+        let (conversation_id, is_new) = if let Some(metadata) = metadata {
+            let value: serde_json::Value = serde_json::from_str(&metadata).unwrap_or_default();
+            let id = value.get("conversation_id").and_then(serde_json::Value::as_i64)
+                .ok_or_else(|| HydrogenError::Config("captured conversation metadata is invalid".into()))?;
+            tx.execute("UPDATE capture_sources SET last_seen=unixepoch() WHERE source_key=?1", [source_key])?;
+            (id, false)
+        } else {
             tx.execute(
-                "UPDATE capture_sources SET last_seen=unixepoch() WHERE source_key=?1",
-                [source_key],
+                "INSERT INTO conversations(title,model) VALUES(?1,?2)",
+                params![if title.trim().is_empty() { "Imported conversation" } else { title.trim() }, platform],
             )?;
-            tx.commit()?;
-            return Ok(None);
-        }
-        tx.execute(
-            "INSERT INTO conversations(title,model) VALUES(?1,?2)",
-            params![if title.trim().is_empty() { "Imported conversation" } else { title.trim() }, platform],
-        )?;
-        let conversation_id = tx.last_insert_rowid();
+            let id = tx.last_insert_rowid();
+            tx.execute(
+                "INSERT INTO capture_sources(source_key,source_type,metadata_json)
+                 VALUES(?1,'conversation',?2)",
+                params![source_key, serde_json::json!({"platform":platform,"conversation_id":id}).to_string()],
+            )?;
+            (id, true)
+        };
+
+        let mut inserted = 0usize;
         for (role, content) in messages {
             if !matches!(role.as_str(), "user" | "assistant") || content.trim().is_empty() {
                 continue;
             }
             let digest = blake3::hash(content.as_bytes()).to_hex().to_string();
+            let exists: bool = tx.query_row(
+                "SELECT EXISTS(SELECT 1 FROM messages
+                 WHERE conversation_id=?1 AND role=?2 AND content_hash=?3)",
+                params![conversation_id,role,digest], |row| row.get(0)
+            )?;
+            if exists { continue; }
             tx.execute(
                 "INSERT INTO messages(conversation_id,role,content,model,content_hash)
                  VALUES(?1,?2,?3,?4,?5)",
@@ -416,14 +431,10 @@ impl KnowledgeRepository {
                  VALUES(?1,?2,?3,?4)",
                 params![conversation_id,message_id,role,content],
             )?;
+            inserted += 1;
         }
-        tx.execute(
-            "INSERT INTO capture_sources(source_key,source_type,metadata_json)
-             VALUES(?1,'conversation',?2)",
-            params![source_key, serde_json::json!({"platform":platform,"conversation_id":conversation_id}).to_string()],
-        )?;
+        tx.execute("UPDATE conversations SET updated_at=unixepoch() WHERE id=?1", [conversation_id])?;
         tx.commit()?;
-        Ok(Some(conversation_id))
+        if is_new || inserted > 0 { Ok(Some(conversation_id)) } else { Ok(None) }
     }
-
 }
