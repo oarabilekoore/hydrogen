@@ -456,6 +456,9 @@ impl AppConfig {
             .models_dir
             .clone()
             .unwrap_or_else(|| home.join(".local/share/hydrogen/models"));
+        // Keep resolved paths in the effective settings returned by config show.
+        settings.paths.state_dir = Some(state_dir.clone());
+        settings.paths.models_dir = Some(models_dir.clone());
         let default_event_duration_mins = settings.calendar.default_event_duration_mins.max(1);
         let ics_globs = settings.calendar.ics_globs.clone();
         let evolution_db_globs = settings.calendar.evolution_db_globs.clone();
