@@ -315,7 +315,7 @@ impl KnowledgeStore {
         let terms: Vec<String> = query
             .split(|character: char| !character.is_alphanumeric())
             .filter(|term| term.chars().count() >= 2)
-            .map(|term| format!("\\"{}\\"", term.replace('"', "")))
+            .map(|term| format!("\"{}\"", term.replace('"', "")))
             .collect();
         if terms.is_empty() { return Ok(Vec::new()); }
         let fts_query = terms.join(" OR ");
