@@ -308,7 +308,7 @@ impl KnowledgeStore {
                  FROM web_pages_fts WHERE web_pages_fts MATCH ?1
                  ORDER BY bm25(web_pages_fts) LIMIT ?2",
             )?;
-            let rows = stmt.query_map(params![query, limit.clamp(1, 100) as i64], |row| {
+            let rows = stmt.query_map(params![fts_query, limit.clamp(1, 100) as i64], |row| {
                 Ok(KnowledgeHit {
                     kind: "web_page".into(),
                     id: row.get(0)?,
