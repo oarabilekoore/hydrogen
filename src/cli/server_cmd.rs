@@ -299,8 +299,8 @@ fn handle_request(mut request: Request, cfg: &mut AppConfig) {
     }
 
     if method == "POST" && path == "/api/web-pages" {
-        if !cfg.settings.web.enabled || !cfg.settings.web.auto_index {
-            return json_response(json!({"error":"automatic web capture is disabled"}), 403, origin_ref);
+        if !cfg.settings.web.enabled {
+            return json_response(json!({"error":"web knowledge storage is disabled"}), 403, origin_ref);
         }
         let body = match read_json(&mut request) {
             Ok(value) => value,
@@ -315,6 +315,26 @@ fn handle_request(mut request: Request, cfg: &mut AppConfig) {
         let text = body.get("text").and_then(Value::as_str).unwrap_or("");
         let html = body.get("html").and_then(Value::as_str).unwrap_or("");
         let manually_saved = body.get("manual").and_then(Value::as_bool).unwrap_or(false);
+        if !cfg.settings.web.auto_index && !manually_saved {
+            return json_response(json!({"error":"automatic web capture is disabled"}), 403, origin_ref);
+        }
+        let host = url.split("://").nth(1).unwrap_or("").split('/').next().unwrap_or("")
+            .split(':').next().unwrap_or("").to_ascii_lowercase();
+        let matches_domain = |rule: &String| host == rule.to_ascii_lowercase()
+            || host.ends_with(&format!(".{}", rule.to_ascii_lowercase()));
+        if cfg.settings.web.exclude_domains.iter().any(matches_domain) {
+            return json_response(json!({"status":"skipped","reason":"domain is excluded by Hydrogen configuration"}), 200, origin_ref);
+        }
+        if !manually_saved && !cfg.settings.web.allow_domains.is_empty()
+            && !cfg.settings.web.allow_domains.iter().any(matches_domain) {
+            return json_response(json!({"status":"skipped","reason":"domain is not in the configured allow-list"}), 200, origin_ref);
+        }
+        if cfg.settings.web.exclude_patterns.iter().any(|pattern| {
+            let needle = pattern.replace('*', "");
+            !needle.is_empty() && url.contains(&needle)
+        }) {
+            return json_response(json!({"status":"skipped","reason":"URL matches an excluded pattern"}), 200, origin_ref);
+        }
         let paragraphs = text.split("\n\n").filter(|p| p.trim().len() > 40).count();
         if !manually_saved && (text.chars().count() < cfg.settings.web.minimum_text_length || paragraphs < cfg.settings.web.minimum_paragraphs) {
             return json_response(json!({"status":"skipped","reason":"page did not meet the configured article-content threshold"}), 200, origin_ref);
