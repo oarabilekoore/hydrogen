@@ -39,8 +39,13 @@
 
   async function captureArticle(force = false) {
     if (excludedPath.test(location.pathname) || excludedHost.test(location.hostname)) return;
+    const appPath = /\\/(app|editor|workspace|canvas|playground|ide|dashboard|studio)(\\/|$)/i;
+    if (!force && appPath.test(location.pathname)) return;
     const { text, paragraphs } = articleCandidate();
+    const canvases = document.querySelectorAll("canvas").length;
+    const controls = document.querySelectorAll("button,input,textarea,select,[contenteditable=true]").length;
     if (!force && (text.length < 800 || paragraphs < 4)) return;
+    if (!force && ((canvases > 0 && paragraphs < 8) || (controls > 35 && paragraphs < 8))) return;
     if (text.length < 120) return;
     const meta = pageMetadata();
     const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(meta.canonical_url + "\n" + text));
