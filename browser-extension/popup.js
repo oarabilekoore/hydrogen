@@ -1,12 +1,22 @@
 const ids = ["enabled", "captureArticles", "captureChats"];
 (async () => {
-  const values = await chrome.storage.local.get({ enabled: true, captureArticles: true, captureChats: true, apiBase: "http://127.0.0.1:17891" });
+  const values = await chrome.storage.local.get({ enabled: true, captureArticles: true, captureChats: true, apiBase: "http://127.0.0.1:17891", excludedHosts: [] });
   ids.forEach(id => { document.getElementById(id).checked = !!values[id]; });
+  document.getElementById("excludedHosts").value = (values.excludedHosts || []).join(", ");
   document.getElementById("apiBase").value = values.apiBase;
 })();
 ids.forEach(id => document.getElementById(id).addEventListener("change", async event => {
   await chrome.storage.local.set({ [id]: event.target.checked });
 }));
+document.getElementById("excludedHosts").addEventListener("change", async event => {
+  const excludedHosts = [...new Set(event.target.value
+    .split(",")
+    .map(value => value.trim().toLowerCase().replace(/^https?:\\/\\//, "").replace(/\\/.*$/, ""))
+    .filter(value => /^[a-z0-9.-]+$/.test(value)))];
+  event.target.value = excludedHosts.join(", ");
+  await chrome.storage.local.set({ excludedHosts });
+  document.getElementById("status").textContent = "Domain exclusions saved.";
+});
 document.getElementById("capture").addEventListener("click", async () => {
   const status = document.getElementById("status");
   status.textContent = "Capturing page…";

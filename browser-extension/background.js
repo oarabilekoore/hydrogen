@@ -94,7 +94,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (prefs.excludedHosts.some(item => host === item || host.endsWith("." + item))) {
       throw new Error("This domain is excluded");
     }
-    if (message.type === "ARTICLE" && prefs.captureArticles) {
+    if (message.type === "ARTICLE" && (prefs.captureArticles || message.payload?.manual === true)) {
       const result = await post("/api/web-pages", message.payload);
       if (sender.tab?.id != null) finishHistoryTab(sender.tab.id, true);
       sendResponse({ ok: true, result });
