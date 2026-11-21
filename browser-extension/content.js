@@ -108,8 +108,9 @@
   }
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-    if (message?.type === "CAPTURE_NOW") {
-      Promise.all([captureArticle(true), captureConversation()])
+    if (message?.type === "CAPTURE_NOW" || message?.type === "CAPTURE_HISTORY") {
+      const manual = message.type === "CAPTURE_NOW";
+      Promise.all([captureArticle(manual), captureConversation()])
         .then(() => sendResponse({ ok: true }))
         .catch(error => sendResponse({ ok: false, error: error.message }));
       return true;
