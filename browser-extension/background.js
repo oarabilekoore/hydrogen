@@ -1,4 +1,8 @@
-const API = "http://127.0.0.1:17891";
+const DEFAULT_API = "http://127.0.0.1:17891";
+async function apiBase() {
+  const stored = await chrome.storage.local.get({ apiBase: DEFAULT_API });
+  return String(stored.apiBase || DEFAULT_API).replace(/\\/$/, "");
+}
 const defaults = { enabled: true, captureArticles: true, captureChats: true, excludedHosts: [] };
 const historyImports = new Map();
 let historyImportBusy = false;
@@ -26,7 +30,7 @@ async function importRecentHistory(days = 30, limit = 25) {
   if (historyImportBusy) throw new Error("A history import is already running.");
   const prefs = await settings();
   if (!prefs.enabled || !prefs.captureArticles) throw new Error("Enable automatic article capture before importing history.");
-  const configResponse = await fetch(API + "/api/settings", { cache: "no-store" });
+  const configResponse = await fetch((await apiBase()) + "/api/settings", { cache: "no-store" });
   if (!configResponse.ok) throw new Error("Hydrogen service is unavailable.");
   const appConfig = await configResponse.json();
   const web = appConfig.settings?.web || {};
@@ -68,7 +72,7 @@ async function settings() {
 }
 
 async function post(path, payload) {
-  const response = await fetch(API + path, {
+  const response = await fetch((await apiBase()) + path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload)
