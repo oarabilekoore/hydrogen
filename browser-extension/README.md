@@ -16,6 +16,7 @@ A Manifest V3 extension for Chromium and Firefox-compatible WebExtension environ
 - Uses canonical URLs for article deduplication and a stable conversation URL for snapshot replacement.
 - Supports pausing capture and disabling articles or AI chats separately.
 - Supports user-managed excluded hostnames, including subdomains, from the extension popup.
+- The explicit **Save this page now** action still works when automatic article capture is disabled.
 - Can explicitly import a limited set of recent browser-history URLs by opening them in inactive tabs one at a time; only pages passing the normal article qualification rules are saved.
 
 ## Limitations
