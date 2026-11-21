@@ -10,6 +10,7 @@ pub struct WalkDirScanner {
     roots: Vec<PathBuf>,
     excluded_directories: HashSet<String>,
     excluded_extensions: HashSet<String>,
+    include_hidden: bool,
 }
 
 impl WalkDirScanner {
@@ -17,6 +18,7 @@ impl WalkDirScanner {
         roots: Vec<PathBuf>,
         excluded_directories: Vec<String>,
         excluded_extensions: Vec<String>,
+        include_hidden: bool,
     ) -> Self {
         Self {
             roots,
@@ -25,11 +27,12 @@ impl WalkDirScanner {
                 .into_iter()
                 .map(|ext| ext.trim_start_matches('.').to_ascii_lowercase())
                 .collect(),
+            include_hidden,
         }
     }
 
     fn should_skip_name(&self, name: &str) -> bool {
-        name.is_empty() || name.starts_with('.') || self.excluded_directories.contains(name)
+        name.is_empty() || (!self.include_hidden && name.starts_with('.')) || self.excluded_directories.contains(name)
     }
 }
 
