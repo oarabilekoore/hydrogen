@@ -135,6 +135,71 @@ impl SqliteIndexRepository {
         Ok(())
     }
 
+    /// Retrieve individual PDF pages for grounded RAG answers. Unlike ordinary
+    /// launcher search, this returns multiple matching pages from one document.
+    pub fn search_pdf_passages(&self, query: &str, limit: usize) -> Result<Vec<SearchHit>> {
+        let tokens = tokenize_content(query);
+        let mut seen = HashSet::new();
+        let unique: Vec<String> = tokens
+            .into_iter()
+            .filter(|token| token.chars().count() >= 3 && seen.insert(token.clone()))
+            .take(8)
+            .collect();
+        if unique.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let fts_query = unique
+            .iter()
+            .map(|token| format!("\"{}\"*", token.replace('"', "")))
+            .collect::<Vec<_>>()
+            .join(" AND ");
+
+        let conn = self.connect()?;
+        let mut stmt = conn.prepare(
+            "SELECT path, page_no, bm25(pdf_pages_fts) AS rank,
+                    snippet(pdf_pages_fts, 2, '', '', '…', 36) AS snip
+             FROM pdf_pages_fts
+             WHERE pdf_pages_fts MATCH ?1
+             ORDER BY rank
+             LIMIT ?2",
+        )?;
+        let rows = stmt.query_map(params![fts_query, limit.max(1) as i64], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, i64>(1)?,
+                row.get::<_, f64>(2)?,
+                row.get::<_, Option<String>>(3)?,
+            ))
+        })?;
+
+        let mut hits = Vec::new();
+        for row in rows {
+            let (path, page, rank, snippet) = row?;
+            let name = Path::new(&path)
+                .file_name()
+                .and_then(|value| value.to_str())
+                .unwrap_or(&path)
+                .to_string();
+            hits.push(SearchHit {
+                path,
+                name,
+                source: "doc".into(),
+                score: (-rank).max(0.0),
+                vec: 0.0,
+                fts: (-rank).max(0.0),
+                coverage: 1.0,
+                phrase: false,
+                snippet: collapse_whitespace(snippet.as_deref().unwrap_or("")),
+                is_dir: false,
+                page: Some(page),
+                line: None,
+                preview: String::new(),
+            });
+        }
+        Ok(hits)
+    }
+
     fn rebuild_sparse_index(&self, conn: &mut Connection) -> Result<()> {
         let total_docs: usize =
             conn.query_row("SELECT COUNT(*) FROM doc_meta", [], |r| r.get(0))?;

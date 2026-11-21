@@ -9,27 +9,27 @@ external API is used.
 ## Requirements
 
 - Ollama running locally at `http://127.0.0.1:11434`.
-- The model tag installed in Ollama. The default is `gemma3:1b`.
+- The model tag installed in Ollama. The default is `qwen3.5:2b-q4_K_M`.
 - An existing Hydrogen index containing extracted document text.
 
 Check the model with:
 
 ```sh
 ollama list
-ollama run gemma3:1b
+ollama run qwen3.5:2b-q4_K_M
 ```
 
 ## Ask a question
 
 ```sh
-hydrogen answer "what is a throttling device"
+hydrogen answer "what is a throttling device" --model qwen3.5:2b-q4_K_M
 ```
 
 Optional flags:
 
 ```sh
-hydrogen answer "explain the throttling process" --limit 6 --model gemma3:1b
-hydrogen answer "explain the throttling process" --semantic
+hydrogen answer "explain the throttling process" --limit 8 --model qwen3.5:2b-q4_K_M
+hydrogen answer "explain the throttling process"
 ```
 
 The command prints one JSON object containing `status`, `answer`, and
@@ -48,3 +48,10 @@ If Ollama is unavailable or the requested model cannot be used, the command
 returns `status: "unavailable"`; if no indexed passages match, it returns
 `status: "no_context"`. Normal file search remains independent of answer
 generation.
+
+
+## Passage-level retrieval
+
+The RAG command searches the PDF page FTS index directly, so multiple relevant pages from the same PDF can be retrieved. It expands a question into a small set of keyword queries, combines repeated page hits, and supplements them with indexed non-PDF text. Image files and screenshot OCR are excluded from answer context by default. This is intentionally separate from the launcher’s broad content-and-vision search ranking.
+
+The default generator is `qwen3.5:2b-q4_K_M` (about 1.9 GB in the Ollama library). On an 8 GB machine, keep the context bounded; larger models may compete with the desktop and browser for memory. A model change does not guarantee zero hallucinations: the retrieval layer and citation checks remain essential.
