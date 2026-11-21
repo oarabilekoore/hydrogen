@@ -17,3 +17,15 @@ document.getElementById("capture").addEventListener("click", async () => {
     status.textContent = "This page cannot be captured: " + error.message;
   }
 });
+
+document.getElementById("importHistory").addEventListener("click", async () => {
+  const status = document.getElementById("status");
+  status.textContent = "Importing recent history. Eligible pages open in background tabs one at a time…";
+  try {
+    const result = await chrome.runtime.sendMessage({ type: "IMPORT_HISTORY", days: 30, limit: 25 });
+    if (result?.error) throw new Error(result.error);
+    status.textContent = "History import finished · " + result.captured + " pages captured · " + result.skipped + " skipped · " + result.failed + " failed.";
+  } catch (error) {
+    status.textContent = "History import failed: " + error.message;
+  }
+});

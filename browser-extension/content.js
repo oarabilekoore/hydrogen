@@ -53,12 +53,27 @@
     });
   }
 
+  function roleFromNode(node) {
+    const details = [
+      node.getAttribute("data-message-author-role"),
+      node.getAttribute("data-role"),
+      node.getAttribute("data-message-role"),
+      node.getAttribute("data-testid"),
+      node.getAttribute("aria-label"),
+      typeof node.className === "string" ? node.className : ""
+    ].filter(Boolean).join(" ").toLowerCase();
+    if (/(user|human|prompt|question)/.test(details)) return "user";
+    if (/(assistant|bot|answer|response|model)/.test(details)) return "assistant";
+    return null;
+  }
+
   function chatMessages() {
-    const host = location.hostname;
+    const host = location.hostname.toLowerCase();
     let nodes = [];
+
     if (host.includes("chatgpt.com") || host.includes("chat.openai.com")) {
       nodes = [...document.querySelectorAll("[data-message-author-role]")].map(node => ({
-        role: node.getAttribute("data-message-author-role"),
+        role: roleFromNode(node),
         content: cleanText(node.querySelector(".markdown") || node)
       }));
     } else if (host.includes("claude.ai")) {
@@ -71,8 +86,46 @@
         role: node.matches("user-query") ? "user" : "assistant",
         content: cleanText(node)
       }));
+    } else if (host.includes("perplexity.ai")) {
+      nodes = [...document.querySelectorAll('[data-testid*="user-message"],[data-testid*="answer"],[data-testid*="question"]')].map(node => ({
+        role: roleFromNode(node),
+        content: cleanText(node)
+      }));
+    } else if (host.includes("chat.deepseek.com") || host.includes("deepseek.com")) {
+      nodes = [...document.querySelectorAll("[data-message-author-role],[data-role],[data-testid*='message']")].map(node => ({
+        role: roleFromNode(node),
+        content: cleanText(node.querySelector(".markdown,.ds-markdown") || node)
+      }));
+    } else if (host.includes("copilot.microsoft.com") || host.includes("bing.com")) {
+      nodes = [...document.querySelectorAll("cib-message-group,[data-testid*='message']")].map(node => ({
+        role: roleFromNode(node),
+        content: cleanText(node.querySelector("cib-message, .ac-textBlock") || node)
+      }));
+    } else if (host.includes("grok.com")) {
+      nodes = [...document.querySelectorAll("[data-message-author-role],[data-testid*='message'],[data-testid*='response']")].map(node => ({
+        role: roleFromNode(node),
+        content: cleanText(node.querySelector(".message-bubble,.prose") || node)
+      }));
+    } else if (host.includes("poe.com")) {
+      nodes = [...document.querySelectorAll(".Message_humanMessageBubble,.Message_botMessageBubble")].map(node => ({
+        role: node.classList.contains("Message_humanMessageBubble") ? "user" : "assistant",
+        content: cleanText(node)
+      }));
+    } else if (host.includes("chat.mistral.ai")) {
+      nodes = [...document.querySelectorAll("[data-message-author-role],[data-testid*='message']")].map(node => ({
+        role: roleFromNode(node),
+        content: cleanText(node.querySelector(".prose,.markdown") || node)
+      }));
     }
-    return nodes.filter(item => (item.role === "user" || item.role === "assistant") && item.content.length > 0);
+
+    const seen = new Set();
+    return nodes.filter(item => {
+      if (!["user", "assistant"].includes(item.role) || !item.content) return false;
+      const key = item.role + ":" + item.content;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
   }
 
   async function captureConversation() {
