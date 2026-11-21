@@ -1,7 +1,7 @@
 const DEFAULT_API = "http://127.0.0.1:17891";
 async function apiBase() {
   const stored = await chrome.storage.local.get({ apiBase: DEFAULT_API });
-  return String(stored.apiBase || DEFAULT_API).replace(/\\/$/, "");
+  return String(stored.apiBase || DEFAULT_API).replace(/\/$/, "");
 }
 const defaults = { enabled: true, captureArticles: true, captureChats: true, excludedHosts: [] };
 const historyImports = new Map();
