@@ -38,6 +38,8 @@ impl RustOcrProvider {
         printed_model_dir: PathBuf,
         formula_model_file: PathBuf,
     ) -> Self {
+        #[cfg(not(feature = "image-captioning"))]
+        let _ = captions_enabled;
         Self {
             models_dir,
             printed_model_dir,
