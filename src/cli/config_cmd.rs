@@ -44,7 +44,7 @@ fn parse_list(value: &str) -> Result<Vec<String>> {
         .collect())
 }
 
-fn set_value(settings: &mut HydrogenSettings, key: &str, value: &str) -> Result<()> {
+pub(crate) fn set_value(settings: &mut HydrogenSettings, key: &str, value: &str) -> Result<()> {
     macro_rules! number {
         ($ty:ty) => {
             value.parse::<$ty>().map_err(|_| {
