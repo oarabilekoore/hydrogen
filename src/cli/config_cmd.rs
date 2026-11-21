@@ -128,7 +128,12 @@ pub fn run(args: ConfigArgs, cfg: &AppConfig) -> Result<()> {
                 "{}",
                 serde_json::to_string_pretty(&json!({
                     "config_file": cfg.config_path,
-                    "settings": cfg.settings
+                    "settings": cfg.settings,
+                    "effective_paths": {
+                        "state_dir": cfg.state_dir,
+                        "models_dir": cfg.models_dir,
+                        "roots": cfg.search_roots
+                    }
                 }))?
             );
         }
