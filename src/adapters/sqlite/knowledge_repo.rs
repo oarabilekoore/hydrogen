@@ -159,7 +159,7 @@ impl KnowledgeRepository {
                 typed_count INTEGER NOT NULL DEFAULT 0
              );
              CREATE VIRTUAL TABLE IF NOT EXISTS browser_history_fts USING fts5(
-                history_id UNINDEXED, title, url UNINDEXED, tokenize='porter unicode61'
+                history_id UNINDEXED, title, url, tokenize='porter unicode61'
              );
              CREATE TABLE IF NOT EXISTS feed_sources (
                 id INTEGER PRIMARY KEY,
@@ -626,4 +626,23 @@ mod tests {
         assert_eq!(repo.search_knowledge("throttling pressure", 10).unwrap().len(), 1);
         cleanup(&path);
     }
+
+    #[test]
+    fn imported_browser_history_is_searchable() {
+        let path = temporary_db();
+        let repo = KnowledgeRepository::open(&path).unwrap();
+        let entries = vec![(
+            "https://engineering.substack.com/p/throttling-devices".into(),
+            "Throttling devices in thermodynamics".into(),
+            1_795_268_400,
+            4,
+            1,
+        )];
+        assert_eq!(repo.import_browser_history(&entries).unwrap(), 1);
+        let hits = repo.search_knowledge("throttling substack", 10).unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].kind, "history");
+        cleanup(&path);
+    }
+
 }
