@@ -37,10 +37,10 @@ Python worker or PyTorch runtime is required.
 
 ## Resource controls
 
-- Inference is CPU-only and limited to at most two threads.
-- Image processing uses configurable batches (default two).
+- Inference is CPU-only. The thread budget is configured by `models.inference_threads` and capped by `resources.max_inference_threads` (default two).
+- Image processing uses configurable batches (`indexing.images.batch_size`, default two).
 - Image sync runs at low process priority and records batch duration/RSS.
-- PDF indexing is bounded by `HYDROGEN_PDF_PAGE_LIMIT` (default 500, hard max 500).
+- PDF indexing is bounded by `indexing.pdf.page_limit` (default 500, hard max 500).
 - Document sync, PDF indexing, and image batches record worker metrics.
 - Semantic models are lazy-loaded. One-shot `index embed` and `query` commands
   release model memory when the process exits. A long-running daemon retains
