@@ -334,11 +334,11 @@ impl AppConfig {
         toml::to_string_pretty(&HydrogenSettings::default()).map_err(|e| e.to_string())
     }
 
-    pub fn write_settings(&self) -> std::result::Result<(), String> {
+    pub fn write_settings(&self, settings: &HydrogenSettings) -> std::result::Result<(), String> {
         if let Some(parent) = self.config_path.parent() {
             fs::create_dir_all(parent).map_err(|e| e.to_string())?;
         }
-        let content = toml::to_string_pretty(&self.settings).map_err(|e| e.to_string())?;
+        let content = toml::to_string_pretty(settings).map_err(|e| e.to_string())?;
         fs::write(&self.config_path, content).map_err(|e| e.to_string())
     }
 }
