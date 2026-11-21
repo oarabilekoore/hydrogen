@@ -9,7 +9,6 @@ use std::thread;
 use std::time::Duration;
 use tiny_http::{Header, Method, Request, Response, Server, StatusCode};
 
-const ADDRESS: &str = "127.0.0.1:17891";
 const FRONTEND: &str = include_str!("../frontend/index.html");
 
 fn header(name: &str, value: &str) -> Header {
@@ -175,12 +174,13 @@ fn handle_api(mut request: Request, cfg: &AppConfig, store: &KnowledgeStore) {
 }
 
 pub fn run(cfg: &AppConfig) -> Result<()> {
-    let server = Server::http(ADDRESS).map_err(|error| {
-        HydrogenError::Config(format!("could not bind Hydrogen frontend at {ADDRESS}: {error}"))
+    let address = cfg.settings.frontend.bind_address.as_str();
+    let server = Server::http(address).map_err(|error| {
+        HydrogenError::Config(format!("could not bind Hydrogen frontend at {address}: {error}"))
     })?;
     let store = KnowledgeStore::open(&cfg.db_path)
         .map_err(|error| HydrogenError::Config(format!("could not open Hydrogen knowledge store: {error}")))?;
-    eprintln!("Hydrogen frontend API listening at http://{ADDRESS}");
+    eprintln!("Hydrogen frontend API listening at http://{address}");
     for request in server.incoming_requests() {
         let url = request.url().to_string();
         if request.method() == &Method::Get && (url == "/" || url.starts_with("/?")) {
@@ -194,8 +194,12 @@ pub fn run(cfg: &AppConfig) -> Result<()> {
     Ok(())
 }
 
-pub fn open_frontend() -> Result<()> {
-    if TcpStream::connect(ADDRESS).is_err() {
+pub fn open_frontend(cfg: &AppConfig) -> Result<()> {
+    let address = cfg.settings.frontend.bind_address.as_str();
+    if TcpStream::connect(address).is_err() {
+        if !cfg.settings.frontend.auto_start {
+            return Err(HydrogenError::Config(format!("Hydrogen frontend is not running at {address} and frontend.auto_start is disabled")));
+        }
         let executable = std::env::current_exe()?;
         Command::new(executable)
             .arg("serve")
@@ -207,17 +211,17 @@ pub fn open_frontend() -> Result<()> {
         let mut ready = false;
         for _ in 0..40 {
             thread::sleep(Duration::from_millis(100));
-            if TcpStream::connect(ADDRESS).is_ok() {
+            if TcpStream::connect(address).is_ok() {
                 ready = true;
                 break;
             }
         }
         if !ready {
-            return Err(HydrogenError::Config("Hydrogen frontend service did not become ready on 127.0.0.1:17891".into()));
+            return Err(HydrogenError::Config(format!("Hydrogen frontend service did not become ready at {address}")));
         }
     }
     Command::new("xdg-open")
-        .arg(format!("http://{ADDRESS}/"))
+        .arg(format!("http://{address}/"))
         .spawn()
         .map_err(|error| HydrogenError::Config(format!("could not open Hydrogen in the browser: {error}")))?;
     Ok(())
