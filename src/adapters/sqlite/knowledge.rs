@@ -169,7 +169,7 @@ impl KnowledgeStore {
         let conn = self.connect()?;
         let mut stmt = conn.prepare(
             "SELECT id,conversation_id,role,content,model,sources_json,created_at
-             FROM messages WHERE conversation_id=?1 ORDER BY created_at,id",
+             FROM messages WHERE conversation_id=?1 ORDER BY rowid ASC",
         )?;
         let rows = stmt.query_map(params![conversation_id], |row| {
             Ok(StoredMessage {
