@@ -25,6 +25,9 @@ pub struct AnswerArgs {
     /// Generate the HTML answer and open it in the default browser
     #[arg(long)]
     pub browser: bool,
+    /// Do not create a saved conversation (used by the frontend chat worker)
+    #[arg(long, hide = true)]
+    pub no_save: bool,
 }
 
 fn query_variants(query: &str, max_variants: usize) -> Vec<String> {
@@ -578,6 +581,17 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
             } else {
                 None
             };
+            let conversation_id = if args.no_save {
+                None
+            } else {
+                let knowledge = KnowledgeStore::open(&cfg.db_path).map_err(|error| {
+                    crate::error::HydrogenError::Config(format!("could not save answer: {error}"))
+                })?;
+                let id = knowledge.create_conversation(query)?;
+                knowledge.append_message(&id, "user", query, None)?;
+                knowledge.append_message_with_sources(&id, "assistant", answer, Some(model), Some(&json!(sources)))?;
+                Some(id)
+            };
             let browser_opened = if args.browser {
                 if let Some(path) = html_path.as_deref() {
                     match Command::new("xdg-open").arg(path).spawn() {
@@ -598,7 +612,8 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
                 json!({
                     "status": "ready", "model": model, "answer": answer,
                     "sources": sources, "html_path": html_path,
-                    "browser_opened": browser_opened
+                    "browser_opened": browser_opened,
+                    "conversation_id": conversation_id
                 })
             );
         }
