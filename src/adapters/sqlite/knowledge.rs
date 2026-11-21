@@ -422,7 +422,9 @@ impl KnowledgeStore {
                 "SELECT m.conversation_id,c.title,snippet(messages_fts,2,'','','…',24),c.updated_at
                  FROM messages_fts JOIN messages m ON m.rowid=messages_fts.rowid
                  JOIN conversations c ON c.id=m.conversation_id
-                 WHERE messages_fts MATCH ?1 ORDER BY bm25(messages_fts) LIMIT ?2",
+                 WHERE messages_fts MATCH ?1
+                 GROUP BY m.conversation_id
+                 ORDER BY c.updated_at DESC LIMIT ?2",
             )?;
             let rows = stmt.query_map(params![fts_query, limit.clamp(1, 100) as i64], |row| {
                 Ok(KnowledgeHit {
