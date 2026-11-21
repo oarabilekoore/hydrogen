@@ -271,6 +271,28 @@ impl KnowledgeStore {
         )
     }
 
+    pub fn get_web_page(&self, id: i64) -> rusqlite::Result<Option<WebPageRecord>> {
+        let conn = self.connect()?;
+        conn.query_row(
+            "SELECT id,url,canonical_url,title,content,author,published_at,site_name,content_hash,captured_at,updated_at
+             FROM web_pages WHERE id=?1",
+            params![id],
+            |row| Ok(WebPageRecord {
+                id: row.get(0)?,
+                url: row.get(1)?,
+                canonical_url: row.get(2)?,
+                title: row.get(3)?,
+                content: row.get(4)?,
+                author: row.get(5)?,
+                published_at: row.get(6)?,
+                site_name: row.get(7)?,
+                content_hash: row.get(8)?,
+                captured_at: row.get(9)?,
+                updated_at: row.get(10)?,
+            }),
+        ).optional()
+    }
+
     pub fn record_visit(&self, canonical_url: &str) -> rusqlite::Result<()> {
         let conn = self.connect()?;
         let page_id: Option<i64> = conn.query_row(
