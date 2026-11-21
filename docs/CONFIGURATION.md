@@ -91,7 +91,8 @@ poll_interval_ms = 150
 ```
 
 Paths support normal TOML strings. Use absolute paths or paths relative to the
-home directory; Hydrogen expands a leading `~` in configured search roots.
+home directory; Hydrogen expands a leading `~` in configured search roots,
+state directories and model directories.
 
 ## What is configurable
 
