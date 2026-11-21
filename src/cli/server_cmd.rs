@@ -302,6 +302,24 @@ fn handle_request(mut request: Request, cfg: &mut AppConfig) {
         };
     }
 
+    if method == "POST" && path == "/api/feeds" {
+        if !cfg.settings.web.enabled || !cfg.settings.web.feeds_enabled {
+            return json_response(json!({"error":"RSS and Atom feeds are disabled"}), 403, origin_ref);
+        }
+        let body = match read_json(&mut request) {
+            Ok(value) => value,
+            Err(error) => return json_response(json!({"error":error}), 400, origin_ref),
+        };
+        let url = body.get("url").and_then(Value::as_str).unwrap_or("");
+        if !(url.starts_with("https://") || url.starts_with("http://")) {
+            return json_response(json!({"error":"feed URL must use HTTP or HTTPS"}), 400, origin_ref);
+        }
+        return match knowledge.add_feed(url) {
+            Ok(id) => json_response(json!({"status":"added","id":id}), 201, origin_ref),
+            Err(error) => json_response(json!({"error":error.to_string()}), 500, origin_ref),
+        };
+    }
+
     if method == "POST" && path == "/api/web-pages" {
         if !cfg.settings.web.enabled {
             return json_response(json!({"error":"web knowledge storage is disabled"}), 403, origin_ref);
