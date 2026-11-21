@@ -9,7 +9,7 @@ A Manifest V3 extension for Chromium and Firefox-compatible WebExtension environ
 
 ## Behaviour
 
-- Extracts readable article text from article/main content containers.
+- Uses the bundled Mozilla Readability library to extract article text, metadata and paragraph structure, with a structural DOM fallback.
 - Uses minimum text and paragraph thresholds to avoid indexing app interfaces.
 - Captures rendered ChatGPT, Claude and Gemini conversation turns where their DOM exposes them.
 - Sends captured content only to the Hydrogen service at `127.0.0.1:17891`.
@@ -21,4 +21,4 @@ A Manifest V3 extension for Chromium and Firefox-compatible WebExtension environ
 
 This is an initial adapter implementation. AI websites change their DOM frequently, so adapters are best-effort and need fixtures and regression tests. Unknown or unlabelled message nodes are ignored rather than guessed. The extension can only capture content present in the rendered page; it cannot access hidden model reasoning, private API data, or content that the website does not expose.
 
-RSS discovery, attachment capture, a review queue and historical versions of pages before they are revisited are not implemented yet. History import only fetches the current page content available at import time, not a historical snapshot.
+RSS/Atom feed subscription management, attachment capture, a review queue and historical versions of pages before they are revisited are not implemented yet. The bundled Readability source is Apache-2.0 licensed; its license is included in `vendor/READABILITY-LICENSE.txt`. History import only fetches the current page content available at import time, not a historical snapshot.
