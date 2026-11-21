@@ -22,6 +22,9 @@ pub struct Cli {
     /// Open the bundled Hydrogen web application in your browser
     #[arg(long)]
     pub frontend: bool,
+    /// Start a saved AI conversation with this question after opening the frontend
+    #[arg(long, requires = "frontend")]
+    pub ask: Option<String>,
     #[command(subcommand)]
     pub command: Option<Commands>,
 }
@@ -50,7 +53,7 @@ pub enum Commands {
 
 pub fn dispatch(cli: Cli, cfg: &AppConfig) -> Result<()> {
     if cli.frontend {
-        return serve_cmd::open_frontend(cfg);
+        return serve_cmd::open_frontend(cfg, cli.ask.as_deref());
     }
     match cli.command {
         Some(Commands::Config(args)) => config_cmd::run(args, cfg),
