@@ -430,7 +430,12 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
         })?;
         let remaining = limit.saturating_sub(sources.len());
         for page in knowledge.search_web_pages(query, remaining)? {
-            let id = sources.iter().filter_map(|source| source.get("id").and_then(Value::as_u64)).max().unwrap_or(0) + 1;
+            let id = sources
+                .iter()
+                .filter_map(|source| source.get("id").and_then(Value::as_u64))
+                .max()
+                .unwrap_or(0)
+                + 1;
             let snippet: String = page
                 .content
                 .chars()
@@ -589,7 +594,13 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
                 })?;
                 let id = knowledge.create_conversation(query)?;
                 knowledge.append_message(&id, "user", query, None)?;
-                knowledge.append_message_with_sources(&id, "assistant", answer, Some(model), Some(&json!(sources)))?;
+                knowledge.append_message_with_sources(
+                    &id,
+                    "assistant",
+                    answer,
+                    Some(model),
+                    Some(&json!(sources)),
+                )?;
                 Some(id)
             };
             let browser_opened = if args.browser {
