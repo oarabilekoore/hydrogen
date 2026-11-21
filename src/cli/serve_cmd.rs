@@ -628,7 +628,12 @@ fn encode_query(value: &str) -> String {
     encoded
 }
 
-pub fn open_frontend(\n    cfg: &AppConfig,\n    ask: Option<&str>,\n    conversation: Option<&str>,\n    page: Option<i64>,\n) -> Result<()> {
+pub fn open_frontend(
+    cfg: &AppConfig,
+    ask: Option<&str>,
+    conversation: Option<&str>,
+    page: Option<i64>,
+) -> Result<()> {
     let address = cfg.settings.frontend.bind_address.as_str();
     if TcpStream::connect(address).is_err() {
         if !cfg.settings.frontend.auto_start {
