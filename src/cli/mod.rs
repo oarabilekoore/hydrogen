@@ -62,7 +62,12 @@ pub enum Commands {
 
 pub fn dispatch(cli: Cli, cfg: &AppConfig) -> Result<()> {
     if cli.frontend {
-        return serve_cmd::open_frontend(cfg, cli.ask.as_deref(), cli.conversation.as_deref(), cli.page.as_deref());
+        return serve_cmd::open_frontend(
+            cfg,
+            cli.ask.as_deref(),
+            cli.conversation.as_deref(),
+            cli.page.as_deref(),
+        );
     }
     match cli.command {
         Some(Commands::Config(args)) => config_cmd::run(args, cfg),
