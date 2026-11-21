@@ -15,25 +15,48 @@
   }
 
   function articleCandidate() {
+    if (typeof Readability === "function") {
+      try {
+        const parsed = new Readability(document.cloneNode(true), {
+          charThreshold: 300,
+          keepClasses: false
+        }).parse();
+        if (parsed?.textContent?.trim()) {
+          const articleDocument = new DOMParser().parseFromString(parsed.content || "", "text/html");
+          return {
+            text: parsed.textContent.replace(/\\n{3,}/g, "\\n\\n").trim(),
+            paragraphs: articleDocument.querySelectorAll("p").length,
+            metadata: {
+              title: parsed.title || "",
+              author: parsed.byline || "",
+              published_at: parsed.publishedTime || "",
+              site_name: parsed.siteName || ""
+            }
+          };
+        }
+      } catch (error) {
+        console.debug("Hydrogen Readability extraction failed; using structural fallback.", error);
+      }
+    }
+
     const candidates = [...document.querySelectorAll("article,main,[role=main],.post-content,.article-content")];
     const ranked = candidates.map(node => ({
-      node,
       text: cleanText(node),
       paragraphs: node.querySelectorAll("p").length
     })).sort((a, b) => b.text.length - a.text.length);
-    return ranked[0] || { node: document.body, text: cleanText(document.body), paragraphs: document.querySelectorAll("p").length };
+    return ranked[0] || { text: cleanText(document.body), paragraphs: document.querySelectorAll("p").length, metadata: {} };
   }
 
-  function pageMetadata() {
+  function pageMetadata(article = {}) {
     const get = selector => document.querySelector(selector)?.content?.trim() || "";
     const canonical = document.querySelector('link[rel="canonical"]')?.href || location.href;
     return {
       url: location.href,
       canonical_url: canonical,
-      title: get('meta[property="og:title"]') || document.title,
-      author: get('meta[name="author"]') || get('meta[property="article:author"]') || null,
-      published_at: get('meta[property="article:published_time"]') || get('meta[name="date"]') || null,
-      site_name: get('meta[property="og:site_name"]') || location.hostname
+      title: get('meta[property="og:title"]') || article.title || document.title,
+      author: get('meta[name="author"]') || get('meta[property="article:author"]') || article.author || null,
+      published_at: get('meta[property="article:published_time"]') || get('meta[name="date"]') || article.published_at || null,
+      site_name: get('meta[property="og:site_name"]') || article.site_name || location.hostname
     };
   }
 
@@ -41,13 +64,14 @@
     if (excludedPath.test(location.pathname) || excludedHost.test(location.hostname)) return;
     const appPath = /\/(app|editor|workspace|canvas|playground|ide|dashboard|studio)(\/|$)/i;
     if (!force && appPath.test(location.pathname)) return;
-    const { text, paragraphs } = articleCandidate();
+    const candidate = articleCandidate();
+    const { text, paragraphs } = candidate;
     const canvases = document.querySelectorAll("canvas").length;
     const controls = document.querySelectorAll("button,input,textarea,select,[contenteditable=true]").length;
     if (!force && (text.length < 800 || paragraphs < 4)) return;
     if (!force && ((canvases > 0 && paragraphs < 8) || (controls > 35 && paragraphs < 8))) return;
     if (text.length < 120) return;
-    const meta = pageMetadata();
+    const meta = pageMetadata(candidate.metadata);
     const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(meta.canonical_url + "\n" + text));
     const hash = [...new Uint8Array(digest)].map(v => v.toString(16).padStart(2, "0")).join("");
     if (hash === lastArticleHash) return;
