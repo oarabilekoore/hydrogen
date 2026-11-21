@@ -183,7 +183,6 @@ pub fn run(args: ConfigArgs, cfg: &AppConfig) -> Result<()> {
     Ok(())
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -193,7 +192,12 @@ mod tests {
         let mut settings = HydrogenSettings::default();
         set_value(&mut settings, "answer.model", "qwen3.5:2b-q4_K_M").unwrap();
         set_value(&mut settings, "indexing.pdf.ocr_scanned_pages", "false").unwrap();
-        set_value(&mut settings, "paths.roots", "[\"/home/test/Documents\", \"~/Notes\"]").unwrap();
+        set_value(
+            &mut settings,
+            "paths.roots",
+            "[\"/home/test/Documents\", \"~/Notes\"]",
+        )
+        .unwrap();
         assert_eq!(settings.answer.model, "qwen3.5:2b-q4_K_M");
         assert!(!settings.indexing.pdf.ocr_scanned_pages);
         assert_eq!(settings.paths.roots.len(), 2);
