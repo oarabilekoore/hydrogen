@@ -270,6 +270,7 @@ impl KnowledgeStore {
         site_name: Option<&str>,
         content_hash: &str,
         keep_version: bool,
+        max_versions: usize,
     ) -> rusqlite::Result<i64> {
         let conn = self.connect()?;
         if keep_version {
@@ -300,11 +301,20 @@ impl KnowledgeStore {
                updated_at=unixepoch()",
             params![url, canonical_url, title, content, author, published_at, site_name, content_hash],
         )?;
-        conn.query_row(
+        let page_id: i64 = conn.query_row(
             "SELECT id FROM web_pages WHERE canonical_url=?1",
             params![canonical_url],
             |row| row.get(0),
-        )
+        )?;
+        conn.execute(
+            "DELETE FROM web_page_versions
+             WHERE page_id=?1 AND id NOT IN (
+                SELECT id FROM web_page_versions
+                WHERE page_id=?1 ORDER BY captured_at DESC,id DESC LIMIT ?2
+             )",
+            params![page_id, max_versions.clamp(1, 50) as i64],
+        )?;
+        Ok(page_id)
     }
 
     pub fn search_web_pages(
