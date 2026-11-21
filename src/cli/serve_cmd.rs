@@ -646,7 +646,12 @@ fn encode_query(value: &str) -> String {
     encoded
 }
 
-pub fn open_frontend(cfg: &AppConfig, ask: Option<&str>) -> Result<()> {
+pub fn open_frontend(
+    cfg: &AppConfig,
+    ask: Option<&str>,
+    conversation: Option<&str>,
+    page: Option<&str>,
+) -> Result<()> {
     let address = cfg.settings.frontend.bind_address.as_str();
     if TcpStream::connect(address).is_err() {
         if !cfg.settings.frontend.auto_start {
@@ -680,9 +685,16 @@ pub fn open_frontend(cfg: &AppConfig, ask: Option<&str>) -> Result<()> {
             )));
         }
     }
-    let url = ask
-        .map(|question| format!("http://{address}/?ask={}", encode_query(question)))
-        .unwrap_or_else(|| format!("http://{address}/"));
+    let base = format!("http://{address}/");
+    let url = if let Some(question) = ask {
+        format!("{base}?ask={}", encode_query(question))
+    } else if let Some(id) = conversation {
+        format!("{base}?conversation={}", encode_query(id))
+    } else if let Some(id) = page {
+        format!("{base}?page={}", encode_query(id))
+    } else {
+        base
+    };
     Command::new("xdg-open").arg(url).spawn().map_err(|error| {
         HydrogenError::Config(format!("could not open Hydrogen in the browser: {error}"))
     })?;
