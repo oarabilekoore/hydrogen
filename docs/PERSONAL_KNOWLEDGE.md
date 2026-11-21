@@ -40,10 +40,10 @@ Hydrogen Capture currently supports:
 - Canonical URL deduplication.
 - Minimum text and paragraph qualification.
 - Explicit manual page capture.
-- Rendered conversation capture adapters for ChatGPT, Claude and Gemini.
+- Best-effort rendered conversation adapters for ChatGPT, Claude, Gemini, Perplexity, DeepSeek, Microsoft Copilot, Grok, Poe and Mistral.
 - Incremental conversation snapshots keyed by their conversation URL.
 - Independent pause, article capture and AI chat capture controls.
-- Explicit recent browser-history import, which visits selected URLs in inactive tabs and captures only qualifying readable articles.
+- Explicit recent browser-history import (last 30 days, up to 25 URLs by default), which visits selected URLs in inactive tabs and captures only qualifying readable articles.
 
 The extension sends content to the local Hydrogen API only. The API enforces the configured domain exclusions, allowed-domain list, content-size limit and automatic-capture qualification.
 
@@ -78,7 +78,7 @@ This is an initial working foundation, not the completed roadmap. The following 
 - RSS/Atom feed subscription management and polling.
 - Full historical reconstruction of pages from browser history. Import can only capture the current version of a page that still loads.
 - Mozilla Readability-grade extraction and site-specific extraction fixtures.
-- Additional AI chat adapters and robust DOM regression tests.
+- Robust DOM regression fixtures for the current best-effort AI chat adapters and any additional providers.
 - Attachment capture and offline attachment storage.
 - Background ingestion queues, retry UI and detailed activity monitoring.
 - Settings controls for supported writable options; a few advanced or not-yet-implemented settings remain CLI/TOML-only.
