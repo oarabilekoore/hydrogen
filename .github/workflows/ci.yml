@@ -19,6 +19,15 @@ jobs:
         with:
           components: rustfmt
       - uses: Swatinem/rust-cache@v2
+      - name: Apply rustfmt and capture changes
+        run: |
+          cargo fmt --all
+          git diff > rustfmt.patch
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hydrogen-rustfmt-patch
+          path: rustfmt.patch
+          if-no-files-found: error
       - name: Check formatting
         run: cargo fmt --all -- --check
       - name: Compile
