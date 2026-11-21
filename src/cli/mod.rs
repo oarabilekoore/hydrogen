@@ -1,5 +1,6 @@
 pub mod answer_cmd;
 pub mod calendar_cmd;
+pub mod config_cmd;
 pub mod daemon_cmd;
 pub mod doctor_cmd;
 pub mod index_cmd;
@@ -23,6 +24,8 @@ pub struct Cli {
 
 #[derive(Subcommand, Debug)]
 pub enum Commands {
+    /// Inspect and initialise Hydrogen configuration
+    Config(config_cmd::ConfigArgs),
     /// Answer a question from indexed documents using a local Ollama model
     Answer(answer_cmd::AnswerArgs),
     /// Manage the sparse TF-IDF + FTS5 + image OCR/VLM index
@@ -41,6 +44,7 @@ pub enum Commands {
 
 pub fn dispatch(cli: Cli, cfg: &AppConfig) -> Result<()> {
     match cli.command {
+        Commands::Config(args) => config_cmd::run(args, cfg),
         Commands::Answer(args) => answer_cmd::run(args, cfg),
         Commands::Index(args) => index_cmd::run(args, cfg),
         Commands::Query(args) => query_cmd::run(args, cfg),
