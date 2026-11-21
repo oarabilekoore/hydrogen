@@ -124,21 +124,29 @@ impl LinuxInotifyWatcher {
         if !root.is_dir() || self.is_under_ignored(root) {
             return;
         }
-        let iter = WalkDir::new(root)
-            .max_depth(self.max_depth)
+        let excluded_directories = self.excluded_directories.clone();
+        let include_hidden = self.include_hidden;
+        let max_depth = self.max_depth;
+        let directories: Vec<PathBuf> = WalkDir::new(root)
+            .max_depth(max_depth)
             .follow_links(false)
             .into_iter()
-            .filter_entry(|e| {
-                e.file_type().is_dir()
-                    && (e.depth() == 0
-                        || e.file_name()
-                            .to_str()
-                            .map(|name| !self.should_skip_name(name))
-                            .unwrap_or(false))
-            });
+            .filter_entry(move |entry| {
+                if entry.depth() == 0 {
+                    return true;
+                }
+                let name = entry.file_name().to_str().unwrap_or("");
+                entry.file_type().is_dir()
+                    && !name.is_empty()
+                    && (include_hidden || !name.starts_with('.'))
+                    && !excluded_directories.contains(name)
+            })
+            .flatten()
+            .map(|entry| entry.into_path())
+            .collect();
 
-        for entry in iter.flatten() {
-            self.add_watch_dir(entry.path());
+        for directory in directories {
+            self.add_watch_dir(&directory);
         }
     }
 
@@ -250,7 +258,7 @@ impl LinuxInotifyWatcher {
 
                     let is_dir = (mask & libc::IN_ISDIR) != 0;
                     if !name.is_empty()
-                        && should_skip_name(&name)
+                        && self.should_skip_name(&name)
                         && (mask & libc::IN_MOVED_TO) == 0
                     {
                         continue;
