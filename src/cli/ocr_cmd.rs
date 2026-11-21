@@ -36,7 +36,7 @@ pub enum OcrAction {
 
 pub fn run(args: OcrArgs, cfg: &AppConfig) -> Result<()> {
     let desktop = HyprlandDesktop;
-    let ocr = RustOcrProvider::new(cfg.models_dir.clone());
+    let ocr = RustOcrProvider::new(cfg.models_dir.clone(), cfg.inference_threads, cfg.settings.indexing.images.captions);
     let service = OcrService::new(&ocr, &desktop);
     match args.action {
         OcrAction::Clip {
