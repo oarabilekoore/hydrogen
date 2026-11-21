@@ -11,7 +11,7 @@ function sensitiveUrl(raw, prefs) {
   try {
     const url = new URL(raw);
     if (!/^https?:$/.test(url.protocol)) return true;
-    if (/\\/(login|signin|sign-in|checkout|payment|account|settings|admin)(\\/|$)/i.test(url.pathname)) return true;
+    if (/\/(login|signin|sign-in|checkout|payment|account|settings|admin)(\/|$)/i.test(url.pathname)) return true;
     return prefs.excludedHosts.some(item => url.hostname === item || url.hostname.endsWith("." + item));
   } catch (_) { return true; }
 }
