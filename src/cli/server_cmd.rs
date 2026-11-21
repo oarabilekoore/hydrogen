@@ -196,10 +196,27 @@ fn handle_request(mut request: Request, cfg: &mut AppConfig) {
         if question.is_empty() || question.len() > 32_000 {
             return json_response(json!({"error":"message must contain 1 to 32000 bytes"}), 400, origin_ref);
         }
+        let history = match knowledge.get_conversation(id) {
+            Ok(Some(conversation)) => conversation.messages.iter()
+                .rev()
+                .filter(|message| message.role == "user" || message.role == "assistant")
+                .take(8)
+                .collect::<Vec<_>>()
+                .into_iter()
+                .rev()
+                .map(|message| format!("{}: {}", message.role, message.content))
+                .collect::<Vec<_>>()
+                .join("\\n"),
+            Ok(None) => return json_response(json!({"error":"conversation not found"}), 404, origin_ref),
+            Err(error) => return json_response(json!({"error":error.to_string()}), 500, origin_ref),
+        };
         if let Err(error) = knowledge.append_message(id, "user", question, None, None) {
             return json_response(json!({"error":error.to_string()}), 404, origin_ref);
         }
-        let generated = run_cli_json(&["answer", question, "--model", cfg.settings.answer.model.as_str()]);
+        let generated = run_cli_json(&[
+            "answer", question, "--model", cfg.settings.answer.model.as_str(),
+            "--history", &history
+        ]);
         let (answer, sources, error) = match generated {
             Ok(value) => {
                 let answer = value.get("answer").and_then(Value::as_str).unwrap_or("").to_string();
