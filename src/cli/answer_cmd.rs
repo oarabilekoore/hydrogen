@@ -64,6 +64,37 @@ fn passage_key(hit: &crate::domain::document::SearchHit) -> String {
     format!("{}#{}", hit.path, hit.page.unwrap_or(0))
 }
 
+/// Extract the user-facing answer from both Ollama chat and legacy generate
+/// response shapes. Deliberately never substitute the model's thinking field.
+fn extract_ollama_answer(value: &Value) -> Option<String> {
+    value
+        .pointer("/message/content")
+        .and_then(Value::as_str)
+        .or_else(|| value.get("response").and_then(Value::as_str))
+        .map(str::trim)
+        .filter(|answer| !answer.is_empty())
+        .map(str::to_owned)
+}
+
+fn ollama_empty_diagnostic(value: &Value) -> String {
+    let done_reason = value
+        .get("done_reason")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    let thinking_chars = value
+        .pointer("/message/thinking")
+        .and_then(Value::as_str)
+        .map(str::len)
+        .unwrap_or(0);
+    let eval_count = value
+        .get("eval_count")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    format!(
+        "Ollama completed without answer text (done_reason={done_reason}, thinking_chars={thinking_chars}, eval_count={eval_count}). The thinking channel is not treated as an answer. Try a non-thinking model or increase answer.max_output_tokens."
+    )
+}
+
 fn escape_html(value: &str) -> String {
     value
         .replace('&', "&amp;")
@@ -398,10 +429,19 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
          If sources disagree or are incomplete, explicitly say so. Keep the answer concise.\n\n\
          QUESTION:\n{query}\n\nRETRIEVED COURSE EXCERPTS:\n{context}\nANSWER:"
     );
+    // Use /api/chat and explicitly disable thinking for this source-grounded
+    // answer path. Small local models can otherwise spend the entire output
+    // budget in a private reasoning channel and return an empty final answer.
     let payload = json!({
         "model": model,
-        "prompt": prompt,
+        "messages": [
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ],
         "stream": false,
+        "think": false,
         "options": {
             "num_ctx": answer_cfg.context_window,
             "num_predict": answer_cfg.max_output_tokens,
@@ -421,7 +461,7 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
             "2",
             "--max-time",
             &answer_cfg.timeout_seconds.to_string(),
-            &format!("{}/api/generate", answer_cfg.endpoint.trim_end_matches('/')),
+            &format!("{}/api/chat", answer_cfg.endpoint.trim_end_matches('/')),
             "-H",
             "Content-Type: application/json",
             "--data-binary",
@@ -435,13 +475,14 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
             let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
             let parsed = serde_json::from_str::<Value>(&body).ok();
             if output.status.success() {
-                let answer = parsed
-                    .as_ref()
-                    .and_then(|value| value.get("response"))
-                    .and_then(Value::as_str)
-                    .map(str::to_owned);
+                let answer = parsed.as_ref().and_then(extract_ollama_answer);
                 let error = if answer.as_deref().unwrap_or("").trim().is_empty() {
-                    Some("Ollama returned an empty response.".to_string())
+                    Some(parsed.as_ref().map(ollama_empty_diagnostic).unwrap_or_else(|| {
+                        format!(
+                            "Ollama returned a non-JSON response: {}",
+                            body.chars().take(240).collect::<String>()
+                        )
+                    }))
                 } else {
                     None
                 };
@@ -517,6 +558,31 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
 #[cfg(test)]
 mod html_tests {
     use super::*;
+
+    #[test]
+    fn extracts_ollama_chat_content() {
+        let value = json!({"message":{"role":"assistant","content":"  grounded answer  "}});
+        assert_eq!(extract_ollama_answer(&value).as_deref(), Some("grounded answer"));
+    }
+
+    #[test]
+    fn extracts_legacy_generate_content() {
+        let value = json!({"response":"legacy answer"});
+        assert_eq!(extract_ollama_answer(&value).as_deref(), Some("legacy answer"));
+    }
+
+    #[test]
+    fn does_not_mistake_thinking_for_an_answer() {
+        let value = json!({
+            "message":{"content":"","thinking":"private reasoning"},
+            "done_reason":"length",
+            "eval_count":180
+        });
+        assert_eq!(extract_ollama_answer(&value), None);
+        let diagnostic = ollama_empty_diagnostic(&value);
+        assert!(diagnostic.contains("thinking_chars=16"));
+        assert!(diagnostic.contains("done_reason=length"));
+    }
 
     #[test]
     fn html_escaping_prevents_markup_injection() {
