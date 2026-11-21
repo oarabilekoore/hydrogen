@@ -1,6 +1,5 @@
-use crate::adapters::fs::scanner::should_skip_name;
 use crate::error::{HydrogenError, Result};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ffi::{CStr, CString};
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
@@ -37,13 +36,21 @@ pub enum FsChangeEvent {
 pub struct LinuxInotifyWatcher {
     fd: i32,
     roots: Vec<PathBuf>,
+    excluded_directories: HashSet<String>,
+    include_hidden: bool,
+    max_depth: usize,
     wd_to_path: HashMap<i32, PathBuf>,
     path_to_wd: HashMap<PathBuf, i32>,
     pending_cookies: HashMap<u32, (Instant, PathBuf, bool)>,
 }
 
 impl LinuxInotifyWatcher {
-    pub fn new(roots: Vec<PathBuf>) -> Result<Self> {
+    pub fn new(
+        roots: Vec<PathBuf>,
+        excluded_directories: Vec<String>,
+        include_hidden: bool,
+        max_depth: usize,
+    ) -> Result<Self> {
         let fd = unsafe { libc::inotify_init1(libc::IN_NONBLOCK | libc::IN_CLOEXEC) };
         if fd < 0 {
             return Err(HydrogenError::Io(std::io::Error::last_os_error()));
@@ -52,6 +59,9 @@ impl LinuxInotifyWatcher {
         let mut watcher = Self {
             fd,
             roots: roots.clone(),
+            excluded_directories: excluded_directories.into_iter().collect(),
+            include_hidden,
+            max_depth,
             wd_to_path: HashMap::new(),
             path_to_wd: HashMap::new(),
             pending_cookies: HashMap::new(),
@@ -76,12 +86,21 @@ impl LinuxInotifyWatcher {
         }
     }
 
+    fn should_skip_name(&self, name: &str) -> bool {
+        name.is_empty()
+            || (!self.include_hidden && name.starts_with('.'))
+            || self.excluded_directories.contains(name)
+    }
+
     fn is_under_ignored(&self, path: &Path) -> bool {
         for root in &self.roots {
             if let Ok(rel) = path.strip_prefix(root) {
-                return rel
-                    .components()
-                    .any(|c| c.as_os_str().to_str().map(should_skip_name).unwrap_or(true));
+                return rel.components().any(|c| {
+                    c.as_os_str()
+                        .to_str()
+                        .map(|name| self.should_skip_name(name))
+                        .unwrap_or(true)
+                });
             }
         }
         true
@@ -105,21 +124,29 @@ impl LinuxInotifyWatcher {
         if !root.is_dir() || self.is_under_ignored(root) {
             return;
         }
-        let iter = WalkDir::new(root)
-            .max_depth(6)
+        let excluded_directories = self.excluded_directories.clone();
+        let include_hidden = self.include_hidden;
+        let max_depth = self.max_depth;
+        let directories: Vec<PathBuf> = WalkDir::new(root)
+            .max_depth(max_depth)
             .follow_links(false)
             .into_iter()
-            .filter_entry(|e| {
-                e.file_type().is_dir()
-                    && (e.depth() == 0
-                        || e.file_name()
-                            .to_str()
-                            .map(|n| !should_skip_name(n))
-                            .unwrap_or(false))
-            });
+            .filter_entry(move |entry| {
+                if entry.depth() == 0 {
+                    return true;
+                }
+                let name = entry.file_name().to_str().unwrap_or("");
+                entry.file_type().is_dir()
+                    && !name.is_empty()
+                    && (include_hidden || !name.starts_with('.'))
+                    && !excluded_directories.contains(name)
+            })
+            .flatten()
+            .map(|entry| entry.into_path())
+            .collect();
 
-        for entry in iter.flatten() {
-            self.add_watch_dir(entry.path());
+        for directory in directories {
+            self.add_watch_dir(&directory);
         }
     }
 
@@ -231,7 +258,7 @@ impl LinuxInotifyWatcher {
 
                     let is_dir = (mask & libc::IN_ISDIR) != 0;
                     if !name.is_empty()
-                        && should_skip_name(&name)
+                        && self.should_skip_name(&name)
                         && (mask & libc::IN_MOVED_TO) == 0
                     {
                         continue;

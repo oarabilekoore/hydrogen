@@ -14,14 +14,17 @@ pub struct QueryArgs {
     #[arg(long)]
     pub image: Option<PathBuf>,
     /// Maximum number of ranked hits to return
-    #[arg(long, default_value_t = 20)]
-    pub limit: usize,
+    #[arg(long)]
+    pub limit: Option<usize>,
     /// Restrict results to "all", "files" (filename/path), or "content" (body/OCR/caption)
     #[arg(long, default_value = "all")]
     pub mode: String,
     /// Augment lexical search with local MiniLM and shared CLIP vectors.
     #[arg(long)]
     pub semantic: bool,
+    /// Disable semantic retrieval even when it is enabled in config.
+    #[arg(long)]
+    pub no_semantic: bool,
 }
 
 pub fn run(args: QueryArgs, cfg: &AppConfig) -> Result<()> {
@@ -30,11 +33,13 @@ pub fn run(args: QueryArgs, cfg: &AppConfig) -> Result<()> {
         return Ok(());
     }
     let repo = SqliteIndexRepository::open(&cfg.db_path)?;
-    let embeddings = FastEmbedProvider::new(cfg.models_dir.clone());
+    let embeddings = FastEmbedProvider::new(cfg.models_dir.clone(), cfg.inference_threads);
     let service = QueryService::new(&repo, &embeddings);
+    let limit = args.limit.unwrap_or(cfg.settings.search.default_limit);
+    let semantic = !args.no_semantic && (args.semantic || cfg.settings.indexing.embeddings_enabled);
     let hits = match (args.query.as_deref(), args.image.as_deref()) {
-        (Some(query), None) => service.search(query, args.limit, &args.mode, args.semantic)?,
-        (None, Some(image)) => service.search_image(image, args.limit)?,
+        (Some(query), None) => service.search(query, limit, &args.mode, semantic)?,
+        (None, Some(image)) => service.search_image(image, limit)?,
         (Some(_), Some(_)) => {
             return Err(crate::error::HydrogenError::InvalidInput(
                 "provide either a text query or --image, not both".into(),

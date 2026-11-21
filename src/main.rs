@@ -14,7 +14,13 @@ use std::process;
 
 fn main() {
     let cli = Cli::parse();
-    let cfg = AppConfig::load();
+    let cfg = match AppConfig::load() {
+        Ok(cfg) => cfg,
+        Err(err) => {
+            eprintln!("{}", json!({"error": err}));
+            process::exit(2);
+        }
+    };
 
     if let Err(err) = cli::dispatch(cli, &cfg) {
         let payload = json!({

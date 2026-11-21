@@ -9,9 +9,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-const DEBOUNCE_WINDOW: Duration = Duration::from_millis(350);
-const RECONCILE_INTERVAL: Duration = Duration::from_secs(60);
-
 pub struct WatcherService<'a> {
     cfg: &'a AppConfig,
     repo: &'a dyn IndexRepository,
@@ -41,6 +38,9 @@ impl<'a> WatcherService<'a> {
         // Initial startup sync ensures DB & inode_map match disk.
         self.sync_service.sync(self.spawn_images)?;
         let mut last_reconcile_at = Instant::now();
+        let debounce_window = Duration::from_millis(self.cfg.settings.watch.debounce_ms);
+        let reconcile_interval =
+            Duration::from_secs(self.cfg.settings.watch.reconcile_interval_seconds);
 
         let mut pending_renames: Vec<(PathBuf, PathBuf, bool)> = Vec::new();
         let mut pending_deletes: HashSet<(PathBuf, bool)> = HashSet::new();
@@ -48,12 +48,14 @@ impl<'a> WatcherService<'a> {
         let mut last_event_at: Option<Instant> = None;
 
         while running.load(Ordering::SeqCst) {
-            let events = self.watcher.poll_events(150)?;
+            let events = self
+                .watcher
+                .poll_events(self.cfg.settings.watch.poll_interval_ms as i32)?;
 
             // inotify is a fast path, not a source of truth. Reconcile periodically to
             // recover from queue overflow, missed events, unavailable roots at startup,
             // and directories created while the daemon was not watching them.
-            if last_reconcile_at.elapsed() >= RECONCILE_INTERVAL {
+            if last_reconcile_at.elapsed() >= reconcile_interval {
                 self.watcher.reconcile_watches();
                 self.sync_service.sync(self.spawn_images)?;
                 last_reconcile_at = Instant::now();
@@ -80,7 +82,7 @@ impl<'a> WatcherService<'a> {
             }
 
             let ready = last_event_at
-                .map(|t| t.elapsed() >= DEBOUNCE_WINDOW)
+                .map(|t| t.elapsed() >= debounce_window)
                 .unwrap_or(false)
                 && !self.watcher.has_pending_cookies();
 

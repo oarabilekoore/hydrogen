@@ -1,7 +1,6 @@
 # Local model setup
 
-Set `HYDROGEN_MODELS_DIR` to override the default
-`~/.local/share/hydrogen/models` directory.
+Hydrogen reads model locations and resource settings from `~/.config/hydrogen/config.toml`. Set `paths.models_dir` to override the default `~/.local/share/hydrogen/models` directory. See [Configuration](CONFIGURATION.md).
 
 Install the current Rust OCR models with:
 
@@ -55,23 +54,22 @@ AGPL-3.0-only. Hydrogen itself is AGPL-3.0-only.
 Semantic indexing is opt-in so a normal Hydrogen sync does not download models or
 spend CPU time unexpectedly.
 
-Set `HYDROGEN_EMBEDDINGS=1` before `hydrogen index sync` to enable:
+Set `indexing.embeddings_enabled = true` in Hydrogen configuration, or run `hydrogen config set indexing.embeddings_enabled true`, to enable:
 - Quantized all-MiniLM-L6-v2 for document text vectors (384 dimensions).
 - CLIP ViT-B/32 text and vision encoders for a shared image/text space (512 dimensions).
 
 Both run locally through FastEmbed/ONNX Runtime with a maximum of two inference
 threads. Models are cached below `$HYDROGEN_MODELS_DIR/embeddings/fastembed`.
-Run `hydrogen index embed` once to backfill an existing index. Use `HYDROGEN_EMBEDDINGS=1`
-for automatic updates during future syncs. Use `hydrogen query "..." --semantic` to combine lexical, document-vector and
+Run `hydrogen index embed` once to backfill an existing index. Future syncs automatically maintain vectors while the setting remains enabled. Use `hydrogen query "..." --semantic` to combine lexical, document-vector and
 cross-modal image retrieval with reciprocal-rank fusion. Use `hydrogen query --image ./query.png` for image-to-image retrieval. First use downloads the
 selected model files; subsequent inference is offline.
 
 For free-form image descriptions, build with the optional Rust-native Candle SmolVLM
-backend and enable it explicitly:
+backend and enable it explicitly with `indexing.images.captions = true` in Hydrogen configuration:
 
 ```sh
 cargo build --release --features image-captioning
-FFAI_CACHE="$HYDROGEN_MODELS_DIR/argus/cache" HYDROGEN_CAPTIONS=1 hydrogen index sync-images
+FFAI_CACHE="$HYDROGEN_MODELS_DIR/argus/cache" hydrogen index sync-images
 ```
 
 The manifest is included in Hydrogen and copied into
@@ -90,3 +88,6 @@ generated captions are optional searchable metadata, not a replacement for
 embeddings. `hydrogen doctor` reports model availability, SQLite integrity,
 queue state, embedding counts, recent worker latency/RSS, and active resource
 ceilings.
+
+
+OCR thread count, image batch size, image size thresholds, PDF page limits, scanned-page OCR and optional image captions are configured in the central TOML file. The old environment variables remain supported as temporary overrides for compatibility; new setups should prefer the config file.

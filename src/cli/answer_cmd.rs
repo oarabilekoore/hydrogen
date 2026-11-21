@@ -13,18 +13,18 @@ pub struct AnswerArgs {
     /// Question to answer from indexed local documents
     pub query: String,
     /// Maximum number of retrieved passages used as context
-    #[arg(long, default_value_t = 8)]
-    pub limit: usize,
+    #[arg(long)]
+    pub limit: Option<usize>,
     /// Ollama model tag
-    #[arg(long, default_value = "qwen3.5:2b-q4_K_M")]
-    pub model: String,
+    #[arg(long)]
+    pub model: Option<String>,
 }
 
-fn query_variants(query: &str) -> Vec<String> {
+fn query_variants(query: &str, max_variants: usize) -> Vec<String> {
     const STOP: &[&str] = &[
-        "what", "which", "where", "when", "who", "why", "how", "is", "are", "was",
-        "were", "the", "a", "an", "in", "on", "of", "for", "to", "and", "or",
-        "with", "from", "explain", "describe", "define", "tell", "me", "about",
+        "what", "which", "where", "when", "who", "why", "how", "is", "are", "was", "were", "the",
+        "a", "an", "in", "on", "of", "for", "to", "and", "or", "with", "from", "explain",
+        "describe", "define", "tell", "me", "about",
     ];
     let mut variants = Vec::new();
     let mut seen = std::collections::HashSet::new();
@@ -53,7 +53,7 @@ fn query_variants(query: &str) -> Vec<String> {
         }
     }
     drop(push);
-    variants.truncate(6);
+    variants.truncate(max_variants);
     variants
 }
 
@@ -63,23 +63,44 @@ fn passage_key(hit: &crate::domain::document::SearchHit) -> String {
 
 pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
     let query = args.query.trim();
-    if query.chars().count() < 3 || !cfg.db_path.exists() {
-        println!("{}", json!({"status":"no_context","answer":"","sources":[]}));
+    if query.chars().count() < cfg.settings.answer.min_query_chars || !cfg.db_path.exists() {
+        println!(
+            "{}",
+            json!({"status":"no_context","answer":"","sources":[]})
+        );
         return Ok(());
     }
 
+    let model = args.model.as_deref().unwrap_or(&cfg.settings.answer.model);
+    let limit = args
+        .limit
+        .unwrap_or(cfg.settings.answer.retrieval_limit)
+        .clamp(1, 16);
+    let answer_cfg = &cfg.settings.answer;
+    if !answer_cfg.provider.eq_ignore_ascii_case("ollama") {
+        return Err(crate::error::HydrogenError::Config(format!(
+            "unsupported answer provider: {}",
+            answer_cfg.provider
+        )));
+    }
     let repo = SqliteIndexRepository::open(&cfg.db_path)?;
-    let variants = query_variants(query);
+    let variants = query_variants(query, cfg.settings.answer.max_query_variants);
     let mut candidates: HashMap<String, (crate::domain::document::SearchHit, usize, usize)> =
         HashMap::new();
 
     // Search individual PDF pages, not just one best page per PDF. This is
     // essential when a definition appears in lecture notes far from the title.
     for variant in &variants {
-        let page_hits = repo.search_pdf_passages(variant, 16)?;
+        let page_hits = if cfg.settings.indexing.pdf.enabled {
+            repo.search_pdf_passages(variant, answer_cfg.candidate_limit)?
+        } else {
+            Vec::new()
+        };
         for (rank, hit) in page_hits.into_iter().enumerate() {
             let key = passage_key(&hit);
-            let entry = candidates.entry(key).or_insert_with(|| (hit.clone(), 0, rank));
+            let entry = candidates
+                .entry(key)
+                .or_insert_with(|| (hit.clone(), 0, rank));
             entry.1 += 1;
             entry.2 = entry.2.min(rank);
             if hit.snippet.len() > entry.0.snippet.len() {
@@ -89,14 +110,19 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
 
         // Also retrieve ordinary indexed text documents (Markdown, TXT, DOCX
         // extracts, etc.). PDFs are handled by the page-level index above.
-        let text_hits = repo.search(variant, 16, "all")?;
+        let text_hits = repo.search(variant, answer_cfg.candidate_limit, "all")?;
         for (rank, hit) in text_hits.into_iter().enumerate() {
             if hit.is_dir
                 || hit.source == "image"
                 || Path::new(&hit.path)
                     .extension()
                     .and_then(|ext| ext.to_str())
-                    .map(|ext| matches!(ext.to_ascii_lowercase().as_str(), "pdf" | "png" | "jpg" | "jpeg" | "webp" | "gif" | "bmp"))
+                    .map(|ext| {
+                        matches!(
+                            ext.to_ascii_lowercase().as_str(),
+                            "pdf" | "png" | "jpg" | "jpeg" | "webp" | "gif" | "bmp"
+                        )
+                    })
                     .unwrap_or(false)
                 || hit.snippet.trim().is_empty()
                 || (hit.coverage < 0.5 && !hit.phrase)
@@ -104,7 +130,9 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
                 continue;
             }
             let key = passage_key(&hit);
-            let entry = candidates.entry(key).or_insert_with(|| (hit.clone(), 0, rank));
+            let entry = candidates
+                .entry(key)
+                .or_insert_with(|| (hit.clone(), 0, rank));
             entry.1 += 1;
             entry.2 = entry.2.min(rank);
             if hit.snippet.len() > entry.0.snippet.len() {
@@ -120,7 +148,7 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
             .then_with(|| b.0.coverage.total_cmp(&a.0.coverage))
             .then_with(|| b.0.score.total_cmp(&a.0.score))
     });
-    ranked.truncate(args.limit.clamp(1, 8));
+    ranked.truncate(limit);
 
     let mut sources = Vec::new();
     let mut context = String::new();
@@ -131,7 +159,11 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
             .map(|page| format!("page {page}"))
             .or_else(|| hit.line.map(|line| format!("line {line}")))
             .unwrap_or_else(|| "indexed text".to_string());
-        let snippet: String = hit.snippet.chars().take(1600).collect();
+        let snippet: String = hit
+            .snippet
+            .chars()
+            .take(answer_cfg.context_chars_per_passage)
+            .collect();
         if snippet.trim().is_empty() {
             continue;
         }
@@ -150,7 +182,10 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
     }
 
     if sources.is_empty() {
-        println!("{}", json!({"status":"no_context","answer":"","sources":[]}));
+        println!(
+            "{}",
+            json!({"status":"no_context","answer":"","sources":[]})
+        );
         return Ok(());
     }
 
@@ -164,15 +199,15 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
          QUESTION:\n{query}\n\nRETRIEVED COURSE EXCERPTS:\n{context}\nANSWER:"
     );
     let payload = json!({
-        "model": &args.model,
+        "model": model,
         "prompt": prompt,
         "stream": false,
         "options": {
-            "temperature": 0.0,
-            "num_ctx": 4096,
-            "num_predict": 180,
-            "top_p": 0.7,
-            "repeat_penalty": 1.08
+            "num_ctx": answer_cfg.context_window,
+            "num_predict": answer_cfg.max_output_tokens,
+            "temperature": answer_cfg.temperature,
+            "top_p": answer_cfg.top_p,
+            "repeat_penalty": answer_cfg.repeat_penalty
         }
     })
     .to_string();
@@ -185,8 +220,8 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
             "--connect-timeout",
             "2",
             "--max-time",
-            "60",
-            "http://127.0.0.1:11434/api/generate",
+            &answer_cfg.timeout_seconds.to_string(),
+            &format!("{}/api/generate", answer_cfg.endpoint.trim_end_matches('/')),
             "-H",
             "Content-Type: application/json",
             "--data-binary",
@@ -212,7 +247,7 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
                 "{}",
                 json!({
                     "status": "ready",
-                    "model": args.model,
+                    "model": model,
                     "answer": answer.trim(),
                     "sources": sources
                 })
@@ -223,10 +258,10 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
                 "{}",
                 json!({
                     "status": "unavailable",
-                    "model": args.model,
+                    "model": model,
                     "answer": "",
                     "sources": sources,
-                    "error": "Could not reach Ollama at http://127.0.0.1:11434 or the requested model is unavailable."
+                    "error": format!("Could not reach Ollama at {} or the requested model is unavailable.", answer_cfg.endpoint)
                 })
             );
         }

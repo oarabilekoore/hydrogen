@@ -214,6 +214,7 @@ dependencies = [
  "pastey 0.1.1",
  "rayon",
  "thiserror 2.0.21",
+ "toml",
  "v_frame",
  "y4m",
 ]
