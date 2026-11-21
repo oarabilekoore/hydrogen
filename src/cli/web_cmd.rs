@@ -144,7 +144,7 @@ fn readable_text(input: &str) -> String {
         .join(" ")
 }
 
-fn feed_sync(cfg: &AppConfig) -> Result<()> {
+pub fn sync_feeds(cfg: &AppConfig) -> Result<()> {
     if !cfg.settings.web.enabled || !cfg.settings.web.feeds_enabled {
         return Err(HydrogenError::Config("web feed indexing is disabled".into()));
     }
@@ -237,7 +237,7 @@ pub fn run(args: WebArgs, cfg: &AppConfig) -> Result<()> {
             println!("{}", serde_json::to_string_pretty(&repo.list_feeds()?)?);
             Ok(())
         }
-        WebCommands::FeedSync => feed_sync(cfg),
+        WebCommands::FeedSync => sync_feeds(cfg),
     }
 }
 
