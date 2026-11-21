@@ -17,3 +17,14 @@ document.getElementById("capture").addEventListener("click", async () => {
     status.textContent = "This page cannot be captured: " + error.message;
   }
 });
+document.getElementById("history").addEventListener("click", async () => {
+  const status = document.getElementById("status");
+  status.textContent = "Importing up to 20 recent pages one at a time…";
+  try {
+    const result = await chrome.runtime.sendMessage({ type: "IMPORT_HISTORY" });
+    if (!result?.ok) throw new Error(result?.error || "History import failed");
+    status.textContent = `Captured ${result.result.captured} pages; skipped ${result.result.skipped}.`;
+  } catch (error) {
+    status.textContent = "History import failed: " + error.message;
+  }
+});
