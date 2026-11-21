@@ -114,7 +114,8 @@ fn handle_api(mut request: Request, cfg: &AppConfig, store: &KnowledgeStore) {
         if result.get("status").and_then(Value::as_str) == Some("ready") {
             let answer = result.get("answer").and_then(Value::as_str).unwrap_or("");
             let model = result.get("model").and_then(Value::as_str);
-            if let Err(error) = store.append_message(conversation_id, "assistant", answer, model) {
+            let sources = result.get("sources");
+            if let Err(error) = store.append_message_with_sources(conversation_id, "assistant", answer, model, sources) {
                 json(request, 500, json!({"error":error.to_string(),"generation":result}));
                 return;
             }
