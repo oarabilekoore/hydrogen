@@ -428,7 +428,9 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
         let remaining = limit.saturating_sub(sources.len());
         for page in knowledge.search_web_pages(query, remaining)? {
             let id = sources.len() + 1;
-            let snippet: String = page.content.chars()
+            let snippet: String = page
+                .content
+                .chars()
                 .take(answer_cfg.context_chars_per_passage)
                 .collect();
             if snippet.trim().is_empty() {
