@@ -221,7 +221,15 @@ fn handle_request(mut request: Request, cfg: &mut AppConfig) {
             Ok(value) => {
                 let answer = value.get("answer").and_then(Value::as_str).unwrap_or("").to_string();
                 let sources = value.get("sources").cloned().unwrap_or_else(|| json!([]));
-                let error = value.get("error").and_then(Value::as_str).map(str::to_owned);
+                let error = value.get("error").and_then(Value::as_str).map(str::to_owned)
+                    .or_else(|| {
+                        let status = value.get("status").and_then(Value::as_str).unwrap_or("");
+                        if status == "no_context" {
+                            Some("No supporting passages were found in your indexed documents.".into())
+                        } else if status != "ready" && answer.trim().is_empty() {
+                            Some("The local model did not produce a source-grounded answer.".into())
+                        } else { None }
+                    });
                 (answer, sources, error)
             }
             Err(error) => (String::new(), json!([]), Some(error)),
@@ -249,14 +257,9 @@ fn handle_request(mut request: Request, cfg: &mut AppConfig) {
             return json_response(json!({"files":[],"knowledge":[]}), 200, origin_ref);
         }
         let limit = cfg.settings.search.default_limit.min(30).to_string();
-        let file_results = run_cli_json(&["query", &query, "--limit", &limit])
-            .unwrap_or_else(|_| json!([]));
-        let knowledge_results = knowledge.search_knowledge(&query, 30)
-            .unwrap_or_default();
-        return json_response(json!({
-            "files":file_results,
-            "knowledge":knowledge_results
-        }), 200, origin_ref);
+        let results = run_cli_json(&["search", &query, "--limit", &limit])
+            .unwrap_or_else(|error| json!({"files":[],"knowledge":[],"error":error}));
+        return json_response(results, 200, origin_ref);
     }
 
 
