@@ -34,12 +34,26 @@ jobs:
           scripts = re.findall(r"<script>(.*?)</script>", html, flags=re.S)
           if not scripts:
               raise SystemExit("No bundled frontend script found")
-          Path("/tmp/hydrogen-frontend.js").write_text("\n".join(scripts))
+          Path("/tmp/hydrogen-frontend.js").write_text("\\n".join(scripts))
           PY
           node --check /tmp/hydrogen-frontend.js
-      - name: Validate browser extension
+      - name: Validate browser extension manifests
         run: |
-          python3 -m json.tool browser-extension/manifest.json >/dev/null
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          firefox = json.loads(Path("browser-extension/manifest.json").read_text())
+          chromium = json.loads(Path("browser-extension/manifest.chromium.json").read_text())
+
+          assert firefox["manifest_version"] == 3
+          assert firefox["background"].get("scripts") == ["background.js"]
+          assert "service_worker" not in firefox["background"]
+
+          assert chromium["manifest_version"] == 3
+          assert chromium["background"].get("service_worker") == "background.js"
+          assert "scripts" not in chromium["background"]
+          PY
           node --check browser-extension/background.js
           node --check browser-extension/vendor/Readability.js
           node --check browser-extension/content.js
