@@ -6,6 +6,7 @@ pub mod doctor_cmd;
 pub mod index_cmd;
 pub mod ocr_cmd;
 pub mod query_cmd;
+pub mod serve_cmd;
 
 use crate::config::AppConfig;
 use crate::error::Result;
@@ -18,8 +19,14 @@ use clap::{Parser, Subcommand};
     about = "Native indexer, file watcher, OCR, and calendar backend for Quickshell"
 )]
 pub struct Cli {
+    /// Open the bundled Hydrogen web application in your browser
+    #[arg(long)]
+    pub frontend: bool,
+    /// Start a saved AI conversation with this question after opening the frontend
+    #[arg(long, requires = "frontend")]
+    pub ask: Option<String>,
     #[command(subcommand)]
-    pub command: Commands,
+    pub command: Option<Commands>,
 }
 
 #[derive(Subcommand, Debug)]
@@ -40,17 +47,26 @@ pub enum Commands {
     Doctor,
     /// List, create, or launch desktop calendar events
     Calendar(calendar_cmd::CalendarArgs),
+    /// Run the local Hydrogen web application service
+    Serve,
 }
 
 pub fn dispatch(cli: Cli, cfg: &AppConfig) -> Result<()> {
+    if cli.frontend {
+        return serve_cmd::open_frontend(cfg, cli.ask.as_deref());
+    }
     match cli.command {
-        Commands::Config(args) => config_cmd::run(args, cfg),
-        Commands::Answer(args) => answer_cmd::run(args, cfg),
-        Commands::Index(args) => index_cmd::run(args, cfg),
-        Commands::Query(args) => query_cmd::run(args, cfg),
-        Commands::Daemon(args) => daemon_cmd::run(args, cfg),
-        Commands::Doctor => doctor_cmd::run(cfg),
-        Commands::Ocr(args) => ocr_cmd::run(args, cfg),
-        Commands::Calendar(args) => calendar_cmd::run(args, cfg),
+        Some(Commands::Config(args)) => config_cmd::run(args, cfg),
+        Some(Commands::Answer(args)) => answer_cmd::run(args, cfg),
+        Some(Commands::Index(args)) => index_cmd::run(args, cfg),
+        Some(Commands::Query(args)) => query_cmd::run(args, cfg),
+        Some(Commands::Daemon(args)) => daemon_cmd::run(args, cfg),
+        Some(Commands::Doctor) => doctor_cmd::run(cfg),
+        Some(Commands::Ocr(args)) => ocr_cmd::run(args, cfg),
+        Some(Commands::Calendar(args)) => calendar_cmd::run(args, cfg),
+        Some(Commands::Serve) => serve_cmd::run(cfg),
+        None => Err(crate::error::HydrogenError::InvalidInput(
+            "choose a command or use --frontend".into(),
+        )),
     }
 }

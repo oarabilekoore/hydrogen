@@ -112,6 +112,35 @@ fn set_value(settings: &mut HydrogenSettings, key: &str, value: &str) -> Result<
             settings.watch.reconcile_interval_seconds = number!(u64)
         }
         "watch.poll_interval_ms" => settings.watch.poll_interval_ms = number!(u64),
+        "frontend.bind_address" => settings.frontend.bind_address = value.to_string(),
+        "frontend.auto_start" => settings.frontend.auto_start = parse_bool(value)?,
+        "frontend.open_existing_window" => {
+            settings.frontend.open_existing_window = parse_bool(value)?
+        }
+        "web.enabled" => settings.web.enabled = parse_bool(value)?,
+        "web.auto_index" => settings.web.auto_index = parse_bool(value)?,
+        "web.minimum_text_length" => settings.web.minimum_text_length = number!(usize),
+        "web.minimum_paragraphs" => settings.web.minimum_paragraphs = number!(usize),
+        "web.save_readable_snapshot" => settings.web.save_readable_snapshot = parse_bool(value)?,
+        "web.track_visits" => settings.web.track_visits = parse_bool(value)?,
+        "web.version_pages" => settings.web.version_pages = parse_bool(value)?,
+        "web.max_page_size_mb" => settings.web.max_page_size_mb = number!(usize),
+        "web.feed_enabled" => settings.web.feed_enabled = parse_bool(value)?,
+        "web.feed_interval_hours" => settings.web.feed_interval_hours = number!(u64),
+        "web.allow_domains" => settings.web.allow_domains = parse_list(value)?,
+        "web.exclude_domains" => settings.web.exclude_domains = parse_list(value)?,
+        "web.exclude_patterns" => settings.web.exclude_patterns = parse_list(value)?,
+        "conversations.enabled" => settings.conversations.enabled = parse_bool(value)?,
+        "conversations.index_messages" => {
+            settings.conversations.index_messages = parse_bool(value)?
+        }
+        "conversations.index_attachments" => {
+            settings.conversations.index_attachments = parse_bool(value)?
+        }
+        "conversations.deduplicate" => settings.conversations.deduplicate = parse_bool(value)?,
+        "conversations.capture_ai_chats" => {
+            settings.conversations.capture_ai_chats = parse_bool(value)?
+        }
         _ => {
             return Err(HydrogenError::InvalidInput(format!(
                 "unknown or non-writable config key: {key}"

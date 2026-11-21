@@ -34,6 +34,9 @@ pub struct HydrogenSettings {
     pub answer: AnswerConfig,
     pub calendar: CalendarConfig,
     pub watch: WatchConfig,
+    pub frontend: FrontendConfig,
+    pub web: WebConfig,
+    pub conversations: ConversationConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -127,6 +130,42 @@ pub struct CalendarConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
+pub struct FrontendConfig {
+    pub bind_address: String,
+    pub auto_start: bool,
+    pub open_existing_window: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct WebConfig {
+    pub enabled: bool,
+    pub auto_index: bool,
+    pub minimum_text_length: usize,
+    pub minimum_paragraphs: usize,
+    pub save_readable_snapshot: bool,
+    pub track_visits: bool,
+    pub version_pages: bool,
+    pub max_page_size_mb: usize,
+    pub feed_enabled: bool,
+    pub feed_interval_hours: u64,
+    pub allow_domains: Vec<String>,
+    pub exclude_domains: Vec<String>,
+    pub exclude_patterns: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ConversationConfig {
+    pub enabled: bool,
+    pub index_messages: bool,
+    pub index_attachments: bool,
+    pub deduplicate: bool,
+    pub capture_ai_chats: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct WatchConfig {
     pub debounce_ms: u64,
     pub reconcile_interval_seconds: u64,
@@ -186,6 +225,9 @@ impl Default for HydrogenSettings {
             resources: ResourceConfig::default(),
             answer: AnswerConfig::default(),
             watch: WatchConfig::default(),
+            frontend: FrontendConfig::default(),
+            web: WebConfig::default(),
+            conversations: ConversationConfig::default(),
             calendar: CalendarConfig {
                 default_event_duration_mins: 60,
                 ics_globs: default_ics_globs(&home),
@@ -329,6 +371,46 @@ impl Default for WatchConfig {
         }
     }
 }
+impl Default for FrontendConfig {
+    fn default() -> Self {
+        Self {
+            bind_address: "127.0.0.1:17891".into(),
+            auto_start: true,
+            open_existing_window: true,
+        }
+    }
+}
+impl Default for WebConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            auto_index: true,
+            minimum_text_length: 800,
+            minimum_paragraphs: 4,
+            save_readable_snapshot: true,
+            track_visits: true,
+            version_pages: true,
+            max_page_size_mb: 10,
+            feed_enabled: true,
+            feed_interval_hours: 12,
+            allow_domains: Vec::new(),
+            exclude_domains: Vec::new(),
+            exclude_patterns: vec!["*/login/*".into(), "*/checkout/*".into()],
+        }
+    }
+}
+impl Default for ConversationConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            index_messages: true,
+            index_attachments: true,
+            deduplicate: true,
+            capture_ai_chats: true,
+        }
+    }
+}
+
 impl Default for CalendarConfig {
     fn default() -> Self {
         let home = env::var_os("HOME")
@@ -430,6 +512,13 @@ impl AppConfig {
         settings.watch.reconcile_interval_seconds =
             settings.watch.reconcile_interval_seconds.clamp(5, 3600);
         settings.watch.poll_interval_ms = settings.watch.poll_interval_ms.clamp(25, 2000);
+        settings.web.minimum_text_length = settings.web.minimum_text_length.clamp(100, 100_000);
+        settings.web.minimum_paragraphs = settings.web.minimum_paragraphs.clamp(1, 500);
+        settings.web.max_page_size_mb = settings.web.max_page_size_mb.clamp(1, 100);
+        settings.web.feed_interval_hours = settings.web.feed_interval_hours.clamp(1, 168);
+        if !settings.frontend.bind_address.starts_with("127.0.0.1:") {
+            settings.frontend.bind_address = FrontendConfig::default().bind_address;
+        }
         settings.search.default_limit = settings.search.default_limit.clamp(1, 100);
         settings.search.scan_max_depth = settings.search.scan_max_depth.clamp(1, 32);
         settings.search.scan_max_results = settings.search.scan_max_results.clamp(1, 100_000);

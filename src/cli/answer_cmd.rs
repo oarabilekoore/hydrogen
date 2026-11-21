@@ -1,3 +1,4 @@
+use crate::adapters::sqlite::knowledge::KnowledgeStore;
 use crate::adapters::sqlite::repo::SqliteIndexRepository;
 use crate::config::AppConfig;
 use crate::error::Result;
@@ -21,6 +22,12 @@ pub struct AnswerArgs {
     /// Write a formatted local HTML answer and include its path in the JSON response
     #[arg(long)]
     pub html: bool,
+    /// Generate the HTML answer and open it in the default browser
+    #[arg(long)]
+    pub browser: bool,
+    /// Do not create a saved conversation (used by the frontend chat worker)
+    #[arg(long, hide = true)]
+    pub no_save: bool,
 }
 
 fn query_variants(query: &str, max_variants: usize) -> Vec<String> {
@@ -62,6 +69,34 @@ fn query_variants(query: &str, max_variants: usize) -> Vec<String> {
 
 fn passage_key(hit: &crate::domain::document::SearchHit) -> String {
     format!("{}#{}", hit.path, hit.page.unwrap_or(0))
+}
+
+/// Extract the user-facing answer from both Ollama chat and legacy generate
+/// response shapes. Deliberately never substitute the model's thinking field.
+fn extract_ollama_answer(value: &Value) -> Option<String> {
+    value
+        .pointer("/message/content")
+        .and_then(Value::as_str)
+        .or_else(|| value.get("response").and_then(Value::as_str))
+        .map(str::trim)
+        .filter(|answer| !answer.is_empty())
+        .map(str::to_owned)
+}
+
+fn ollama_empty_diagnostic(value: &Value) -> String {
+    let done_reason = value
+        .get("done_reason")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    let thinking_chars = value
+        .pointer("/message/thinking")
+        .and_then(Value::as_str)
+        .map(str::len)
+        .unwrap_or(0);
+    let eval_count = value.get("eval_count").and_then(Value::as_u64).unwrap_or(0);
+    format!(
+        "Ollama completed without answer text (done_reason={done_reason}, thinking_chars={thinking_chars}, eval_count={eval_count}). The thinking channel is not treated as an answer. Try a non-thinking model or increase answer.max_output_tokens."
+    )
 }
 
 fn escape_html(value: &str) -> String {
@@ -205,6 +240,12 @@ fn write_answer_html(
         let name = source.get("name").and_then(Value::as_str).unwrap_or(path);
         let page = source.get("page").and_then(Value::as_u64);
         let line = source.get("line").and_then(Value::as_u64);
+        let source_url = source
+            .get("url")
+            .and_then(Value::as_str)
+            .filter(|url| !url.is_empty())
+            .map(str::to_owned)
+            .unwrap_or_else(|| source_file_url(path, page));
         let snippet = source.get("snippet").and_then(Value::as_str).unwrap_or("");
         let location = page
             .map(|n| format!("Page {n}"))
@@ -212,7 +253,7 @@ fn write_answer_html(
             .unwrap_or_else(|| "Indexed passage".to_string());
         source_html.push_str(&format!(
             "<article class=\"source\" id=\"source-{id}\"><div class=\"source-head\"><a href=\"{}\">{}</a><span>{}</span></div><p>{}</p><pre>{}</pre></article>",
-            escape_html(&source_file_url(path, page)),
+            escape_html(&source_url),
             escape_html(name),
             escape_html(&location),
             escape_html(path),
@@ -381,6 +422,45 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
         }));
     }
 
+    // Include saved web articles when the local file index did not fill the
+    // configured retrieval budget. Captured pages remain offline and searchable.
+    if sources.len() < limit {
+        let knowledge = KnowledgeStore::open(&cfg.db_path).map_err(|error| {
+            crate::error::HydrogenError::Config(format!("could not open saved knowledge: {error}"))
+        })?;
+        let remaining = limit.saturating_sub(sources.len());
+        for page in knowledge.search_web_pages(query, remaining)? {
+            let id = sources
+                .iter()
+                .filter_map(|source| source.get("id").and_then(Value::as_u64))
+                .max()
+                .unwrap_or(0)
+                + 1;
+            let snippet: String = page
+                .content
+                .chars()
+                .take(answer_cfg.context_chars_per_passage)
+                .collect();
+            if snippet.trim().is_empty() {
+                continue;
+            }
+            context.push_str(&format!(
+                "[{id}] {} ({})\n{}\n\n",
+                page.title, page.url, snippet
+            ));
+            sources.push(json!({
+                "id": id,
+                "kind": "web_page",
+                "path": "",
+                "name": page.title,
+                "url": page.url,
+                "page": null,
+                "line": null,
+                "snippet": snippet
+            }));
+        }
+    }
+
     if sources.is_empty() {
         println!(
             "{}",
@@ -391,17 +471,26 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
 
     let prompt = format!(
         "You are a source-grounded study assistant. The excerpts below are the ONLY permitted evidence.\n\
-         Answer the exact question, using the terminology and meaning in the supplied course notes.\n\
+         Answer the exact question using only the terminology and meaning supported by the supplied indexed sources.\n\
          Do not answer from general knowledge or memory. Do not infer a definition from a question that merely mentions the term.\n\
          If no excerpt actually explains or defines the requested concept, respond exactly: 'I cannot find an explanation in the indexed sources.'\n\
          Every factual sentence must end with a citation to the excerpt that directly supports it, such as [1]. Never invent citations.\n\
          If sources disagree or are incomplete, explicitly say so. Keep the answer concise.\n\n\
-         QUESTION:\n{query}\n\nRETRIEVED COURSE EXCERPTS:\n{context}\nANSWER:"
+         QUESTION:\n{query}\n\nRETRIEVED INDEXED EXCERPTS:\n{context}\nANSWER:"
     );
+    // Use /api/chat and explicitly disable thinking for this source-grounded
+    // answer path. Small local models can otherwise spend the entire output
+    // budget in a private reasoning channel and return an empty final answer.
     let payload = json!({
         "model": model,
-        "prompt": prompt,
+        "messages": [
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ],
         "stream": false,
+        "think": false,
         "options": {
             "num_ctx": answer_cfg.context_window,
             "num_predict": answer_cfg.max_output_tokens,
@@ -421,7 +510,7 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
             "2",
             "--max-time",
             &answer_cfg.timeout_seconds.to_string(),
-            &format!("{}/api/generate", answer_cfg.endpoint.trim_end_matches('/')),
+            &format!("{}/api/chat", answer_cfg.endpoint.trim_end_matches('/')),
             "-H",
             "Content-Type: application/json",
             "--data-binary",
@@ -429,59 +518,64 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
         ])
         .output();
 
-    let (response, generation_error) = match output {
-        Ok(output) => {
-            let body = String::from_utf8_lossy(&output.stdout).to_string();
-            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-            let parsed = serde_json::from_str::<Value>(&body).ok();
-            if output.status.success() {
-                let answer = parsed
-                    .as_ref()
-                    .and_then(|value| value.get("response"))
-                    .and_then(Value::as_str)
-                    .map(str::to_owned);
-                let error = if answer.as_deref().unwrap_or("").trim().is_empty() {
-                    Some("Ollama returned an empty response.".to_string())
-                } else {
-                    None
-                };
-                (answer, error)
-            } else {
-                let api_error = parsed
-                    .as_ref()
-                    .and_then(|value| value.get("error"))
-                    .and_then(Value::as_str)
-                    .map(str::to_owned);
-                let detail = api_error
-                    .or_else(|| {
-                        if !stderr.is_empty() {
-                            Some(stderr)
-                        } else if !body.trim().is_empty() {
-                            Some(body.trim().to_string())
+    let (response, generation_error) =
+        match output {
+            Ok(output) => {
+                let body = String::from_utf8_lossy(&output.stdout).to_string();
+                let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+                let parsed = serde_json::from_str::<Value>(&body).ok();
+                if output.status.success() {
+                    let answer = parsed.as_ref().and_then(extract_ollama_answer);
+                    let error =
+                        if answer.as_deref().unwrap_or("").trim().is_empty() {
+                            Some(parsed.as_ref().map(ollama_empty_diagnostic).unwrap_or_else(
+                                || {
+                                    format!(
+                                        "Ollama returned a non-JSON response: {}",
+                                        body.chars().take(240).collect::<String>()
+                                    )
+                                },
+                            ))
                         } else {
                             None
-                        }
-                    })
-                    .unwrap_or_else(|| format!("curl exited with {}", output.status));
-                (
-                    None,
-                    Some(format!(
-                        "Ollama request to {} failed: {}",
-                        answer_cfg.endpoint, detail
-                    )),
-                )
+                        };
+                    (answer, error)
+                } else {
+                    let api_error = parsed
+                        .as_ref()
+                        .and_then(|value| value.get("error"))
+                        .and_then(Value::as_str)
+                        .map(str::to_owned);
+                    let detail = api_error
+                        .or_else(|| {
+                            if !stderr.is_empty() {
+                                Some(stderr)
+                            } else if !body.trim().is_empty() {
+                                Some(body.trim().to_string())
+                            } else {
+                                None
+                            }
+                        })
+                        .unwrap_or_else(|| format!("curl exited with {}", output.status));
+                    (
+                        None,
+                        Some(format!(
+                            "Ollama request to {} failed: {}",
+                            answer_cfg.endpoint, detail
+                        )),
+                    )
+                }
             }
-        }
-        Err(error) => (
-            None,
-            Some(format!("Could not start curl for Ollama request: {error}")),
-        ),
-    };
+            Err(error) => (
+                None,
+                Some(format!("Could not start curl for Ollama request: {error}")),
+            ),
+        };
 
     match response {
         Some(answer) if !answer.trim().is_empty() => {
             let answer = answer.trim();
-            let html_path = if args.html {
+            let html_path = if args.html || args.browser {
                 Some(
                     write_answer_html(cfg, query, answer, model, &sources).map_err(|error| {
                         crate::error::HydrogenError::Config(format!(
@@ -492,11 +586,45 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
             } else {
                 None
             };
+            let conversation_id = if args.no_save {
+                None
+            } else {
+                let knowledge = KnowledgeStore::open(&cfg.db_path).map_err(|error| {
+                    crate::error::HydrogenError::Config(format!("could not save answer: {error}"))
+                })?;
+                let id = knowledge.create_conversation(query)?;
+                knowledge.append_message(&id, "user", query, None)?;
+                knowledge.append_message_with_sources(
+                    &id,
+                    "assistant",
+                    answer,
+                    Some(model),
+                    Some(&json!(sources)),
+                )?;
+                Some(id)
+            };
+            let browser_opened = if args.browser {
+                if let Some(path) = html_path.as_deref() {
+                    match Command::new("xdg-open").arg(path).spawn() {
+                        Ok(_) => true,
+                        Err(error) => {
+                            eprintln!("Hydrogen could not open the answer in a browser: {error}");
+                            false
+                        }
+                    }
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
             println!(
                 "{}",
                 json!({
                     "status": "ready", "model": model, "answer": answer,
-                    "sources": sources, "html_path": html_path
+                    "sources": sources, "html_path": html_path,
+                    "browser_opened": browser_opened,
+                    "conversation_id": conversation_id
                 })
             );
         }
@@ -517,6 +645,37 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
 #[cfg(test)]
 mod html_tests {
     use super::*;
+
+    #[test]
+    fn extracts_ollama_chat_content() {
+        let value = json!({"message":{"role":"assistant","content":"  grounded answer  "}});
+        assert_eq!(
+            extract_ollama_answer(&value).as_deref(),
+            Some("grounded answer")
+        );
+    }
+
+    #[test]
+    fn extracts_legacy_generate_content() {
+        let value = json!({"response":"legacy answer"});
+        assert_eq!(
+            extract_ollama_answer(&value).as_deref(),
+            Some("legacy answer")
+        );
+    }
+
+    #[test]
+    fn does_not_mistake_thinking_for_an_answer() {
+        let value = json!({
+            "message":{"content":"","thinking":"private reasoning"},
+            "done_reason":"length",
+            "eval_count":180
+        });
+        assert_eq!(extract_ollama_answer(&value), None);
+        let diagnostic = ollama_empty_diagnostic(&value);
+        assert!(diagnostic.contains("thinking_chars=17"));
+        assert!(diagnostic.contains("done_reason=length"));
+    }
 
     #[test]
     fn html_escaping_prevents_markup_injection() {
