@@ -47,7 +47,7 @@ pub fn run(args: IndexArgs, cfg: &AppConfig) -> Result<()> {
     let repo = SqliteIndexRepository::open(&cfg.db_path)?;
     let scanner = WalkDirScanner::new(cfg.search_roots.clone(), cfg.settings.search.excluded_directories.clone(), cfg.settings.search.excluded_extensions.clone());
     let extractor = CompositeTextExtractor { images: cfg.settings.indexing.images.clone() };
-    let ml = RustOcrProvider::new(cfg.models_dir.clone(), cfg.inference_threads, cfg.settings.indexing.images.captions);
+    let ml = RustOcrProvider::new(cfg.models_dir.clone(), cfg.inference_threads, cfg.settings.indexing.images.captions, cfg.settings.models.ocr_printed.clone().into(), cfg.settings.models.ocr_formula.clone().into());
     let embeddings = FastEmbedProvider::new(cfg.models_dir.clone(), cfg.inference_threads);
     let service = SyncService::new(cfg, &repo, &scanner, &extractor, &ml, &ml, &embeddings);
     match args.action {
