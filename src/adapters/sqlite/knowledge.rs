@@ -160,6 +160,57 @@ impl KnowledgeStore {
         rows.collect()
     }
 
+    /// Replace a captured browser conversation snapshot without creating duplicates.
+    /// source_key should be a stable URL or extension-generated platform conversation key.
+    pub fn capture_conversation(
+        &self,
+        source_key: &str,
+        title: &str,
+        messages: &[(String, String, Option<String>)],
+    ) -> rusqlite::Result<String> {
+        if source_key.trim().is_empty() {
+            return Err(rusqlite::Error::InvalidParameterName("source_key cannot be empty".into()));
+        }
+        let mut conn = self.connect()?;
+        let tx = conn.transaction()?;
+        let existing: Option<String> = tx.query_row(
+            "SELECT conversation_id FROM captured_conversations WHERE source_key=?1",
+            params![source_key],
+            |row| row.get(0),
+        ).optional()?;
+        let conversation_id = match existing {
+            Some(id) => id,
+            None => {
+                let id = new_id("capture");
+                tx.execute(
+                    "INSERT INTO conversations(id,title) VALUES(?1,?2)",
+                    params![id, if title.trim().is_empty() { "Captured conversation" } else { title.trim() }],
+                )?;
+                tx.execute(
+                    "INSERT INTO captured_conversations(source_key,conversation_id) VALUES(?1,?2)",
+                    params![source_key, id],
+                )?;
+                id
+            }
+        };
+        tx.execute("DELETE FROM messages WHERE conversation_id=?1", params![conversation_id])?;
+        for (role, content, model) in messages {
+            if !matches!(role.as_str(), "user" | "assistant") || content.trim().is_empty() {
+                continue;
+            }
+            tx.execute(
+                "INSERT INTO messages(id,conversation_id,role,content,model) VALUES(?1,?2,?3,?4,?5)",
+                params![new_id("msg"), conversation_id, role, content, model],
+            )?;
+        }
+        tx.execute(
+            "UPDATE conversations SET title=?2,updated_at=unixepoch() WHERE id=?1",
+            params![conversation_id, if title.trim().is_empty() { "Captured conversation" } else { title.trim() }],
+        )?;
+        tx.commit()?;
+        Ok(conversation_id)
+    }
+
     pub fn save_web_page(
         &self,
         url: &str,
@@ -265,6 +316,11 @@ pub fn ensure_schema(conn: &Connection) -> rusqlite::Result<()> {
             content TEXT NOT NULL,
             model TEXT,
             created_at INTEGER NOT NULL DEFAULT(unixepoch())
+         );
+         CREATE TABLE IF NOT EXISTS captured_conversations(
+            source_key TEXT PRIMARY KEY,
+            conversation_id TEXT NOT NULL UNIQUE REFERENCES conversations(id) ON DELETE CASCADE,
+            captured_at INTEGER NOT NULL DEFAULT(unixepoch())
          );
          CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id,created_at);
          CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
