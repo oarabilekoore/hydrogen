@@ -38,7 +38,7 @@ fn read_body(request: &mut Request) -> std::io::Result<String> {
     let mut body = String::new();
     request
         .as_reader()
-        .take(2 * 1024 * 1024)
+        .take(12 * 1024 * 1024)
         .read_to_string(&mut body)?;
     Ok(body)
 }
