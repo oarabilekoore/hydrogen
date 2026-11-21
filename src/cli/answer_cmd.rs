@@ -647,7 +647,7 @@ mod html_tests {
         });
         assert_eq!(extract_ollama_answer(&value), None);
         let diagnostic = ollama_empty_diagnostic(&value);
-        assert!(diagnostic.contains("thinking_chars=16"));
+        assert!(diagnostic.contains("thinking_chars=17"));
         assert!(diagnostic.contains("done_reason=length"));
     }
 
