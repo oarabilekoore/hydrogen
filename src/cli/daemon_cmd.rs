@@ -30,6 +30,6 @@ pub fn run(args: DaemonArgs, cfg: &AppConfig) -> Result<()> {
     let embeddings = FastEmbedProvider::new(cfg.models_dir.clone(), cfg.inference_threads);
     let sync_service = SyncService::new(cfg, &repo, &scanner, &extractor, &ml, &ml, &embeddings);
     let mut watcher = LinuxInotifyWatcher::new(cfg.search_roots.clone())?;
-    let mut daemon = WatcherService::new(cfg, &repo, &sync_service, &mut watcher, !args.no_images);
+    let mut daemon = WatcherService::new(cfg, &repo, &sync_service, &mut watcher, !args.no_images && cfg.settings.indexing.images.enabled);
     daemon.serve_forever(running)
 }
