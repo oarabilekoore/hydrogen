@@ -240,3 +240,29 @@ pub fn run(args: WebArgs, cfg: &AppConfig) -> Result<()> {
         WebCommands::FeedSync => feed_sync(cfg),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_rss_article_content_and_metadata() {
+        let xml = r#"<rss><channel><title>Engineering Notes</title><item><title>Throttling devices</title><link>https://example.com/throttle</link><description>&lt;p&gt;A throttling device reduces pressure.&lt;/p&gt;</description><pubDate>Sat, 21 Nov 2026 10:00:00 GMT</pubDate></item></channel></rss>"#;
+        let (title, items) = parse_feed(xml);
+        assert_eq!(title, "Engineering Notes");
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].title, "Throttling devices");
+        assert_eq!(items[0].link, "https://example.com/throttle");
+        assert!(readable_text(&items[0].content).contains("reduces pressure"));
+    }
+
+    #[test]
+    fn parses_atom_link_attributes() {
+        let xml = r#"<feed xmlns="http://www.w3.org/2005/Atom"><title>My blog</title><entry><title>First post</title><link href="https://example.com/post"/><summary>Useful article text</summary></entry></feed>"#;
+        let (title, items) = parse_feed(xml);
+        assert_eq!(title, "My blog");
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].link, "https://example.com/post");
+        assert_eq!(items[0].content, "Useful article text");
+    }
+}
