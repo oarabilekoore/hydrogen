@@ -32,7 +32,9 @@ impl WalkDirScanner {
     }
 
     fn should_skip_name(&self, name: &str) -> bool {
-        name.is_empty() || (!self.include_hidden && name.starts_with('.')) || self.excluded_directories.contains(name)
+        name.is_empty()
+            || (!self.include_hidden && name.starts_with('.'))
+            || self.excluded_directories.contains(name)
     }
 }
 
@@ -40,30 +42,46 @@ impl FileScanner for WalkDirScanner {
     fn scan(&self, max_depth: usize, max_results: usize) -> Vec<FileEntry> {
         let mut found = Vec::new();
         for root in &self.roots {
-            if !root.exists() { continue; }
+            if !root.exists() {
+                continue;
+            }
             let iter = WalkDir::new(root)
                 .max_depth(max_depth)
                 .follow_links(false)
                 .into_iter()
                 .filter_entry(|entry| {
-                    if entry.depth() == 0 { return true; }
-                    entry.file_name().to_str()
+                    if entry.depth() == 0 {
+                        return true;
+                    }
+                    entry
+                        .file_name()
+                        .to_str()
                         .map(|name| !self.should_skip_name(name))
                         .unwrap_or(false)
                 });
 
             for entry in iter.flatten() {
-                if entry.depth() == 0 { continue; }
-                let Ok(meta) = entry.metadata() else { continue; };
+                if entry.depth() == 0 {
+                    continue;
+                }
+                let Ok(meta) = entry.metadata() else {
+                    continue;
+                };
                 let is_dir = meta.is_dir();
                 if !is_dir {
-                    let excluded = entry.path().extension()
+                    let excluded = entry
+                        .path()
+                        .extension()
                         .and_then(|ext| ext.to_str())
                         .map(|ext| self.excluded_extensions.contains(&ext.to_ascii_lowercase()))
                         .unwrap_or(false);
-                    if excluded { continue; }
+                    if excluded {
+                        continue;
+                    }
                 }
-                let mtime = meta.modified().ok()
+                let mtime = meta
+                    .modified()
+                    .ok()
                     .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
                     .map(|duration| duration.as_nanos().min(i64::MAX as u128) as i64)
                     .unwrap_or(0);
@@ -75,7 +93,9 @@ impl FileScanner for WalkDirScanner {
                     dev: meta.dev(),
                     ino: meta.ino(),
                 });
-                if found.len() >= max_results { return found; }
+                if found.len() >= max_results {
+                    return found;
+                }
             }
         }
         found

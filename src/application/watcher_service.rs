@@ -39,7 +39,8 @@ impl<'a> WatcherService<'a> {
         self.sync_service.sync(self.spawn_images)?;
         let mut last_reconcile_at = Instant::now();
         let debounce_window = Duration::from_millis(self.cfg.settings.watch.debounce_ms);
-        let reconcile_interval = Duration::from_secs(self.cfg.settings.watch.reconcile_interval_seconds);
+        let reconcile_interval =
+            Duration::from_secs(self.cfg.settings.watch.reconcile_interval_seconds);
 
         let mut pending_renames: Vec<(PathBuf, PathBuf, bool)> = Vec::new();
         let mut pending_deletes: HashSet<(PathBuf, bool)> = HashSet::new();
@@ -47,7 +48,9 @@ impl<'a> WatcherService<'a> {
         let mut last_event_at: Option<Instant> = None;
 
         while running.load(Ordering::SeqCst) {
-            let events = self.watcher.poll_events(self.cfg.settings.watch.poll_interval_ms as i32)?;
+            let events = self
+                .watcher
+                .poll_events(self.cfg.settings.watch.poll_interval_ms as i32)?;
 
             // inotify is a fast path, not a source of truth. Reconcile periodically to
             // recover from queue overflow, missed events, unavailable roots at startup,

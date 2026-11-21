@@ -22,9 +22,9 @@ pub struct AnswerArgs {
 
 fn query_variants(query: &str, max_variants: usize) -> Vec<String> {
     const STOP: &[&str] = &[
-        "what", "which", "where", "when", "who", "why", "how", "is", "are", "was",
-        "were", "the", "a", "an", "in", "on", "of", "for", "to", "and", "or",
-        "with", "from", "explain", "describe", "define", "tell", "me", "about",
+        "what", "which", "where", "when", "who", "why", "how", "is", "are", "was", "were", "the",
+        "a", "an", "in", "on", "of", "for", "to", "and", "or", "with", "from", "explain",
+        "describe", "define", "tell", "me", "about",
     ];
     let mut variants = Vec::new();
     let mut seen = std::collections::HashSet::new();
@@ -64,15 +64,24 @@ fn passage_key(hit: &crate::domain::document::SearchHit) -> String {
 pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
     let query = args.query.trim();
     if query.chars().count() < cfg.settings.answer.min_query_chars || !cfg.db_path.exists() {
-        println!("{}", json!({"status":"no_context","answer":"","sources":[]}));
+        println!(
+            "{}",
+            json!({"status":"no_context","answer":"","sources":[]})
+        );
         return Ok(());
     }
 
     let model = args.model.as_deref().unwrap_or(&cfg.settings.answer.model);
-    let limit = args.limit.unwrap_or(cfg.settings.answer.retrieval_limit).clamp(1, 16);
+    let limit = args
+        .limit
+        .unwrap_or(cfg.settings.answer.retrieval_limit)
+        .clamp(1, 16);
     let answer_cfg = &cfg.settings.answer;
     if !answer_cfg.provider.eq_ignore_ascii_case("ollama") {
-        return Err(crate::error::HydrogenError::Config(format!("unsupported answer provider: {}", answer_cfg.provider)));
+        return Err(crate::error::HydrogenError::Config(format!(
+            "unsupported answer provider: {}",
+            answer_cfg.provider
+        )));
     }
     let repo = SqliteIndexRepository::open(&cfg.db_path)?;
     let variants = query_variants(query, cfg.settings.answer.max_query_variants);
@@ -89,7 +98,9 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
         };
         for (rank, hit) in page_hits.into_iter().enumerate() {
             let key = passage_key(&hit);
-            let entry = candidates.entry(key).or_insert_with(|| (hit.clone(), 0, rank));
+            let entry = candidates
+                .entry(key)
+                .or_insert_with(|| (hit.clone(), 0, rank));
             entry.1 += 1;
             entry.2 = entry.2.min(rank);
             if hit.snippet.len() > entry.0.snippet.len() {
@@ -106,7 +117,12 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
                 || Path::new(&hit.path)
                     .extension()
                     .and_then(|ext| ext.to_str())
-                    .map(|ext| matches!(ext.to_ascii_lowercase().as_str(), "pdf" | "png" | "jpg" | "jpeg" | "webp" | "gif" | "bmp"))
+                    .map(|ext| {
+                        matches!(
+                            ext.to_ascii_lowercase().as_str(),
+                            "pdf" | "png" | "jpg" | "jpeg" | "webp" | "gif" | "bmp"
+                        )
+                    })
                     .unwrap_or(false)
                 || hit.snippet.trim().is_empty()
                 || (hit.coverage < 0.5 && !hit.phrase)
@@ -114,7 +130,9 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
                 continue;
             }
             let key = passage_key(&hit);
-            let entry = candidates.entry(key).or_insert_with(|| (hit.clone(), 0, rank));
+            let entry = candidates
+                .entry(key)
+                .or_insert_with(|| (hit.clone(), 0, rank));
             entry.1 += 1;
             entry.2 = entry.2.min(rank);
             if hit.snippet.len() > entry.0.snippet.len() {
@@ -141,7 +159,11 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
             .map(|page| format!("page {page}"))
             .or_else(|| hit.line.map(|line| format!("line {line}")))
             .unwrap_or_else(|| "indexed text".to_string());
-        let snippet: String = hit.snippet.chars().take(answer_cfg.context_chars_per_passage).collect();
+        let snippet: String = hit
+            .snippet
+            .chars()
+            .take(answer_cfg.context_chars_per_passage)
+            .collect();
         if snippet.trim().is_empty() {
             continue;
         }
@@ -160,7 +182,10 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
     }
 
     if sources.is_empty() {
-        println!("{}", json!({"status":"no_context","answer":"","sources":[]}));
+        println!(
+            "{}",
+            json!({"status":"no_context","answer":"","sources":[]})
+        );
         return Ok(());
     }
 

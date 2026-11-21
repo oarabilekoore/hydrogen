@@ -171,7 +171,9 @@ fn default_evolution_globs(home: &Path) -> Vec<String> {
 
 impl Default for HydrogenSettings {
     fn default() -> Self {
-        let home = env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/tmp"));
+        let home = env::var_os("HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from("/tmp"));
         Self {
             paths: PathsConfig {
                 state_dir: None,
@@ -195,8 +197,14 @@ impl Default for HydrogenSettings {
 
 impl Default for PathsConfig {
     fn default() -> Self {
-        let home = env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/tmp"));
-        Self { state_dir: None, models_dir: None, roots: default_roots(&home) }
+        let home = env::var_os("HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from("/tmp"));
+        Self {
+            state_dir: None,
+            models_dir: None,
+            roots: default_roots(&home),
+        }
     }
 }
 impl Default for SearchConfig {
@@ -207,10 +215,25 @@ impl Default for SearchConfig {
             scan_max_depth: 6,
             scan_max_results: 5000,
             excluded_directories: vec![
-                ".git", "node_modules", "__pycache__", ".venv", "venv", "target",
-                "build", ".cache", "dist", ".next", ".cargo",
-            ].into_iter().map(str::to_string).collect(),
-            excluded_extensions: vec!["tmp", "part", "swp", "lock"].into_iter().map(str::to_string).collect(),
+                ".git",
+                "node_modules",
+                "__pycache__",
+                ".venv",
+                "venv",
+                "target",
+                "build",
+                ".cache",
+                "dist",
+                ".next",
+                ".cargo",
+            ]
+            .into_iter()
+            .map(str::to_string)
+            .collect(),
+            excluded_extensions: vec!["tmp", "part", "swp", "lock"]
+                .into_iter()
+                .map(str::to_string)
+                .collect(),
         }
     }
 }
@@ -224,18 +247,40 @@ impl Default for IndexingConfig {
     }
 }
 impl Default for PdfIndexingConfig {
-    fn default() -> Self { Self { enabled: true, ocr_scanned_pages: true, page_limit: 500 } }
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            ocr_scanned_pages: true,
+            page_limit: 500,
+        }
+    }
 }
 impl Default for ImageIndexingConfig {
     fn default() -> Self {
         Self {
-            enabled: true, ocr: true, captions: false,
-            min_file_bytes: 10 * 1024, max_file_bytes: 25 * 1024 * 1024,
-            min_dimension: 128, batch_size: 2,
+            enabled: true,
+            ocr: true,
+            captions: false,
+            min_file_bytes: 10 * 1024,
+            max_file_bytes: 25 * 1024 * 1024,
+            min_dimension: 128,
+            batch_size: 2,
             excluded_directories: vec![
-                "assets", "asset", "cursors", "cursor", "icons", "icon",
-                "themes", "theme", "sprites", "thumbnails", ".thumbnails",
-            ].into_iter().map(str::to_string).collect(),
+                "assets",
+                "asset",
+                "cursors",
+                "cursor",
+                "icons",
+                "icon",
+                "themes",
+                "theme",
+                "sprites",
+                "thumbnails",
+                ".thumbnails",
+            ]
+            .into_iter()
+            .map(str::to_string)
+            .collect(),
         }
     }
 }
@@ -249,7 +294,11 @@ impl Default for ModelsConfig {
     }
 }
 impl Default for ResourceConfig {
-    fn default() -> Self { Self { max_inference_threads: 2 } }
+    fn default() -> Self {
+        Self {
+            max_inference_threads: 2,
+        }
+    }
 }
 impl Default for AnswerConfig {
     fn default() -> Self {
@@ -272,11 +321,19 @@ impl Default for AnswerConfig {
     }
 }
 impl Default for WatchConfig {
-    fn default() -> Self { Self { debounce_ms: 350, reconcile_interval_seconds: 60, poll_interval_ms: 150 } }
+    fn default() -> Self {
+        Self {
+            debounce_ms: 350,
+            reconcile_interval_seconds: 60,
+            poll_interval_ms: 150,
+        }
+    }
 }
 impl Default for CalendarConfig {
     fn default() -> Self {
-        let home = env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/tmp"));
+        let home = env::var_os("HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from("/tmp"));
         Self {
             default_event_duration_mins: 60,
             ics_globs: default_ics_globs(&home),
@@ -287,10 +344,16 @@ impl Default for CalendarConfig {
 
 impl AppConfig {
     pub fn load() -> std::result::Result<Self, String> {
-        let home = env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/tmp"));
+        let home = env::var_os("HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from("/tmp"));
         let config_path = env::var_os("HYDROGEN_CONFIG")
             .map(PathBuf::from)
-            .or_else(|| env::var_os("XDG_CONFIG_HOME").map(PathBuf::from).map(|p| p.join("hydrogen/config.toml")))
+            .or_else(|| {
+                env::var_os("XDG_CONFIG_HOME")
+                    .map(PathBuf::from)
+                    .map(|p| p.join("hydrogen/config.toml"))
+            })
             .unwrap_or_else(|| home.join(".config/hydrogen/config.toml"));
 
         let mut settings = if config_path.is_file() {
@@ -310,7 +373,8 @@ impl AppConfig {
             settings.paths.models_dir = Some(value.into());
         }
         if let Ok(value) = env::var("HYDROGEN_EMBEDDINGS") {
-            settings.indexing.embeddings_enabled = matches!(value.as_str(), "1") || value.eq_ignore_ascii_case("true");
+            settings.indexing.embeddings_enabled =
+                matches!(value.as_str(), "1") || value.eq_ignore_ascii_case("true");
         }
         if let Ok(raw) = env::var("HYDROGEN_INFERENCE_THREADS") {
             if let Ok(value) = raw.parse::<usize>() {
@@ -336,36 +400,62 @@ impl AppConfig {
             }
         }
 
-        settings.models.inference_threads = settings.models.inference_threads.clamp(1, settings.resources.max_inference_threads.clamp(1, 8));
+        settings.models.inference_threads = settings
+            .models
+            .inference_threads
+            .clamp(1, settings.resources.max_inference_threads.clamp(1, 8));
         settings.indexing.pdf.page_limit = settings.indexing.pdf.page_limit.clamp(1, 500);
         settings.indexing.images.batch_size = settings.indexing.images.batch_size.clamp(1, 4);
         settings.indexing.images.min_file_bytes = settings.indexing.images.min_file_bytes.max(1);
-        settings.indexing.images.max_file_bytes = settings.indexing.images.max_file_bytes.max(settings.indexing.images.min_file_bytes);
+        settings.indexing.images.max_file_bytes = settings
+            .indexing
+            .images
+            .max_file_bytes
+            .max(settings.indexing.images.min_file_bytes);
         settings.answer.retrieval_limit = settings.answer.retrieval_limit.clamp(1, 16);
-        settings.answer.context_chars_per_passage = settings.answer.context_chars_per_passage.clamp(100, 12000);
+        settings.answer.context_chars_per_passage =
+            settings.answer.context_chars_per_passage.clamp(100, 12000);
         settings.answer.context_window = settings.answer.context_window.clamp(512, 32768);
         settings.answer.max_output_tokens = settings.answer.max_output_tokens.clamp(16, 2048);
         settings.answer.timeout_seconds = settings.answer.timeout_seconds.clamp(5, 300);
-        if settings.answer.model.trim().is_empty() { settings.answer.model = AnswerConfig::default().model; }
-        if settings.answer.endpoint.trim().is_empty() { settings.answer.endpoint = AnswerConfig::default().endpoint; }
+        if settings.answer.model.trim().is_empty() {
+            settings.answer.model = AnswerConfig::default().model;
+        }
+        if settings.answer.endpoint.trim().is_empty() {
+            settings.answer.endpoint = AnswerConfig::default().endpoint;
+        }
         settings.answer.candidate_limit = settings.answer.candidate_limit.clamp(1, 100);
         settings.answer.max_query_variants = settings.answer.max_query_variants.clamp(1, 12);
         settings.watch.debounce_ms = settings.watch.debounce_ms.clamp(50, 5000);
-        settings.watch.reconcile_interval_seconds = settings.watch.reconcile_interval_seconds.clamp(5, 3600);
+        settings.watch.reconcile_interval_seconds =
+            settings.watch.reconcile_interval_seconds.clamp(5, 3600);
         settings.watch.poll_interval_ms = settings.watch.poll_interval_ms.clamp(25, 2000);
         settings.search.default_limit = settings.search.default_limit.clamp(1, 100);
         settings.search.scan_max_depth = settings.search.scan_max_depth.clamp(1, 32);
         settings.search.scan_max_results = settings.search.scan_max_results.clamp(1, 100_000);
 
-        settings.paths.roots = settings.paths.roots.iter().map(|path| expand_home(path, &home)).collect();
+        settings.paths.roots = settings
+            .paths
+            .roots
+            .iter()
+            .map(|path| expand_home(path, &home))
+            .collect();
         if let Some(path) = settings.paths.state_dir.as_ref() {
             settings.paths.state_dir = Some(expand_home(path, &home));
         }
         if let Some(path) = settings.paths.models_dir.as_ref() {
             settings.paths.models_dir = Some(expand_home(path, &home));
         }
-        let state_dir = settings.paths.state_dir.clone().unwrap_or_else(|| home.join(".local/state/quickshell-launcher"));
-        let models_dir = settings.paths.models_dir.clone().unwrap_or_else(|| home.join(".local/share/hydrogen/models"));
+        let state_dir = settings
+            .paths
+            .state_dir
+            .clone()
+            .unwrap_or_else(|| home.join(".local/state/quickshell-launcher"));
+        let models_dir = settings
+            .paths
+            .models_dir
+            .clone()
+            .unwrap_or_else(|| home.join(".local/share/hydrogen/models"));
         let default_event_duration_mins = settings.calendar.default_event_duration_mins.max(1);
         let ics_globs = settings.calendar.ics_globs.clone();
         let evolution_db_globs = settings.calendar.evolution_db_globs.clone();
@@ -403,17 +493,14 @@ impl AppConfig {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn partial_toml_preserves_unmentioned_defaults() {
-        let settings: HydrogenSettings = toml::from_str(
-            "[answer]\nmodel = \"qwen3.5:2b-q4_K_M\"\n",
-        )
-        .unwrap();
+        let settings: HydrogenSettings =
+            toml::from_str("[answer]\nmodel = \"qwen3.5:2b-q4_K_M\"\n").unwrap();
         assert_eq!(settings.answer.model, "qwen3.5:2b-q4_K_M");
         assert!(settings.indexing.pdf.enabled);
         assert!(settings.indexing.pdf.ocr_scanned_pages);
@@ -438,6 +525,9 @@ mod tests {
     fn home_relative_paths_expand_without_touching_absolute_paths() {
         let home = PathBuf::from("/home/tester");
         assert_eq!(expand_home(Path::new("~/Notes"), &home), home.join("Notes"));
-        assert_eq!(expand_home(Path::new("/mnt/data"), &home), PathBuf::from("/mnt/data"));
+        assert_eq!(
+            expand_home(Path::new("/mnt/data"), &home),
+            PathBuf::from("/mnt/data")
+        );
     }
 }

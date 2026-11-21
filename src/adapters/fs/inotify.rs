@@ -45,7 +45,12 @@ pub struct LinuxInotifyWatcher {
 }
 
 impl LinuxInotifyWatcher {
-    pub fn new(roots: Vec<PathBuf>, excluded_directories: Vec<String>, include_hidden: bool, max_depth: usize) -> Result<Self> {
+    pub fn new(
+        roots: Vec<PathBuf>,
+        excluded_directories: Vec<String>,
+        include_hidden: bool,
+        max_depth: usize,
+    ) -> Result<Self> {
         let fd = unsafe { libc::inotify_init1(libc::IN_NONBLOCK | libc::IN_CLOEXEC) };
         if fd < 0 {
             return Err(HydrogenError::Io(std::io::Error::last_os_error()));
@@ -82,15 +87,20 @@ impl LinuxInotifyWatcher {
     }
 
     fn should_skip_name(&self, name: &str) -> bool {
-        name.is_empty() || (!self.include_hidden && name.starts_with('.')) || self.excluded_directories.contains(name)
+        name.is_empty()
+            || (!self.include_hidden && name.starts_with('.'))
+            || self.excluded_directories.contains(name)
     }
 
     fn is_under_ignored(&self, path: &Path) -> bool {
         for root in &self.roots {
             if let Ok(rel) = path.strip_prefix(root) {
-                return rel
-                    .components()
-                    .any(|c| c.as_os_str().to_str().map(|name| self.should_skip_name(name)).unwrap_or(true));
+                return rel.components().any(|c| {
+                    c.as_os_str()
+                        .to_str()
+                        .map(|name| self.should_skip_name(name))
+                        .unwrap_or(true)
+                });
             }
         }
         true

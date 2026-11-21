@@ -23,7 +23,6 @@ const TEXT_EXTS: &[&str] = &[
 
 const XML_ZIP_EXTS: &[&str] = &["docx", "odt", "epub", "pptx", "xlsx"];
 
-
 /// True for files whose indexed body is the raw file text, so a body line number
 /// is also the line number in the file (not PDFs or zipped XML formats).
 pub fn is_plain_text_path(path: &Path) -> bool {
@@ -74,7 +73,12 @@ impl TextExtractor for CompositeTextExtractor {
         if let Some(parent) = path.parent() {
             for comp in parent.components() {
                 if let Some(name) = comp.as_os_str().to_str() {
-                    if self.images.excluded_directories.iter().any(|excluded| excluded.eq_ignore_ascii_case(name)) {
+                    if self
+                        .images
+                        .excluded_directories
+                        .iter()
+                        .any(|excluded| excluded.eq_ignore_ascii_case(name))
+                    {
                         return false;
                     }
                 }

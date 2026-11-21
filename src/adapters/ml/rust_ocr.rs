@@ -31,7 +31,13 @@ pub struct RustOcrProvider {
 }
 
 impl RustOcrProvider {
-    pub fn new(models_dir: PathBuf, inference_threads: usize, captions_enabled: bool, printed_model_dir: PathBuf, formula_model_file: PathBuf) -> Self {
+    pub fn new(
+        models_dir: PathBuf,
+        inference_threads: usize,
+        captions_enabled: bool,
+        printed_model_dir: PathBuf,
+        formula_model_file: PathBuf,
+    ) -> Self {
         Self {
             models_dir,
             printed_model_dir,
@@ -222,7 +228,13 @@ mod tests {
 
     #[test]
     fn model_paths_are_not_loaded_during_construction() {
-        let provider = RustOcrProvider::new(PathBuf::from("/nonexistent/hydrogen-models"), 2, false, PathBuf::from("ppocr"), PathBuf::from("texo-distill-f16.gguf"));
+        let provider = RustOcrProvider::new(
+            PathBuf::from("/nonexistent/hydrogen-models"),
+            2,
+            false,
+            PathBuf::from("ppocr"),
+            PathBuf::from("texo-distill-f16.gguf"),
+        );
         assert!(provider.printed.get().is_none());
         assert!(provider.formula.get().is_none());
     }
