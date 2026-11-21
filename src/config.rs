@@ -440,21 +440,17 @@ impl AppConfig {
             .iter()
             .map(|path| expand_home(path, &home))
             .collect();
-        if let Some(path) = settings.paths.state_dir.as_ref() {
-            settings.paths.state_dir = Some(expand_home(path, &home));
-        }
-        if let Some(path) = settings.paths.models_dir.as_ref() {
-            settings.paths.models_dir = Some(expand_home(path, &home));
-        }
         let state_dir = settings
             .paths
             .state_dir
-            .clone()
+            .as_deref()
+            .map(|path| expand_home(path, &home))
             .unwrap_or_else(|| home.join(".local/state/quickshell-launcher"));
         let models_dir = settings
             .paths
             .models_dir
-            .clone()
+            .as_deref()
+            .map(|path| expand_home(path, &home))
             .unwrap_or_else(|| home.join(".local/share/hydrogen/models"));
         let default_event_duration_mins = settings.calendar.default_event_duration_mins.max(1);
         let ics_globs = settings.calendar.ics_globs.clone();
