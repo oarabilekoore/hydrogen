@@ -7,6 +7,7 @@ pub mod index_cmd;
 pub mod ocr_cmd;
 pub mod query_cmd;
 pub mod serve_cmd;
+pub mod search_cmd;
 
 use crate::config::AppConfig;
 use crate::error::Result;
@@ -49,6 +50,8 @@ pub enum Commands {
     Calendar(calendar_cmd::CalendarArgs),
     /// Run the local Hydrogen web application service
     Serve,
+    /// Search local files, captured web pages and saved conversations
+    Search(search_cmd::SearchArgs),
 }
 
 pub fn dispatch(cli: Cli, cfg: &AppConfig) -> Result<()> {
@@ -65,6 +68,7 @@ pub fn dispatch(cli: Cli, cfg: &AppConfig) -> Result<()> {
         Some(Commands::Ocr(args)) => ocr_cmd::run(args, cfg),
         Some(Commands::Calendar(args)) => calendar_cmd::run(args, cfg),
         Some(Commands::Serve) => serve_cmd::run(cfg),
+        Some(Commands::Search(args)) => search_cmd::run(args, cfg),
         None => Err(crate::error::HydrogenError::InvalidInput(
             "choose a command or use --frontend".into(),
         )),
