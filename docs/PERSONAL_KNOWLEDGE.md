@@ -9,6 +9,8 @@ hydrogen --frontend
 hydrogen --frontend --ask "What is a throttling device?"
 ```
 
+The unified `hydrogen search` command searches indexed files, saved articles and saved conversations. The same result types are consumed by the dotfiles-2 launcher.
+
 The frontend service binds to the loopback address configured by `frontend.bind_address` (default `127.0.0.1:17891`). The first command starts the service in the background when `frontend.auto_start` is enabled, then opens the local web application.
 
 To run the service in the foreground for debugging:
@@ -21,6 +23,7 @@ hydrogen serve
 
 ```sh
 hydrogen answer --browser "What is a throttling device?"
+hydrogen search "throttling device"
 ```
 
 The command retrieves passages from indexed files and captured web articles, asks the configured Ollama model for a source-grounded answer, saves a conversation with its source references, writes a standalone HTML answer and opens it in the default browser.
