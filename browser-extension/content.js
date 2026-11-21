@@ -39,7 +39,7 @@
 
   async function captureArticle(force = false) {
     if (excludedPath.test(location.pathname) || excludedHost.test(location.hostname)) return;
-    const appPath = /\\/(app|editor|workspace|canvas|playground|ide|dashboard|studio)(\\/|$)/i;
+    const appPath = /\/(app|editor|workspace|canvas|playground|ide|dashboard|studio)(\/|$)/i;
     if (!force && appPath.test(location.pathname)) return;
     const { text, paragraphs } = articleCandidate();
     const canvases = document.querySelectorAll("canvas").length;
