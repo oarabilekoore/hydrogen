@@ -317,6 +317,16 @@ impl AppConfig {
                 settings.models.inference_threads = value;
             }
         }
+        if let Ok(raw) = env::var("HYDROGEN_IMAGE_BATCH_SIZE") {
+            if let Ok(value) = raw.parse::<usize>() {
+                settings.indexing.images.batch_size = value;
+            }
+        }
+        if let Ok(raw) = env::var("DURATION") {
+            if let Ok(value) = raw.parse::<i64>() {
+                settings.calendar.default_event_duration_mins = value;
+            }
+        }
         if let Ok(raw) = env::var("HYDROGEN_CAPTIONS") {
             settings.indexing.images.captions = raw == "1" || raw.eq_ignore_ascii_case("true");
         }
