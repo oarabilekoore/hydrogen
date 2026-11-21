@@ -78,7 +78,7 @@
   }
 
   async function captureArticle(force = false) {
-    if (excludedPath.test(location.pathname) || excludedHost.test(location.hostname)) return;
+    if (excludedPath.test(location.pathname) || excludedHost.test(location.hostname) || isSupportedChatHost()) return;
     const appPath = /\/(app|editor|workspace|canvas|playground|ide|dashboard|studio)(\/|$)/i;
     if (!force && appPath.test(location.pathname)) return;
     const candidate = articleCandidate();
