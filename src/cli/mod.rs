@@ -22,6 +22,12 @@ pub struct Cli {
     /// Start the bundled Hydrogen web application and local API
     #[arg(long)]
     pub frontend: bool,
+    /// Start a new frontend conversation with this question
+    #[arg(long, requires = "frontend")]
+    pub ask: Option<String>,
+    /// Open an existing saved conversation in the frontend
+    #[arg(long, requires = "frontend")]
+    pub conversation: Option<i64>,
     #[command(subcommand)]
     pub command: Option<Commands>,
 }
@@ -50,7 +56,7 @@ pub enum Commands {
 
 pub fn dispatch(cli: Cli, cfg: &AppConfig) -> Result<()> {
     if cli.frontend {
-        return server_cmd::run(cfg);
+        return server_cmd::run(cfg, cli.ask.as_deref(), cli.conversation);
     }
     match cli.command {
         Some(Commands::Config(args)) => config_cmd::run(args, cfg),
@@ -58,7 +64,7 @@ pub fn dispatch(cli: Cli, cfg: &AppConfig) -> Result<()> {
         Some(Commands::Index(args)) => index_cmd::run(args, cfg),
         Some(Commands::Query(args)) => query_cmd::run(args, cfg),
         Some(Commands::Daemon(args)) => daemon_cmd::run(args, cfg),
-        Some(Commands::Frontend) => server_cmd::run(cfg),
+        Some(Commands::Frontend) => server_cmd::run(cfg, None, None),
         Some(Commands::Doctor) => doctor_cmd::run(cfg),
         Some(Commands::Ocr(args)) => ocr_cmd::run(args, cfg),
         Some(Commands::Calendar(args)) => calendar_cmd::run(args, cfg),
