@@ -26,6 +26,11 @@ async function importRecentHistory(days = 30, limit = 25) {
   if (historyImportBusy) throw new Error("A history import is already running.");
   const prefs = await settings();
   if (!prefs.enabled || !prefs.captureArticles) throw new Error("Enable automatic article capture before importing history.");
+  const configResponse = await fetch(API + "/api/settings", { cache: "no-store" });
+  if (!configResponse.ok) throw new Error("Hydrogen service is unavailable.");
+  const appConfig = await configResponse.json();
+  const web = appConfig.settings?.web || {};
+  if (!web.enabled || !web.auto_index) throw new Error("Enable web.enabled and web.auto_index in Hydrogen settings before importing history.");
   historyImportBusy = true;
   const summary = { examined: 0, captured: 0, skipped: 0, failed: 0 };
   try {
