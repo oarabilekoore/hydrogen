@@ -4,7 +4,7 @@ use crate::error::{HydrogenError, Result};
 use clap::{Args, Subcommand};
 use quick_xml::events::Event;
 use quick_xml::Reader;
-use serde::Serialize;
+use serde_json::json;
 use std::process::Command;
 
 #[derive(Args, Debug)]
@@ -203,19 +203,19 @@ fn feed_sync(cfg: &AppConfig) -> Result<()> {
                     indexed += 1;
                 }
                 repo.mark_feed_checked(feed.id, &feed_title, None)?;
-                Ok(json!({"url":feed.url,"indexed":indexed,"status":"ok"}))
+                json!({"url":feed.url,"indexed":indexed,"status":"ok"})
             }
             Ok(output) => {
                 let error = String::from_utf8_lossy(&output.stderr).trim().to_string();
                 repo.mark_feed_checked(feed.id, "", Some(&error))?;
-                Ok(json!({"url":feed.url,"status":"error","error":error}))
+                json!({"url":feed.url,"status":"error","error":error})
             }
             Err(error) => {
                 let message = format!("could not start curl: {error}");
                 repo.mark_feed_checked(feed.id, "", Some(&message))?;
-                Ok(json!({"url":feed.url,"status":"error","error":message}))
+                json!({"url":feed.url,"status":"error","error":message})
             }
-        }?;
+        };
         report.push(result);
     }
     println!("{}", serde_json::json!({"feeds":report}));
