@@ -268,7 +268,7 @@ impl<'a> SyncService<'a> {
                         } else {
                             preview_path
                         };
-                        if page_text.trim().is_empty() && !preview_path.is_empty() {
+                        if page_text.trim().is_empty() && self.cfg.settings.indexing.pdf.ocr_scanned_pages && !preview_path.is_empty() {
                             match self.ocr.ocr_boxes(Path::new(&preview_path)) {
                                 Ok(boxes) => {
                                     page_text = boxes
@@ -391,7 +391,7 @@ impl<'a> SyncService<'a> {
                 libc::nice(19);
             }
 
-            let entries = self.scanner.scan(6, 5000);
+            let entries = self.scanner.scan(self.cfg.settings.search.scan_max_depth, self.cfg.settings.search.scan_max_results);
             let img_cached = self.repo.load_image_cache()?;
             let mut queue: Vec<(FileEntry, bool, bool)> = Vec::new();
 
