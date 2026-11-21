@@ -48,11 +48,14 @@
   };
   const chat=extractChat();
   if(chat){
-    const key="hydrogen-chat:"+chat.url;
-    if(!sessionStorage.getItem(key)){
-      sessionStorage.setItem(key,"1");
-      send("conversation",chat);
-    }
+    let chatTimer=0;
+    const captureChat=()=>{const current=extractChat();if(current)send("conversation",current)};
+    captureChat();
+    const chatRoot=document.querySelector("main")||document.body;
+    new MutationObserver(()=>{
+      clearTimeout(chatTimer);
+      chatTimer=setTimeout(captureChat,1200);
+    }).observe(chatRoot,{childList:true,subtree:true,characterData:true});
     return;
   }
   const text=clean();
