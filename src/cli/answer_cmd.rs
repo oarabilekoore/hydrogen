@@ -174,7 +174,6 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
         "prompt": prompt,
         "stream": false,
         "options": {
-            "temperature": 0.0,
             "num_ctx": answer_cfg.context_window,
             "num_predict": answer_cfg.max_output_tokens,
             "temperature": answer_cfg.temperature,
@@ -230,7 +229,7 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
                 "{}",
                 json!({
                     "status": "unavailable",
-                    "model": args.model,
+                    "model": model,
                     "answer": "",
                     "sources": sources,
                     "error": format!("Could not reach Ollama at {} or the requested model is unavailable.", answer_cfg.endpoint)
