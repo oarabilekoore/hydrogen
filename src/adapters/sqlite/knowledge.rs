@@ -587,22 +587,44 @@ mod tests {
         store
             .append_message(&id, "user", "What is a throttling device?", None)
             .unwrap();
+        let sources = serde_json::json!([{"id":1,"name":"Lecture notes","page":14}]);
         store
-            .append_message(
+            .append_message_with_sources(
                 &id,
                 "assistant",
                 "A restriction that reduces pressure [1].",
                 Some("qwen3.5:2b-q4_K_M"),
+                Some(&sources),
             )
             .unwrap();
         let messages = store.get_messages(&id).unwrap();
         assert_eq!(messages.len(), 2);
         assert_eq!(messages[0].role, "user");
+        assert_eq!(messages[1].sources.as_ref(), Some(&sources));
         assert!(store
             .search_saved_knowledge("throttling", 10)
             .unwrap()
             .iter()
             .any(|hit| hit.id == id));
+    }
+
+    #[test]
+    fn captured_conversations_update_in_place() {
+        let store = test_store("capture");
+        let first = vec![
+            ("user".to_string(), "Explain throttling".to_string(), None),
+            ("assistant".to_string(), "A pressure-reducing process.".to_string(), Some("model-a".to_string())),
+        ];
+        let id = store.capture_conversation("https://chatgpt.com/c/example", "Study chat", &first).unwrap();
+        let updated = vec![
+            ("user".to_string(), "Explain throttling".to_string(), None),
+            ("assistant".to_string(), "A pressure-reducing process.".to_string(), Some("model-a".to_string())),
+            ("user".to_string(), "What is enthalpy?".to_string(), None),
+        ];
+        let same_id = store.capture_conversation("https://chatgpt.com/c/example", "Study chat", &updated).unwrap();
+        assert_eq!(id, same_id);
+        assert_eq!(store.list_conversations(10).unwrap().len(), 1);
+        assert_eq!(store.get_messages(&id).unwrap().len(), 3);
     }
 
     #[test]
