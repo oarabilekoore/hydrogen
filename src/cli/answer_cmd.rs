@@ -25,11 +25,17 @@ pub struct AnswerArgs {
 pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
     let query = args.query.trim();
     if query.chars().count() < 3 {
-        println!("{}", json!({"status":"no_context","answer":"","sources":[]}));
+        println!(
+            "{}",
+            json!({"status":"no_context","answer":"","sources":[]})
+        );
         return Ok(());
     }
     if !cfg.db_path.exists() {
-        println!("{}", json!({"status":"no_context","answer":"","sources":[]}));
+        println!(
+            "{}",
+            json!({"status":"no_context","answer":"","sources":[]})
+        );
         return Ok(());
     }
 
@@ -37,14 +43,21 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
     let embeddings = FastEmbedProvider::new(cfg.models_dir.clone());
     let service = QueryService::new(&repo, &embeddings);
     // Keep RAG retrieval deterministic and cheap. It uses the same indexed
-    // lexical/FTS5 passages as launcher search and does not download encoders.
+    // lexical/FTS5 passages as launcher search and does not download encoders
+    // unless the existing semantic index has explicitly been enabled.
     let hits = service.search(query, args.limit.clamp(1, 8), "all", args.semantic)?;
 
     let mut sources = Vec::new();
     let mut context = String::new();
-    for (index, hit) in hits.iter().filter(|hit| !hit.snippet.trim().is_empty()).enumerate() {
+    for (index, hit) in hits
+        .iter()
+        .filter(|hit| !hit.snippet.trim().is_empty())
+        .enumerate()
+    {
         let id = index + 1;
-        let location = hit.page.map(|page| format!("page {page}"))
+        let location = hit
+            .page
+            .map(|page| format!("page {page}"))
             .or_else(|| hit.line.map(|line| format!("line {line}")))
             .unwrap_or_else(|| "location unavailable".to_string());
         let snippet: String = hit.snippet.chars().take(1400).collect();
@@ -63,7 +76,10 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
     }
 
     if sources.is_empty() {
-        println!("{}", json!({"status":"no_context","answer":"","sources":[]}));
+        println!(
+            "{}",
+            json!({"status":"no_context","answer":"","sources":[]})
+        );
         return Ok(());
     }
 
@@ -84,11 +100,18 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
     let payload = payload.to_string();
     let output = Command::new("curl")
         .args([
-            "--silent", "--show-error", "--fail-with-body",
-            "--connect-timeout", "2", "--max-time", "50",
+            "--silent",
+            "--show-error",
+            "--fail-with-body",
+            "--connect-timeout",
+            "2",
+            "--max-time",
+            "50",
             "http://127.0.0.1:11434/api/generate",
-            "-H", "Content-Type: application/json",
-            "--data-binary", &payload
+            "-H",
+            "Content-Type: application/json",
+            "--data-binary",
+            &payload,
         ])
         .output();
 
@@ -96,28 +119,39 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
         Ok(output) if output.status.success() => {
             serde_json::from_slice::<Value>(&output.stdout)
                 .ok()
-                .and_then(|value| value.get("response").and_then(Value::as_str).map(str::to_owned))
+                .and_then(|value| {
+                    value
+                        .get("response")
+                        .and_then(Value::as_str)
+                        .map(str::to_owned)
+                })
         }
         _ => None,
     };
 
     match response {
         Some(answer) if !answer.trim().is_empty() => {
-            println!("{}", json!({
-                "status": "ready",
-                "model": args.model,
-                "answer": answer.trim(),
-                "sources": sources
-            }));
+            println!(
+                "{}",
+                json!({
+                    "status": "ready",
+                    "model": args.model,
+                    "answer": answer.trim(),
+                    "sources": sources
+                })
+            );
         }
         _ => {
-            println!("{}", json!({
-                "status": "unavailable",
-                "model": args.model,
-                "answer": "",
-                "sources": sources,
-                "error": "Could not reach Ollama at http://127.0.0.1:11434 or the requested model is unavailable."
-            }));
+            println!(
+                "{}",
+                json!({
+                    "status": "unavailable",
+                    "model": args.model,
+                    "answer": "",
+                    "sources": sources,
+                    "error": "Could not reach Ollama at http://127.0.0.1:11434 or the requested model is unavailable."
+                })
+            );
         }
     }
     Ok(())
