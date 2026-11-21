@@ -23,6 +23,9 @@ ollama run qwen3.5:2b-q4_K_M
 
 ```sh
 hydrogen answer "what is a throttling device" --model qwen3.5:2b-q4_K_M
+
+# Also write a browser-ready local HTML answer page
+hydrogen answer "what is a throttling device" --html
 ```
 
 Optional flags:
@@ -55,3 +58,19 @@ generation.
 The RAG command searches the PDF page FTS index directly, so multiple relevant pages from the same PDF can be retrieved. It expands a question into a small set of keyword queries, combines repeated page hits, and supplements them with indexed non-PDF text. Image files and screenshot OCR are excluded from answer context by default. This is intentionally separate from the launcher’s broad content-and-vision search ranking.
 
 The default generator is `qwen3.5:2b-q4_K_M` (about 1.9 GB in the Ollama library). On an 8 GB machine, keep the context bounded; larger models may compete with the desktop and browser for memory. A model change does not guarantee zero hallucinations: the retrieval layer and citation checks remain essential.
+
+
+## Browser-ready answers
+
+The `hydrogen answer` command remains opt-in. Use `--html` to write a
+self-contained, locally stored HTML page under
+`$HYDROGEN_STATE_DIR/answers` (or the configured Hydrogen state directory).
+The JSON response includes `html_path` when the page is written. Source entries
+link to their original local files and include PDF page fragments where available.
+The Quickshell launcher adds an explicit **Ask AI about this search** result;
+searching alone never invokes Ollama. Selecting that result runs RAG and opens
+the generated page with `xdg-open`.
+
+If Ollama is unavailable or rejects the requested model, Hydrogen now returns
+the underlying connection/API error rather than collapsing every failure into
+a generic unavailable message.
