@@ -19,6 +19,8 @@ use std::sync::{Arc, OnceLock};
 
 pub struct RustOcrProvider {
     models_dir: PathBuf,
+    printed_model_dir: PathBuf,
+    formula_model_file: PathBuf,
     inference_threads: usize,
     printed: OnceLock<std::result::Result<Arc<OcrEngine>, String>>,
     formula: OnceLock<std::result::Result<Arc<texo_ocr::Ocr>, String>>,
@@ -29,9 +31,11 @@ pub struct RustOcrProvider {
 }
 
 impl RustOcrProvider {
-    pub fn new(models_dir: PathBuf, inference_threads: usize, captions_enabled: bool) -> Self {
+    pub fn new(models_dir: PathBuf, inference_threads: usize, captions_enabled: bool, printed_model_dir: PathBuf, formula_model_file: PathBuf) -> Self {
         Self {
             models_dir,
+            printed_model_dir,
+            formula_model_file,
             inference_threads: inference_threads.clamp(1, 2),
             printed: OnceLock::new(),
             formula: OnceLock::new(),
@@ -44,8 +48,8 @@ impl RustOcrProvider {
 
     fn printed_engine(&self) -> Result<Arc<OcrEngine>> {
         let result = self.printed.get_or_init(|| {
-            let det = self.models_dir.join("ppocr/det");
-            let rec = self.models_dir.join("ppocr/rec");
+            let det = self.printed_model_dir.join("det");
+            let rec = self.printed_model_dir.join("rec");
             if !det.is_dir() || !rec.is_dir() {
                 return Err(format!(
                     "PP-OCR models missing. Expected {} and {}",
@@ -68,7 +72,7 @@ impl RustOcrProvider {
 
     fn formula_engine(&self) -> Result<Arc<texo_ocr::Ocr>> {
         let result = self.formula.get_or_init(|| {
-            let path = self.models_dir.join("texo-distill-f16.gguf");
+            let path = self.models_dir.join(&self.formula_model_file);
             if !path.is_file() {
                 return Err(format!("Texo formula model missing: {}", path.display()));
             }
@@ -218,7 +222,7 @@ mod tests {
 
     #[test]
     fn model_paths_are_not_loaded_during_construction() {
-        let provider = RustOcrProvider::new(PathBuf::from("/nonexistent/hydrogen-models"), 2, false);
+        let provider = RustOcrProvider::new(PathBuf::from("/nonexistent/hydrogen-models"), 2, false, PathBuf::from("ppocr"), PathBuf::from("texo-distill-f16.gguf"));
         assert!(provider.printed.get().is_none());
         assert!(provider.formula.get().is_none());
     }
