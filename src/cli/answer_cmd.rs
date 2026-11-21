@@ -1,4 +1,3 @@
-use crate::adapters::ml::embeddings::FastEmbedProvider;
 use crate::adapters::sqlite::repo::SqliteIndexRepository;
 use crate::config::AppConfig;
 use crate::error::Result;
@@ -53,6 +52,7 @@ fn query_variants(query: &str) -> Vec<String> {
             push(cleaned[0].clone());
         }
     }
+    drop(push);
     variants.truncate(6);
     variants
 }
