@@ -741,3 +741,31 @@ pub fn open_frontend(
     })?;
     Ok(())
 }
+
+
+#[cfg(test)]
+mod query_tests {
+    use super::{decode_query_component, query_parameter};
+
+    #[test]
+    fn decodes_spaces_unicode_and_reserved_query_characters() {
+        assert_eq!(
+            decode_query_component("throttling+device%3F+%E2%9C%93"),
+            "throttling device? ✓"
+        );
+    }
+
+    #[test]
+    fn finds_query_parameter_without_consuming_following_parameters() {
+        assert_eq!(
+            query_parameter("/api/search?kind=all&q=throttling%20device&limit=10", "q")
+                .as_deref(),
+            Some("throttling device")
+        );
+    }
+
+    #[test]
+    fn missing_query_parameter_is_none() {
+        assert_eq!(query_parameter("/api/search?limit=10", "q"), None);
+    }
+}
