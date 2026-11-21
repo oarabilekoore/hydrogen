@@ -21,6 +21,7 @@ pub struct StoredMessage {
     pub role: String,
     pub content: String,
     pub model: Option<String>,
+    pub sources: Option<serde_json::Value>,
     pub created_at: i64,
 }
 
@@ -90,6 +91,17 @@ impl KnowledgeStore {
         content: &str,
         model: Option<&str>,
     ) -> rusqlite::Result<String> {
+        self.append_message_with_sources(conversation_id, role, content, model, None)
+    }
+
+    pub fn append_message_with_sources(
+        &self,
+        conversation_id: &str,
+        role: &str,
+        content: &str,
+        model: Option<&str>,
+        sources: Option<&serde_json::Value>,
+    ) -> rusqlite::Result<String> {
         if !matches!(role, "system" | "user" | "assistant") {
             return Err(rusqlite::Error::InvalidParameterName("role must be system, user, or assistant".into()));
         }
@@ -108,8 +120,8 @@ impl KnowledgeStore {
             return Err(rusqlite::Error::QueryReturnedNoRows);
         }
         tx.execute(
-            "INSERT INTO messages(id,conversation_id,role,content,model) VALUES(?1,?2,?3,?4,?5)",
-            params![id, conversation_id, role, content, model],
+            "INSERT INTO messages(id,conversation_id,role,content,model,sources_json) VALUES(?1,?2,?3,?4,?5,?6)",
+            params![id, conversation_id, role, content, model, sources.map(serde_json::Value::to_string)],
         )?;
         tx.execute(
             "UPDATE conversations SET updated_at=unixepoch(), title=CASE
@@ -144,7 +156,7 @@ impl KnowledgeStore {
     pub fn get_messages(&self, conversation_id: &str) -> rusqlite::Result<Vec<StoredMessage>> {
         let conn = self.connect()?;
         let mut stmt = conn.prepare(
-            "SELECT id,conversation_id,role,content,model,created_at
+            "SELECT id,conversation_id,role,content,model,sources_json,created_at
              FROM messages WHERE conversation_id=?1 ORDER BY created_at,id",
         )?;
         let rows = stmt.query_map(params![conversation_id], |row| {
@@ -154,7 +166,8 @@ impl KnowledgeStore {
                 role: row.get(2)?,
                 content: row.get(3)?,
                 model: row.get(4)?,
-                created_at: row.get(5)?,
+                sources: row.get::<_, Option<String>>(5)?.and_then(|raw| serde_json::from_str(&raw).ok()),
+                created_at: row.get(6)?,
             })
         })?;
         rows.collect()
@@ -337,6 +350,7 @@ pub fn ensure_schema(conn: &Connection) -> rusqlite::Result<()> {
             role TEXT NOT NULL CHECK(role IN ('system','user','assistant')),
             content TEXT NOT NULL,
             model TEXT,
+            sources_json TEXT,
             created_at INTEGER NOT NULL DEFAULT(unixepoch())
          );
          CREATE TABLE IF NOT EXISTS captured_conversations(
