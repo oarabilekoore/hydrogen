@@ -214,8 +214,16 @@ fn handle_api(mut request: Request, cfg: &AppConfig, store: &KnowledgeStore) {
                 Some((role, content, model))
             })
             .collect();
-        if !cfg.settings.conversations.capture_ai_chats {
+        if !cfg.settings.conversations.enabled || !cfg.settings.conversations.capture_ai_chats {
             json(request, 403, json!({"error":"AI conversation capture is disabled in Hydrogen configuration"}));
+            return;
+        }
+        let host = source_key.split_once("://").map(|(_, rest)| rest).unwrap_or(source_key)
+            .split('/').next().unwrap_or("").split(':').next().unwrap_or("").to_ascii_lowercase();
+        if cfg.settings.web.exclude_domains.iter().any(|domain| {
+            host == domain.to_ascii_lowercase() || host.ends_with(&format!(".{}", domain.to_ascii_lowercase()))
+        }) {
+            json(request, 403, json!({"error":"this domain is excluded by Hydrogen configuration"}));
             return;
         }
         match store.capture_conversation(source_key, title, &messages) {
