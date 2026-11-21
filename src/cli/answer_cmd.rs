@@ -88,7 +88,6 @@ fn source_file_url(path: &str, page: Option<u64>) -> String {
     url
 }
 
-
 fn render_inline_markdown(value: &str) -> String {
     let parts: Vec<&str> = value.split("**").collect();
     let mut rendered = String::new();
@@ -164,7 +163,10 @@ fn render_markdown(value: &str) -> String {
                 in_list = false;
             }
             html.push_str(&format!("<h2>{}</h2>", render_inline_markdown(heading)));
-        } else if let Some(item) = trimmed.strip_prefix("- ").or_else(|| trimmed.strip_prefix("* ")) {
+        } else if let Some(item) = trimmed
+            .strip_prefix("- ")
+            .or_else(|| trimmed.strip_prefix("* "))
+        {
             close_paragraph(&mut html, &mut paragraph);
             if !in_list {
                 html.push_str("<ul>");
