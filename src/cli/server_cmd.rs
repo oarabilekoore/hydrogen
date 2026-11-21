@@ -315,7 +315,19 @@ fn handle_request(mut request: Request, cfg: &mut AppConfig) {
     let _ = request.respond(response);
 }
 
-pub fn run(cfg: &AppConfig) -> Result<()> {
+fn encode_query(value: &str) -> String {
+    let mut encoded = String::new();
+    for byte in value.bytes() {
+        if byte.is_ascii_alphanumeric() || b"-_.~".contains(&byte) {
+            encoded.push(byte as char);
+        } else {
+            encoded.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    encoded
+}
+
+pub fn run(cfg: &AppConfig, ask: Option<&str>, conversation: Option<i64>) -> Result<()> {
     if !cfg.settings.frontend.enabled {
         return Err(HydrogenError::Config("frontend is disabled in Hydrogen configuration".into()));
     }
@@ -324,7 +336,13 @@ pub fn run(cfg: &AppConfig) -> Result<()> {
         return Err(HydrogenError::Config("Hydrogen frontend may only bind to loopback addresses".into()));
     }
     let address = format!("{bind}:{}", cfg.settings.frontend.port);
-    let url = format!("http://{}:{}/", bind, cfg.settings.frontend.port);
+    let mut url = format!("http://{}:{}/", bind, cfg.settings.frontend.port);
+    if let Some(question) = ask.filter(|value| !value.trim().is_empty()) {
+        url.push_str("?ask=");
+        url.push_str(&encode_query(question.trim()));
+    } else if let Some(id) = conversation {
+        url.push_str(&format!("?conversation={id}"));
+    }
 
     if TcpStream::connect_timeout(
         &format!("{bind}:{}", cfg.settings.frontend.port).parse().map_err(|error| HydrogenError::Config(format!("invalid frontend address: {error}")))?,
