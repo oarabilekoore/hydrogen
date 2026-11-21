@@ -624,7 +624,11 @@ mod tests {
             .unwrap();
         let updated = vec![
             ("user".to_string(), "Explain throttling".to_string(), None),
-            ("assistant".to_string(), "A pressure-reducing process.".to_string(), Some("model-a".to_string())),
+            (
+                "assistant".to_string(),
+                "A pressure-reducing process.".to_string(),
+                Some("model-a".to_string()),
+            ),
             ("user".to_string(), "What is enthalpy?".to_string(), None),
         ];
         let same_id = store
