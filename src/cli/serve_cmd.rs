@@ -124,6 +124,18 @@ fn handle_api(mut request: Request, cfg: &AppConfig, store: &KnowledgeStore) {
         return;
     }
 
+    if parts.len() == 3 && parts[0] == "api" && parts[1] == "web-pages" && method == Method::Get {
+        match parts[2].parse::<i64>() {
+            Ok(id) => match store.get_web_page(id) {
+                Ok(Some(page)) => json(request, 200, json!({"page":page})),
+                Ok(None) => json(request, 404, json!({"error":"saved page not found"})),
+                Err(error) => json(request, 500, json!({"error":error.to_string()})),
+            },
+            Err(_) => json(request, 400, json!({"error":"invalid saved page id"})),
+        }
+        return;
+    }
+
     if parts.as_slice() == ["api", "web-pages"] && method == Method::Post {
         let body = match read_body(&mut request) {
             Ok(body) => body,
