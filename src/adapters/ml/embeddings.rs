@@ -29,7 +29,7 @@ impl FastEmbedProvider {
     pub fn new(models_dir: PathBuf, threads: usize) -> Self {
         Self {
             cache_dir: models_dir.join("embeddings").join("fastembed"),
-            threads: threads.clamp(1, 2),
+            threads,
             text: OnceLock::new(),
             clip_text: OnceLock::new(),
             clip_image: OnceLock::new(),
