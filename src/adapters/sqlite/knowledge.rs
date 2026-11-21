@@ -411,12 +411,16 @@ impl KnowledgeStore {
         {
             let mut stmt = conn.prepare(
                 "SELECT m.conversation_id,c.title,
-                        COALESCE(
-                            (SELECT substr(a.content,1,240) FROM messages a
-                             WHERE a.conversation_id=m.conversation_id AND a.role='assistant'
-                             ORDER BY a.rowid DESC LIMIT 1),
-                            snippet(messages_fts,2,'','','…',24)
-                        ),
+                        CASE
+                            WHEN m.role='assistant' THEN substr(m.content,1,240)
+                            ELSE COALESCE(
+                                (SELECT substr(a.content,1,240) FROM messages a
+                                 WHERE a.conversation_id=m.conversation_id
+                                   AND a.role='assistant' AND a.rowid > m.rowid
+                                 ORDER BY a.rowid ASC LIMIT 1),
+                                snippet(messages_fts,2,'','','…',24)
+                            )
+                        END,
                         c.updated_at,
                         EXISTS(SELECT 1 FROM messages a
                                WHERE a.conversation_id=m.conversation_id AND a.role='assistant')
