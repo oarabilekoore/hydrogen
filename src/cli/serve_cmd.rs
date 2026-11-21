@@ -167,7 +167,7 @@ fn handle_api(mut request: Request, cfg: &AppConfig, store: &KnowledgeStore) {
             json(request, 404, json!({"error":error.to_string()}));
             return;
         }
-        let output = match run_cli(&["answer", content]) {
+        let output = match run_cli(&["answer", "--no-save", content]) {
             Ok(output) => output,
             Err(error) => {
                 json(
