@@ -21,6 +21,9 @@ pub struct AnswerArgs {
     /// Write a formatted local HTML answer and include its path in the JSON response
     #[arg(long)]
     pub html: bool,
+    /// Generate the answer HTML and open it in the default browser
+    #[arg(long)]
+    pub browser: bool,
 }
 
 fn query_variants(query: &str, max_variants: usize) -> Vec<String> {
@@ -261,6 +264,52 @@ footer {{ color:var(--muted); font-size:12px; margin-top:32px; }}
     Ok(path.to_string_lossy().into_owned())
 }
 
+fn extract_ollama_answer(body: &str) -> std::result::Result<String, String> {
+    let parsed: Value = serde_json::from_str(body).map_err(|error| {
+        let preview: String = body.chars().take(500).collect();
+        format!("Ollama returned invalid JSON ({error}): {preview}")
+    })?;
+
+    if let Some(error) = parsed.get("error").and_then(Value::as_str) {
+        return Err(format!("Ollama error: {error}"));
+    }
+
+    let answer = parsed
+        .pointer("/message/content")
+        .and_then(Value::as_str)
+        .or_else(|| parsed.get("response").and_then(Value::as_str))
+        .unwrap_or("")
+        .trim();
+
+    if !answer.is_empty() {
+        return Ok(answer.to_string());
+    }
+
+    let thinking_present = parsed
+        .pointer("/message/thinking")
+        .and_then(Value::as_str)
+        .map(|value| !value.trim().is_empty())
+        .unwrap_or(false);
+    let done_reason = parsed
+        .get("done_reason")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    let eval_count = parsed
+        .get("eval_count")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+
+    if thinking_present {
+        return Err(format!(
+            "Ollama completed with reasoning but no final answer (done_reason={done_reason}, eval_count={eval_count})."
+        ));
+    }
+
+    Err(format!(
+        "Ollama returned an empty final answer (done_reason={done_reason}, eval_count={eval_count})."
+    ))
+}
+
 pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
     let query = args.query.trim();
     if query.chars().count() < cfg.settings.answer.min_query_chars || !cfg.db_path.exists() {
@@ -400,8 +449,18 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
     );
     let payload = json!({
         "model": model,
-        "prompt": prompt,
+        "messages": [
+            {
+                "role": "system",
+                "content": "You are a source-grounded study assistant. The retrieved excerpts are the ONLY permitted evidence. Answer the exact question using the terminology and meaning in the supplied course notes. Do not answer from general knowledge or memory. If no excerpt explains the requested concept, say: I cannot find an explanation in the indexed sources. Cite every factual claim with [source number]. Never invent citations. If sources disagree or are incomplete, say so. Keep the answer concise."
+            },
+            {
+                "role": "user",
+                "content": format!("QUESTION:\\n{query}\\n\\nRETRIEVED COURSE EXCERPTS:\\n{context}")
+            }
+        ],
         "stream": false,
+        "think": false,
         "options": {
             "num_ctx": answer_cfg.context_window,
             "num_predict": answer_cfg.max_output_tokens,
@@ -412,6 +471,9 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
     })
     .to_string();
 
+    // /api/chat is the stable Ollama interface for chat-tuned models such as
+    // Qwen 3.5. Parse both chat and legacy generate response shapes so older
+    // Ollama-compatible servers remain usable.
     let output = Command::new("curl")
         .args([
             "--silent",
@@ -421,7 +483,7 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
             "2",
             "--max-time",
             &answer_cfg.timeout_seconds.to_string(),
-            &format!("{}/api/generate", answer_cfg.endpoint.trim_end_matches('/')),
+            &format!("{}/api/chat", answer_cfg.endpoint.trim_end_matches('/')),
             "-H",
             "Content-Type: application/json",
             "--data-binary",
@@ -433,42 +495,21 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
         Ok(output) => {
             let body = String::from_utf8_lossy(&output.stdout).to_string();
             let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-            let parsed = serde_json::from_str::<Value>(&body).ok();
             if output.status.success() {
-                let answer = parsed
-                    .as_ref()
-                    .and_then(|value| value.get("response"))
-                    .and_then(Value::as_str)
-                    .map(str::to_owned);
-                let error = if answer.as_deref().unwrap_or("").trim().is_empty() {
-                    Some("Ollama returned an empty response.".to_string())
-                } else {
-                    None
-                };
-                (answer, error)
+                match extract_ollama_answer(&body) {
+                    Ok(answer) => (Some(answer), None),
+                    Err(error) => (None, Some(error)),
+                }
             } else {
-                let api_error = parsed
-                    .as_ref()
-                    .and_then(|value| value.get("error"))
-                    .and_then(Value::as_str)
-                    .map(str::to_owned);
+                let api_error = serde_json::from_str::<Value>(&body)
+                    .ok()
+                    .and_then(|value| value.get("error").and_then(Value::as_str).map(str::to_owned));
                 let detail = api_error
-                    .or_else(|| {
-                        if !stderr.is_empty() {
-                            Some(stderr)
-                        } else if !body.trim().is_empty() {
-                            Some(body.trim().to_string())
-                        } else {
-                            None
-                        }
-                    })
+                    .or_else(|| if !stderr.is_empty() { Some(stderr) } else if !body.trim().is_empty() { Some(body.trim().to_string()) } else { None })
                     .unwrap_or_else(|| format!("curl exited with {}", output.status));
                 (
                     None,
-                    Some(format!(
-                        "Ollama request to {} failed: {}",
-                        answer_cfg.endpoint, detail
-                    )),
+                    Some(format!("Ollama request to {} failed: {}", answer_cfg.endpoint, detail)),
                 )
             }
         }
@@ -481,7 +522,7 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
     match response {
         Some(answer) if !answer.trim().is_empty() => {
             let answer = answer.trim();
-            let html_path = if args.html {
+            let html_path = if args.html || args.browser {
                 Some(
                     write_answer_html(cfg, query, answer, model, &sources).map_err(|error| {
                         crate::error::HydrogenError::Config(format!(
@@ -492,11 +533,24 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
             } else {
                 None
             };
+            let browser_opened = if args.browser {
+                let path = html_path.as_deref().ok_or_else(|| {
+                    crate::error::HydrogenError::Config("browser output was requested but no HTML page was generated".into())
+                })?;
+                Command::new("xdg-open")
+                    .arg(path)
+                    .spawn()
+                    .map_err(|error| crate::error::HydrogenError::ExternalTool(format!("could not open answer in browser: {error}")))?;
+                true
+            } else {
+                false
+            };
             println!(
                 "{}",
                 json!({
                     "status": "ready", "model": model, "answer": answer,
-                    "sources": sources, "html_path": html_path
+                    "sources": sources, "html_path": html_path,
+                    "browser_opened": browser_opened
                 })
             );
         }
@@ -524,6 +578,27 @@ mod html_tests {
             escape_html("<script a=\"x\">"),
             "&lt;script a=&quot;x&quot;&gt;"
         );
+    }
+
+
+    #[test]
+    fn parses_ollama_chat_response() {
+        let body = r#"{"message":{"role":"assistant","content":"A throttling device reduces pressure."},"done":true}"#;
+        assert_eq!(extract_ollama_answer(body).unwrap(), "A throttling device reduces pressure.");
+    }
+
+    #[test]
+    fn parses_legacy_generate_response() {
+        let body = r#"{"response":"A throttling device reduces pressure.","done":true}"#;
+        assert_eq!(extract_ollama_answer(body).unwrap(), "A throttling device reduces pressure.");
+    }
+
+    #[test]
+    fn reports_empty_final_answer_with_completion_metadata() {
+        let body = r#"{"message":{"content":"","thinking":"internal reasoning"},"done_reason":"length","eval_count":12}"#;
+        let error = extract_ollama_answer(body).unwrap_err();
+        assert!(error.contains("reasoning but no final answer"));
+        assert!(error.contains("done_reason=length"));
     }
 
     #[test]
