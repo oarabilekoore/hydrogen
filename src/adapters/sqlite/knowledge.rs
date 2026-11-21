@@ -221,8 +221,25 @@ impl KnowledgeStore {
         published_at: Option<&str>,
         site_name: Option<&str>,
         content_hash: &str,
+        keep_version: bool,
     ) -> rusqlite::Result<i64> {
         let conn = self.connect()?;
+        if keep_version {
+            let previous: Option<(i64, String, String, String)> = conn.query_row(
+                "SELECT id,content_hash,title,content FROM web_pages WHERE canonical_url=?1",
+                params![canonical_url],
+                |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?)),
+            ).optional()?;
+            if let Some((page_id, old_hash, old_title, old_content)) = previous {
+                if old_hash != content_hash {
+                    conn.execute(
+                        "INSERT OR IGNORE INTO web_page_versions(page_id,content_hash,title,content)
+                         VALUES(?1,?2,?3,?4)",
+                        params![page_id,old_hash,old_title,old_content],
+                    )?;
+                }
+            }
+        }
         conn.execute(
             "INSERT INTO web_pages(url,canonical_url,title,content,author,published_at,site_name,content_hash)
              VALUES(?1,?2,?3,?4,?5,?6,?7,?8)
@@ -428,11 +445,11 @@ mod tests {
         let first = store.save_web_page(
             "https://example.test/post?utm_source=x", "https://example.test/post",
             "A useful article", "Readable article body about thermodynamics.",
-            Some("Author"), None, Some("Example"), "hash-a"
+            Some("Author"), None, Some("Example"), "hash-a", true
         ).unwrap();
         let second = store.save_web_page(
             "https://example.test/post", "https://example.test/post",
-            "Updated title", "Updated article body.", None, None, None, "hash-b"
+            "Updated title", "Updated article body.", None, None, None, "hash-b", true
         ).unwrap();
         assert_eq!(first, second);
     }
