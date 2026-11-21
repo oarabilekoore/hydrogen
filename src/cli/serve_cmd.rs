@@ -332,7 +332,11 @@ pub fn run(cfg: &AppConfig) -> Result<()> {
         if request.method() == &Method::Get && (url == "/" || url.starts_with("/?")) {
             respond(request, 200, "text/html; charset=utf-8", FRONTEND.to_string());
         } else if url.starts_with("/api/") {
-            handle_api(request, cfg, &store);
+            // Reload the persisted configuration between requests so changes made
+            // through the settings API affect capture and answer behaviour without
+            // requiring a frontend restart. The listening socket itself is restart-only.
+            let effective_cfg = AppConfig::load().unwrap_or_else(|_| cfg.clone());
+            handle_api(request, &effective_cfg, &store);
         } else {
             respond(request, 404, "text/plain; charset=utf-8", "Not found".into());
         }
