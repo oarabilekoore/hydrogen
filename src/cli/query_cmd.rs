@@ -22,6 +22,9 @@ pub struct QueryArgs {
     /// Augment lexical search with local MiniLM and shared CLIP vectors.
     #[arg(long)]
     pub semantic: bool,
+    /// Disable semantic retrieval even when it is enabled in config.
+    #[arg(long)]
+    pub no_semantic: bool,
 }
 
 pub fn run(args: QueryArgs, cfg: &AppConfig) -> Result<()> {
@@ -33,9 +36,9 @@ pub fn run(args: QueryArgs, cfg: &AppConfig) -> Result<()> {
     let embeddings = FastEmbedProvider::new(cfg.models_dir.clone(), cfg.inference_threads);
     let service = QueryService::new(&repo, &embeddings);
     let limit = args.limit.unwrap_or(cfg.settings.search.default_limit);
-    let limit = args.limit.unwrap_or(cfg.settings.search.default_limit);
+    let semantic = !args.no_semantic && (args.semantic || cfg.settings.indexing.embeddings_enabled);
     let hits = match (args.query.as_deref(), args.image.as_deref()) {
-        (Some(query), None) => service.search(query, limit, &args.mode, args.semantic)?,
+        (Some(query), None) => service.search(query, limit, &args.mode, semantic)?,
         (None, Some(image)) => service.search_image(image, limit)?,
         (Some(_), Some(_)) => {
             return Err(crate::error::HydrogenError::InvalidInput(
