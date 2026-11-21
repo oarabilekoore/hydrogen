@@ -428,7 +428,12 @@ impl KnowledgeStore {
             let rows = stmt.query_map(params![fts_query, limit.clamp(1, 100) as i64], |row| {
                 let has_answer: bool = row.get(4)?;
                 Ok(KnowledgeHit {
-                    kind: if has_answer { "answer" } else { "conversation" }.into(),
+                    kind: if has_answer {
+                        "answer"
+                    } else {
+                        "conversation"
+                    }
+                    .into(),
                     id: row.get(0)?,
                     title: row.get(1)?,
                     snippet: row.get(2)?,
