@@ -343,4 +343,57 @@ impl KnowledgeRepository {
         tx.commit()?;
         Ok(page_id)
     }
+
+    pub fn import_captured_conversation(
+        &self,
+        source_key: &str,
+        title: &str,
+        platform: &str,
+        messages: &[(String, String)],
+    ) -> Result<Option<i64>> {
+        let conn = self.connect()?;
+        let tx = conn.unchecked_transaction()?;
+        let exists: bool = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM capture_sources WHERE source_key=?1)",
+            [source_key], |row| row.get(0)
+        )?;
+        if exists {
+            tx.execute(
+                "UPDATE capture_sources SET last_seen=unixepoch() WHERE source_key=?1",
+                [source_key],
+            )?;
+            tx.commit()?;
+            return Ok(None);
+        }
+        tx.execute(
+            "INSERT INTO conversations(title,model) VALUES(?1,?2)",
+            params![if title.trim().is_empty() { "Imported conversation" } else { title.trim() }, platform],
+        )?;
+        let conversation_id = tx.last_insert_rowid();
+        for (role, content) in messages {
+            if !matches!(role.as_str(), "user" | "assistant") || content.trim().is_empty() {
+                continue;
+            }
+            let digest = blake3::hash(content.as_bytes()).to_hex().to_string();
+            tx.execute(
+                "INSERT INTO messages(conversation_id,role,content,model,content_hash)
+                 VALUES(?1,?2,?3,?4,?5)",
+                params![conversation_id,role,content,platform,digest],
+            )?;
+            let message_id = tx.last_insert_rowid();
+            tx.execute(
+                "INSERT INTO messages_fts(conversation_id,message_id,role,content)
+                 VALUES(?1,?2,?3,?4)",
+                params![conversation_id,message_id,role,content],
+            )?;
+        }
+        tx.execute(
+            "INSERT INTO capture_sources(source_key,source_type,metadata_json)
+             VALUES(?1,'conversation',?2)",
+            params![source_key, serde_json::json!({"platform":platform,"conversation_id":conversation_id}).to_string()],
+        )?;
+        tx.commit()?;
+        Ok(Some(conversation_id))
+    }
+
 }
