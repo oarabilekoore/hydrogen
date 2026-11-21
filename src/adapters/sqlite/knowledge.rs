@@ -1,4 +1,5 @@
 use rusqlite::{params, Connection, OptionalExtension};
+use std::collections::HashSet;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -422,10 +423,10 @@ impl KnowledgeStore {
                  FROM messages_fts JOIN messages m ON m.rowid=messages_fts.rowid
                  JOIN conversations c ON c.id=m.conversation_id
                  WHERE messages_fts MATCH ?1
-                 GROUP BY m.conversation_id
                  ORDER BY bm25(messages_fts) LIMIT ?2",
             )?;
-            let rows = stmt.query_map(params![fts_query, limit.clamp(1, 100) as i64], |row| {
+            let scan_limit = limit.clamp(1, 100).saturating_mul(5);
+            let rows = stmt.query_map(params![fts_query, scan_limit as i64], |row| {
                 let has_answer: bool = row.get(4)?;
                 Ok(KnowledgeHit {
                     kind: if has_answer { "answer" } else { "conversation" }.into(),
@@ -436,7 +437,16 @@ impl KnowledgeStore {
                     updated_at: row.get(3)?,
                 })
             })?;
-            hits.extend(rows.collect::<rusqlite::Result<Vec<_>>>()?);
+            let mut seen_conversations = HashSet::new();
+            for row in rows {
+                let hit = row?;
+                if seen_conversations.insert(hit.id.clone()) {
+                    hits.push(hit);
+                    if hits.len() >= limit.clamp(1, 100) {
+                        break;
+                    }
+                }
+            }
         }
         {
             let mut stmt = conn.prepare(
