@@ -133,6 +133,17 @@ pub struct WatchConfig {
     pub poll_interval_ms: u64,
 }
 
+fn expand_home(path: &Path, home: &Path) -> PathBuf {
+    let raw = path.to_string_lossy();
+    if raw == "~" {
+        home.to_path_buf()
+    } else if let Some(rest) = raw.strip_prefix("~/") {
+        home.join(rest)
+    } else {
+        path.to_path_buf()
+    }
+}
+
 fn default_roots(home: &Path) -> Vec<PathBuf> {
     ["Documents", "Downloads", "Pictures", "Videos", "Projects"]
         .iter()
@@ -336,6 +347,13 @@ impl AppConfig {
         settings.search.scan_max_depth = settings.search.scan_max_depth.clamp(1, 32);
         settings.search.scan_max_results = settings.search.scan_max_results.clamp(1, 100_000);
 
+        settings.paths.roots = settings.paths.roots.iter().map(|path| expand_home(path, &home)).collect();
+        if let Some(path) = settings.paths.state_dir.as_ref() {
+            settings.paths.state_dir = Some(expand_home(path, &home));
+        }
+        if let Some(path) = settings.paths.models_dir.as_ref() {
+            settings.paths.models_dir = Some(expand_home(path, &home));
+        }
         let state_dir = settings.paths.state_dir.clone().unwrap_or_else(|| home.join(".local/state/quickshell-launcher"));
         let models_dir = settings.paths.models_dir.clone().unwrap_or_else(|| home.join(".local/share/hydrogen/models"));
         let default_event_duration_mins = settings.calendar.default_event_duration_mins.max(1);
