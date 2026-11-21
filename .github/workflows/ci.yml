@@ -2,7 +2,7 @@ name: Rust CI
 
 on:
   push:
-    branches: [main, feature/rust-multimodal-index]
+    branches: [main, feature/rust-multimodal-index, feat/personal-knowledge-engine]
   pull_request:
     branches: [main]
 
