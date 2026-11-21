@@ -36,7 +36,7 @@ Load the unpacked `browser-extension/` directory in Chromium or Firefox.
 
 Hydrogen Capture currently supports:
 
-- Readable article capture from article/main content containers.
+- Mozilla Readability article extraction with a structural fallback for pages Readability cannot parse.
 - Canonical URL deduplication.
 - Minimum text and paragraph qualification.
 - Explicit manual page capture.
@@ -56,7 +56,7 @@ The existing TOML file remains the single source of truth:
 New groups:
 
 - `[frontend]`: local bind address and automatic service startup.
-- `[web]`: automatic article capture, qualification, page versions, RSS polling preferences and domain/URL rules.
+- `[web]`: automatic article capture, qualification, page versions and domain/URL rules. RSS/Atom polling is not implemented yet.
 - `[conversations]`: message indexing and browser conversation capture.
 
 The frontend Settings page edits supported values through `hydrogen config set`. Changes are reloaded between API requests. Changing the listening address requires restarting the service.
@@ -77,7 +77,7 @@ This is an initial working foundation, not the completed roadmap. The following 
 
 - RSS/Atom feed subscription management and polling.
 - Full historical reconstruction of pages from browser history. Import can only capture the current version of a page that still loads.
-- Mozilla Readability-grade extraction and site-specific extraction fixtures.
+- Site-specific article extraction fixtures for websites where generic Readability extraction is insufficient.
 - Robust DOM regression fixtures for the current best-effort AI chat adapters and any additional providers.
 - Attachment capture and offline attachment storage.
 - Background ingestion queues, retry UI and detailed activity monitoring.
