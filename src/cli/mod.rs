@@ -8,6 +8,7 @@ pub mod ocr_cmd;
 pub mod query_cmd;
 pub mod server_cmd;
 pub mod search_cmd;
+pub mod web_cmd;
 
 use crate::config::AppConfig;
 use crate::error::Result;
@@ -52,6 +53,8 @@ pub enum Commands {
     Ocr(ocr_cmd::OcrArgs),
     /// Search files, saved web pages and conversations
     Search(search_cmd::SearchArgs),
+    /// Manage web articles and RSS/Atom feeds
+    Web(web_cmd::WebArgs),
     /// Start the bundled Hydrogen web application and local API
     Frontend,
     /// Diagnose local dependencies, models, database and worker state
@@ -71,6 +74,7 @@ pub fn dispatch(cli: Cli, cfg: &AppConfig) -> Result<()> {
         Some(Commands::Query(args)) => query_cmd::run(args, cfg),
         Some(Commands::Daemon(args)) => daemon_cmd::run(args, cfg),
         Some(Commands::Search(args)) => search_cmd::run(args, cfg),
+        Some(Commands::Web(args)) => web_cmd::run(args, cfg),
         Some(Commands::Frontend) => server_cmd::run(cfg, None, None, None),
         Some(Commands::Doctor) => doctor_cmd::run(cfg),
         Some(Commands::Ocr(args)) => ocr_cmd::run(args, cfg),
