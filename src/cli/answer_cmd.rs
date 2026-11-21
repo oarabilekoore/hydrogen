@@ -334,3 +334,22 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
     }
     Ok(())
 }
+
+
+#[cfg(test)]
+mod html_tests {
+    use super::*;
+
+    #[test]
+    fn html_escaping_prevents_markup_injection() {
+        assert_eq!(escape_html("<script a=\"x\">"), "&lt;script a=&quot;x&quot;&gt;");
+    }
+
+    #[test]
+    fn source_links_preserve_pdf_page_and_escape_spaces() {
+        assert_eq!(
+            source_file_url("/home/test/My Notes/lecture.pdf", Some(14)),
+            "file:///home/test/My%20Notes/lecture.pdf#page=14"
+        );
+    }
+}
