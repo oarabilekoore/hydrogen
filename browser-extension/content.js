@@ -49,7 +49,7 @@
     lastArticleHash = hash;
     chrome.runtime.sendMessage({
       type: "ARTICLE",
-      payload: { ...meta, content: text, content_hash: hash }
+      payload: { ...meta, content: text, content_hash: hash, paragraph_count: paragraphs, manual: force }
     });
   }
 
