@@ -151,7 +151,7 @@ impl SqliteIndexRepository {
 
         let fts_query = unique
             .iter()
-            .map(|token| format!("\\\"{}\\\"*", token.replace('"', "")))
+            .map(|token| format!("\"{}\"*", token.replace('"', "")))
             .collect::<Vec<_>>()
             .join(" AND ");
 
