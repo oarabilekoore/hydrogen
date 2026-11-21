@@ -33,6 +33,7 @@ pub struct HydrogenSettings {
     pub resources: ResourceConfig,
     pub answer: AnswerConfig,
     pub calendar: CalendarConfig,
+    pub watch: WatchConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -106,6 +107,9 @@ pub struct AnswerConfig {
     pub endpoint: String,
     pub model: String,
     pub retrieval_limit: usize,
+    pub candidate_limit: usize,
+    pub max_query_variants: usize,
+    pub min_query_chars: usize,
     pub context_chars_per_passage: usize,
     pub context_window: usize,
     pub max_output_tokens: usize,
@@ -121,6 +125,14 @@ pub struct CalendarConfig {
     pub default_event_duration_mins: i64,
     pub ics_globs: Vec<String>,
     pub evolution_db_globs: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct WatchConfig {
+    pub debounce_ms: u64,
+    pub reconcile_interval_seconds: u64,
+    pub poll_interval_ms: u64,
 }
 
 fn default_roots(home: &Path) -> Vec<PathBuf> {
@@ -162,6 +174,7 @@ impl Default for HydrogenSettings {
             models: ModelsConfig::default(),
             resources: ResourceConfig::default(),
             answer: AnswerConfig::default(),
+            watch: WatchConfig::default(),
             calendar: CalendarConfig {
                 default_event_duration_mins: 60,
                 ics_globs: default_ics_globs(&home),
@@ -238,6 +251,9 @@ impl Default for AnswerConfig {
             endpoint: "http://127.0.0.1:11434".into(),
             model: "qwen3.5:2b-q4_K_M".into(),
             retrieval_limit: 8,
+            candidate_limit: 16,
+            max_query_variants: 6,
+            min_query_chars: 3,
             context_chars_per_passage: 1600,
             context_window: 4096,
             max_output_tokens: 180,
@@ -247,6 +263,9 @@ impl Default for AnswerConfig {
             timeout_seconds: 60,
         }
     }
+}
+impl Default for WatchConfig {
+    fn default() -> Self { Self { debounce_ms: 350, reconcile_interval_seconds: 60, poll_interval_ms: 150 } }
 }
 impl Default for CalendarConfig {
     fn default() -> Self {
@@ -301,6 +320,11 @@ impl AppConfig {
         settings.indexing.pdf.page_limit = settings.indexing.pdf.page_limit.clamp(1, 500);
         settings.indexing.images.batch_size = settings.indexing.images.batch_size.clamp(1, 4);
         settings.answer.retrieval_limit = settings.answer.retrieval_limit.clamp(1, 16);
+        settings.answer.candidate_limit = settings.answer.candidate_limit.clamp(1, 100);
+        settings.answer.max_query_variants = settings.answer.max_query_variants.clamp(1, 12);
+        settings.watch.debounce_ms = settings.watch.debounce_ms.clamp(50, 5000);
+        settings.watch.reconcile_interval_seconds = settings.watch.reconcile_interval_seconds.clamp(5, 3600);
+        settings.watch.poll_interval_ms = settings.watch.poll_interval_ms.clamp(25, 2000);
         settings.search.scan_max_depth = settings.search.scan_max_depth.clamp(1, 32);
         settings.search.scan_max_results = settings.search.scan_max_results.clamp(1, 100_000);
 
