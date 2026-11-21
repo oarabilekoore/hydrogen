@@ -77,6 +77,9 @@ fn set_value(settings: &mut HydrogenSettings, key: &str, value: &str) -> Result<
         "indexing.images.max_file_bytes" => settings.indexing.images.max_file_bytes = number!(u64),
         "indexing.images.min_dimension" => settings.indexing.images.min_dimension = number!(u32),
         "indexing.images.batch_size" => settings.indexing.images.batch_size = number!(usize),
+        "indexing.images.excluded_directories" => {
+            settings.indexing.images.excluded_directories = parse_list(value)?
+        }
         "models.inference_threads" => settings.models.inference_threads = number!(usize),
         "resources.max_inference_threads" => {
             settings.resources.max_inference_threads = number!(usize)
@@ -99,6 +102,8 @@ fn set_value(settings: &mut HydrogenSettings, key: &str, value: &str) -> Result<
         "answer.top_p" => settings.answer.top_p = number!(f32),
         "answer.repeat_penalty" => settings.answer.repeat_penalty = number!(f32),
         "answer.timeout_seconds" => settings.answer.timeout_seconds = number!(u64),
+        "calendar.ics_globs" => settings.calendar.ics_globs = parse_list(value)?,
+        "calendar.evolution_db_globs" => settings.calendar.evolution_db_globs = parse_list(value)?,
         "calendar.default_event_duration_mins" => {
             settings.calendar.default_event_duration_mins = number!(i64)
         }
