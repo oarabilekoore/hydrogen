@@ -659,6 +659,7 @@ mod tests {
                 Some("Example"),
                 "hash-a",
                 true,
+                5,
             )
             .unwrap();
         let second = store
@@ -672,6 +673,7 @@ mod tests {
                 None,
                 "hash-b",
                 true,
+                5,
             )
             .unwrap();
         assert_eq!(first, second);
