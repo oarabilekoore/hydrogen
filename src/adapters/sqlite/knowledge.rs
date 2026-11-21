@@ -324,7 +324,7 @@ impl KnowledgeStore {
         let conn = self.connect()?;
         let mut statement = conn.prepare(
             "SELECT web_pages.id,web_pages.url,web_pages.canonical_url,web_pages.title,
-                    web_pages.content,web_pages.author,web_pages.published_at,web_pages.site_name,
+                    substr(web_pages.content,1,12000),web_pages.author,web_pages.published_at,web_pages.site_name,
                     web_pages.content_hash,web_pages.captured_at,web_pages.updated_at
              FROM web_pages_fts JOIN web_pages ON web_pages.id=web_pages_fts.rowid
              WHERE web_pages_fts MATCH ?1 ORDER BY bm25(web_pages_fts) LIMIT ?2",
