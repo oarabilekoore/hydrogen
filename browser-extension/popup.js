@@ -11,7 +11,7 @@ ids.forEach(id => document.getElementById(id).addEventListener("change", async e
 document.getElementById("excludedHosts").addEventListener("change", async event => {
   const excludedHosts = [...new Set(event.target.value
     .split(",")
-    .map(value => value.trim().toLowerCase().replace(/^https?:\\/\\//, "").replace(/\\/.*$/, ""))
+    .map(value => value.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, ""))
     .filter(value => /^[a-z0-9.-]+$/.test(value)))];
   event.target.value = excludedHosts.join(", ");
   await chrome.storage.local.set({ excludedHosts });
