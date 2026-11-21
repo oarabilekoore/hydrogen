@@ -220,7 +220,7 @@ fn handle_api(mut request: Request, cfg: &AppConfig, store: &KnowledgeStore) {
                         let _ = store.record_visit(&page.canonical_url);
                     }
                     json(request, 200, json!({"page":page}));
-                },
+                }
                 Ok(None) => json(request, 404, json!({"error":"saved page not found"})),
                 Err(error) => json(request, 500, json!({"error":error.to_string()})),
             },
