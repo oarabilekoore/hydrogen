@@ -804,6 +804,7 @@ mod integration_tests {
             ocr_attempts: AtomicUsize::new(0),
         };
         let cfg = AppConfig {
+            config_path: state.join("config.toml"),
             state_dir: state.clone(),
             db_path: state.join("index.db"),
             cache_txt: state.join("files.txt"),
@@ -818,6 +819,7 @@ mod integration_tests {
             inference_threads: 2,
             image_batch_size: 2,
             pdf_page_limit: 50,
+            settings: crate::config::HydrogenSettings::default(),
         };
         let repo = SqliteIndexRepository::open(&cfg.db_path).unwrap();
         let service =
