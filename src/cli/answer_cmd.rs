@@ -437,7 +437,7 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
                 continue;
             }
             context.push_str(&format!(
-                "[{id}] {} ({})\\n{}\\n\\n",
+                "[{id}] {} ({})\n{}\n\n",
                 page.title, page.url, snippet
             ));
             sources.push(json!({
