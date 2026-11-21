@@ -79,6 +79,7 @@ pub struct ImageIndexingConfig {
     pub max_file_bytes: u64,
     pub min_dimension: u32,
     pub batch_size: usize,
+    pub excluded_directories: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -206,6 +207,10 @@ impl Default for ImageIndexingConfig {
             enabled: true, ocr: true, captions: false,
             min_file_bytes: 10 * 1024, max_file_bytes: 25 * 1024 * 1024,
             min_dimension: 128, batch_size: 2,
+            excluded_directories: vec![
+                "assets", "asset", "cursors", "cursor", "icons", "icon",
+                "themes", "theme", "sprites", "thumbnails", ".thumbnails",
+            ].into_iter().map(str::to_string).collect(),
         }
     }
 }
@@ -273,11 +278,15 @@ impl AppConfig {
         if let Ok(value) = env::var("HYDROGEN_EMBEDDINGS") {
             settings.indexing.embeddings_enabled = matches!(value.as_str(), "1") || value.eq_ignore_ascii_case("true");
         }
-        if let Ok(value) = env::var("HYDROGEN_INFERENCE_THREADS").and_then(|v| v.parse::<usize>().map_err(|e| env::VarError::NotUnicode(e.to_string().into()))) {
-            settings.models.inference_threads = value;
+        if let Ok(raw) = env::var("HYDROGEN_INFERENCE_THREADS") {
+            if let Ok(value) = raw.parse::<usize>() {
+                settings.models.inference_threads = value;
+            }
         }
-        if let Ok(value) = env::var("HYDROGEN_PDF_PAGE_LIMIT").and_then(|v| v.parse::<usize>().map_err(|e| env::VarError::NotUnicode(e.to_string().into()))) {
-            settings.indexing.pdf.page_limit = value;
+        if let Ok(raw) = env::var("HYDROGEN_PDF_PAGE_LIMIT") {
+            if let Ok(value) = raw.parse::<usize>() {
+                settings.indexing.pdf.page_limit = value;
+            }
         }
 
         settings.models.inference_threads = settings.models.inference_threads.clamp(1, settings.resources.max_inference_threads.max(1));
