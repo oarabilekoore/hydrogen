@@ -1,11 +1,13 @@
 # Hydrogen Capture
 
-A Manifest V3 extension for Chromium and Firefox-compatible WebExtension environments.
+A Manifest V3 extension for Chromium and Firefox-compatible WebExtension environments. The two browsers use different Manifest V3 background declarations, so this directory includes a browser-specific manifest for each.
 
 ## Development install
 
-- Chromium: open `chrome://extensions`, enable Developer mode, choose **Load unpacked**, and select this directory.
-- Firefox: open `about:debugging#/runtime/this-firefox`, choose **Load Temporary Add-on**, and select `manifest.json`.
+- **Firefox:** open `about:debugging#/runtime/this-firefox`, choose **Load Temporary Add-on**, and select `manifest.json` in this directory. This manifest uses Firefox's `background.scripts` entry.
+- **Chromium:** open `chrome://extensions`, enable Developer mode, choose **Load unpacked**, and select this directory. If Chromium does not accept Firefox's background declaration, use the Chromium manifest variant by temporarily copying `manifest.chromium.json` to `manifest.json` before loading the directory. Do not leave both manifest files named `manifest.json` at once.
+
+The extension source files and background implementation are shared. Only the manifest background declaration differs: Firefox uses `background.scripts`, while Chromium Manifest V3 uses `background.service_worker`.
 
 ## Behaviour
 
