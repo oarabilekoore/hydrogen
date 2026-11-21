@@ -19,6 +19,13 @@ async function post(path, payload) {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   (async () => {
+    if (message.type === "GET_CONFIG") {
+      const response = await fetch(API + "/api/settings");
+      if (!response.ok) throw new Error("Hydrogen settings are unavailable");
+      const data = await response.json();
+      sendResponse({ ok: true, web: data.settings?.web || {} });
+      return;
+    }
     const prefs = await settings();
     if (!prefs.enabled) throw new Error("Capture is paused");
     const host = new URL(sender.url || message.url || "https://invalid.local").hostname;
