@@ -243,6 +243,16 @@ fn handle_request(mut request: Request, cfg: &mut AppConfig) {
     }
 
 
+    if method == "GET" && path.starts_with("/api/web-pages/") {
+        let id = path.trim_start_matches("/api/web-pages/").parse::<i64>();
+        let Ok(id) = id else { return json_response(json!({"error":"invalid web page id"}), 400, origin_ref); };
+        return match knowledge.get_web_page(id) {
+            Ok(Some(page)) => json_response(page, 200, origin_ref),
+            Ok(None) => json_response(json!({"error":"saved web page not found"}), 404, origin_ref),
+            Err(error) => json_response(json!({"error":error.to_string()}), 500, origin_ref),
+        };
+    }
+
     if method == "POST" && path == "/api/capture/conversation" {
         if !cfg.settings.conversations.enabled || !cfg.settings.conversations.capture_ai_chats {
             return json_response(json!({"error":"AI conversation capture is disabled in Hydrogen configuration"}), 403, origin_ref);
