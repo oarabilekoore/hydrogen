@@ -274,7 +274,7 @@ impl KnowledgeRepository {
         let mut hits = Vec::new();
         {
             let mut stmt = conn.prepare(
-                "SELECT m.message_id, c.title, snippet(messages_fts, 3, '', '', '…', 24),
+                "SELECT m.conversation_id, c.title, snippet(messages_fts, 3, '', '', '…', 24),
                         c.updated_at, m.conversation_id, bm25(messages_fts)
                  FROM messages_fts m JOIN conversations c ON c.id=m.conversation_id
                  WHERE messages_fts MATCH ?1 ORDER BY bm25(messages_fts) LIMIT ?2"
