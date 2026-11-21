@@ -7,6 +7,9 @@ Hydrogen's personal knowledge features are local-first. The Rust binary owns the
 ```sh
 hydrogen --frontend
 hydrogen --frontend --ask "What is a throttling device?"
+hydrogen --frontend --conversation CONVERSATION_ID
+hydrogen --frontend --page WEB_PAGE_ID
+hydrogen search "throttling device"
 ```
 
 The frontend service binds to the loopback address configured by `frontend.bind_address` (default `127.0.0.1:17891`). The first command starts the service in the background when `frontend.auto_start` is enabled, then opens the local web application.

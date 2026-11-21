@@ -7,6 +7,7 @@ pub mod index_cmd;
 pub mod ocr_cmd;
 pub mod query_cmd;
 pub mod serve_cmd;
+pub mod search_cmd;
 
 use crate::config::AppConfig;
 use crate::error::Result;
@@ -23,8 +24,14 @@ pub struct Cli {
     #[arg(long)]
     pub frontend: bool,
     /// Start a saved AI conversation with this question after opening the frontend
-    #[arg(long, requires = "frontend")]
+    #[arg(long, requires = "frontend", conflicts_with_all = ["conversation", "page"])]
     pub ask: Option<String>,
+    /// Open an existing saved conversation in the frontend
+    #[arg(long, requires = "frontend", conflicts_with_all = ["ask", "page"])]
+    pub conversation: Option<String>,
+    /// Open a saved web article in the frontend
+    #[arg(long, requires = "frontend", conflicts_with_all = ["ask", "conversation"])]
+    pub page: Option<String>,
     #[command(subcommand)]
     pub command: Option<Commands>,
 }
@@ -49,11 +56,18 @@ pub enum Commands {
     Calendar(calendar_cmd::CalendarArgs),
     /// Run the local Hydrogen web application service
     Serve,
+    /// Search files, saved web pages, conversations and generated answers
+    Search(search_cmd::SearchArgs),
 }
 
 pub fn dispatch(cli: Cli, cfg: &AppConfig) -> Result<()> {
     if cli.frontend {
-        return serve_cmd::open_frontend(cfg, cli.ask.as_deref());
+        return serve_cmd::open_frontend(
+            cfg,
+            cli.ask.as_deref(),
+            cli.conversation.as_deref(),
+            cli.page.as_deref(),
+        );
     }
     match cli.command {
         Some(Commands::Config(args)) => config_cmd::run(args, cfg),
@@ -65,6 +79,7 @@ pub fn dispatch(cli: Cli, cfg: &AppConfig) -> Result<()> {
         Some(Commands::Ocr(args)) => ocr_cmd::run(args, cfg),
         Some(Commands::Calendar(args)) => calendar_cmd::run(args, cfg),
         Some(Commands::Serve) => serve_cmd::run(cfg),
+        Some(Commands::Search(args)) => search_cmd::run(args, cfg),
         None => Err(crate::error::HydrogenError::InvalidInput(
             "choose a command or use --frontend".into(),
         )),

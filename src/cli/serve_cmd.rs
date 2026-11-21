@@ -2,9 +2,11 @@ use crate::adapters::sqlite::knowledge::KnowledgeStore;
 use crate::config::AppConfig;
 use crate::error::{HydrogenError, Result};
 use serde_json::{json, Value};
+use std::collections::HashMap;
 use std::io::Read;
 use std::net::TcpStream;
 use std::process::Command;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 use tiny_http::{Header, Method, Request, Response, Server, StatusCode};
@@ -36,7 +38,7 @@ fn read_body(request: &mut Request) -> std::io::Result<String> {
     let mut body = String::new();
     request
         .as_reader()
-        .take(2 * 1024 * 1024)
+        .take(12 * 1024 * 1024)
         .read_to_string(&mut body)?;
     Ok(body)
 }
@@ -75,7 +77,15 @@ fn run_cli(args: &[&str]) -> std::io::Result<std::process::Output> {
     Command::new(executable).args(args).output()
 }
 
-fn handle_api(mut request: Request, cfg: &AppConfig, store: &KnowledgeStore) {
+type JobStore = Arc<Mutex<HashMap<String, Value>>>;
+
+fn set_job(jobs: &JobStore, id: &str, value: Value) {
+    if let Ok(mut jobs) = jobs.lock() {
+        jobs.insert(id.to_string(), value);
+    }
+}
+
+fn handle_api(mut request: Request, cfg: &AppConfig, store: &KnowledgeStore, jobs: &JobStore) {
     let method = request.method().clone();
     let url = request.url().to_string();
     let parts: Vec<&str> = url
@@ -92,6 +102,16 @@ fn handle_api(mut request: Request, cfg: &AppConfig, store: &KnowledgeStore) {
             200,
             json!({"status":"ok","model":cfg.settings.answer.model}),
         );
+        return;
+    }
+
+    if parts.len() == 3 && parts[0] == "api" && parts[1] == "jobs" && method == Method::Get {
+        let id = parts[2];
+        let value = jobs.lock().ok().and_then(|jobs| jobs.get(id).cloned());
+        match value {
+            Some(value) => json(request, 200, value),
+            None => json(request, 404, json!({"error":"generation job not found"})),
+        }
         return;
     }
 
@@ -167,48 +187,101 @@ fn handle_api(mut request: Request, cfg: &AppConfig, store: &KnowledgeStore) {
             json(request, 404, json!({"error":error.to_string()}));
             return;
         }
-        let output = match run_cli(&["answer", "--no-save", content]) {
-            Ok(output) => output,
-            Err(error) => {
-                json(
-                    request,
-                    503,
-                    json!({"error":format!("could not start Hydrogen answer worker: {error}")}),
-                );
-                return;
+        let question = content.to_string();
+        let conversation = conversation_id.to_string();
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let material = format!("{}:{}:{}", std::process::id(), stamp, conversation);
+        let job_id = format!("job_{}", &blake3::hash(material.as_bytes()).to_hex()[..24]);
+        set_job(jobs, &job_id, json!({"id":job_id,"status":"queued"}));
+
+        let worker_jobs = Arc::clone(jobs);
+        let db_path = cfg.db_path.clone();
+        let model = cfg.settings.answer.model.clone();
+        let worker_id = job_id.clone();
+        thread::spawn(move || {
+            set_job(
+                &worker_jobs,
+                &worker_id,
+                json!({"id":worker_id,"status":"generating","model":model}),
+            );
+            let output = run_cli(&["answer", "--no-save", &question]);
+            let result = match output {
+                Ok(output) => match serde_json::from_slice::<Value>(&output.stdout) {
+                    Ok(value) => value,
+                    Err(error) => json!({
+                        "status":"unavailable",
+                        "answer":"",
+                        "sources":[],
+                        "error":format!(
+                            "answer worker returned invalid JSON: {error}; stderr: {}",
+                            String::from_utf8_lossy(&output.stderr).trim()
+                        )
+                    }),
+                },
+                Err(error) => json!({
+                    "status":"unavailable",
+                    "answer":"",
+                    "sources":[],
+                    "error":format!("could not start Hydrogen answer worker: {error}")
+                }),
+            };
+
+            if result.get("status").and_then(Value::as_str) == Some("ready") {
+                let answer = result.get("answer").and_then(Value::as_str).unwrap_or("");
+                let model = result.get("model").and_then(Value::as_str);
+                let sources = result.get("sources");
+                let saved = KnowledgeStore::open(&db_path).and_then(|knowledge| {
+                    knowledge.append_message_with_sources(
+                        &conversation,
+                        "assistant",
+                        answer,
+                        model,
+                        sources,
+                    )
+                });
+                if let Err(error) = saved {
+                    set_job(
+                        &worker_jobs,
+                        &worker_id,
+                        json!({
+                            "id":worker_id,
+                            "status":"failed",
+                            "error":format!("answer generated but could not be saved: {error}"),
+                            "generation":result
+                        }),
+                    );
+                    return;
+                }
             }
-        };
-        let result: Value = match serde_json::from_slice(&output.stdout) {
-            Ok(value) => value,
-            Err(error) => {
-                json(
-                    request,
-                    503,
-                    json!({"error":format!("answer worker returned invalid JSON: {error}"),"stderr":String::from_utf8_lossy(&output.stderr)}),
-                );
-                return;
-            }
-        };
-        if result.get("status").and_then(Value::as_str) == Some("ready") {
-            let answer = result.get("answer").and_then(Value::as_str).unwrap_or("");
-            let model = result.get("model").and_then(Value::as_str);
-            let sources = result.get("sources");
-            if let Err(error) = store.append_message_with_sources(
-                conversation_id,
-                "assistant",
-                answer,
-                model,
-                sources,
-            ) {
-                json(
-                    request,
-                    500,
-                    json!({"error":error.to_string(),"generation":result}),
-                );
-                return;
-            }
-        }
-        json(request, 200, result);
+
+            let status = result
+                .get("status")
+                .and_then(Value::as_str)
+                .unwrap_or("unavailable");
+            let final_status = if status == "ready" {
+                "ready"
+            } else {
+                "unavailable"
+            };
+            set_job(
+                &worker_jobs,
+                &worker_id,
+                json!({
+                    "id":worker_id,
+                    "status":final_status,
+                    "result":result
+                }),
+            );
+        });
+
+        json(
+            request,
+            202,
+            json!({"status":"queued","job_id":job_id,"conversation_id":conversation}),
+        );
         return;
     }
 
@@ -554,9 +627,10 @@ pub fn run(cfg: &AppConfig) -> Result<()> {
             "could not bind Hydrogen frontend at {address}: {error}"
         ))
     })?;
-    let store = KnowledgeStore::open(&cfg.db_path).map_err(|error| {
+    let store = Arc::new(KnowledgeStore::open(&cfg.db_path).map_err(|error| {
         HydrogenError::Config(format!("could not open Hydrogen knowledge store: {error}"))
-    })?;
+    })?);
+    let jobs: JobStore = Arc::new(Mutex::new(HashMap::new()));
     eprintln!("Hydrogen frontend API listening at http://{address}");
     for request in server.incoming_requests() {
         let url = request.url().to_string();
@@ -568,11 +642,14 @@ pub fn run(cfg: &AppConfig) -> Result<()> {
                 FRONTEND.to_string(),
             );
         } else if url.starts_with("/api/") {
-            // Reload the persisted configuration between requests so changes made
-            // through the settings API affect capture and answer behaviour without
-            // requiring a frontend restart. The listening socket itself is restart-only.
+            // Each request gets its own worker thread. Long-running RAG inference
+            // must never block health checks, history, search, or job polling.
             let effective_cfg = AppConfig::load().unwrap_or_else(|_| cfg.clone());
-            handle_api(request, &effective_cfg, &store);
+            let request_store = Arc::clone(&store);
+            let request_jobs = Arc::clone(&jobs);
+            thread::spawn(move || {
+                handle_api(request, &effective_cfg, &request_store, &request_jobs);
+            });
         } else {
             respond(
                 request,
@@ -597,7 +674,12 @@ fn encode_query(value: &str) -> String {
     encoded
 }
 
-pub fn open_frontend(cfg: &AppConfig, ask: Option<&str>) -> Result<()> {
+pub fn open_frontend(
+    cfg: &AppConfig,
+    ask: Option<&str>,
+    conversation: Option<&str>,
+    page: Option<&str>,
+) -> Result<()> {
     let address = cfg.settings.frontend.bind_address.as_str();
     if TcpStream::connect(address).is_err() {
         if !cfg.settings.frontend.auto_start {
@@ -631,9 +713,16 @@ pub fn open_frontend(cfg: &AppConfig, ask: Option<&str>) -> Result<()> {
             )));
         }
     }
-    let url = ask
-        .map(|question| format!("http://{address}/?ask={}", encode_query(question)))
-        .unwrap_or_else(|| format!("http://{address}/"));
+    let base = format!("http://{address}/");
+    let url = if let Some(question) = ask {
+        format!("{base}?ask={}", encode_query(question))
+    } else if let Some(id) = conversation {
+        format!("{base}?conversation={}", encode_query(id))
+    } else if let Some(id) = page {
+        format!("{base}?page={}", encode_query(id))
+    } else {
+        base
+    };
     Command::new("xdg-open").arg(url).spawn().map_err(|error| {
         HydrogenError::Config(format!("could not open Hydrogen in the browser: {error}"))
     })?;
