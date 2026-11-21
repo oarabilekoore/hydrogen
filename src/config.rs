@@ -1,8 +1,11 @@
+use serde::{Deserialize, Serialize};
 use std::env;
-use std::path::PathBuf;
+use std::fs;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone)]
 pub struct AppConfig {
+    pub config_path: PathBuf,
     pub state_dir: PathBuf,
     pub db_path: PathBuf,
     pub cache_txt: PathBuf,
@@ -17,67 +20,308 @@ pub struct AppConfig {
     pub inference_threads: usize,
     pub image_batch_size: usize,
     pub pdf_page_limit: usize,
+    pub settings: HydrogenSettings,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct HydrogenSettings {
+    pub paths: PathsConfig,
+    pub search: SearchConfig,
+    pub indexing: IndexingConfig,
+    pub models: ModelsConfig,
+    pub resources: ResourceConfig,
+    pub answer: AnswerConfig,
+    pub calendar: CalendarConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct PathsConfig {
+    pub state_dir: Option<PathBuf>,
+    pub models_dir: Option<PathBuf>,
+    pub roots: Vec<PathBuf>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SearchConfig {
+    pub default_limit: usize,
+    pub scan_max_depth: usize,
+    pub scan_max_results: usize,
+    pub excluded_directories: Vec<String>,
+    pub excluded_extensions: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct IndexingConfig {
+    pub pdf: PdfIndexingConfig,
+    pub images: ImageIndexingConfig,
+    pub embeddings_enabled: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct PdfIndexingConfig {
+    pub enabled: bool,
+    pub ocr_scanned_pages: bool,
+    pub page_limit: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ImageIndexingConfig {
+    pub enabled: bool,
+    pub ocr: bool,
+    pub captions: bool,
+    pub min_file_bytes: u64,
+    pub max_file_bytes: u64,
+    pub min_dimension: u32,
+    pub batch_size: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ModelsConfig {
+    pub inference_threads: usize,
+    pub text_embedding: String,
+    pub image_embedding: String,
+    pub ocr_printed: String,
+    pub ocr_formula: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ResourceConfig {
+    pub max_inference_threads: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct AnswerConfig {
+    pub provider: String,
+    pub endpoint: String,
+    pub model: String,
+    pub retrieval_limit: usize,
+    pub context_chars_per_passage: usize,
+    pub context_window: usize,
+    pub max_output_tokens: usize,
+    pub temperature: f32,
+    pub top_p: f32,
+    pub repeat_penalty: f32,
+    pub timeout_seconds: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct CalendarConfig {
+    pub default_event_duration_mins: i64,
+    pub ics_globs: Vec<String>,
+    pub evolution_db_globs: Vec<String>,
+}
+
+fn default_roots(home: &Path) -> Vec<PathBuf> {
+    ["Documents", "Downloads", "Pictures", "Videos", "Projects"]
+        .iter()
+        .map(|name| home.join(name))
+        .collect()
+}
+
+fn default_ics_globs(home: &Path) -> Vec<String> {
+    let h = home.to_string_lossy();
+    vec![
+        format!("{h}/.local/share/evolution/calendar/*/calendar.ics"),
+        format!("{h}/.calendars/**/*.ics"),
+        format!("{h}/.local/share/vdirsyncer/**/*.ics"),
+        format!("{h}/.local/share/khal/**/*.ics"),
+        format!("{h}/.config/quickshell/calendars/**/*.ics"),
+    ]
+}
+
+fn default_evolution_globs(home: &Path) -> Vec<String> {
+    vec![format!(
+        "{}/.cache/evolution/calendar/*/cache.db",
+        home.display()
+    )]
+}
+
+impl Default for HydrogenSettings {
+    fn default() -> Self {
+        let home = env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/tmp"));
+        Self {
+            paths: PathsConfig {
+                state_dir: None,
+                models_dir: None,
+                roots: default_roots(&home),
+            },
+            search: SearchConfig::default(),
+            indexing: IndexingConfig::default(),
+            models: ModelsConfig::default(),
+            resources: ResourceConfig::default(),
+            answer: AnswerConfig::default(),
+            calendar: CalendarConfig {
+                default_event_duration_mins: 60,
+                ics_globs: default_ics_globs(&home),
+                evolution_db_globs: default_evolution_globs(&home),
+            },
+        }
+    }
+}
+
+impl Default for PathsConfig {
+    fn default() -> Self {
+        Self { state_dir: None, models_dir: None, roots: Vec::new() }
+    }
+}
+impl Default for SearchConfig {
+    fn default() -> Self {
+        Self {
+            default_limit: 20,
+            scan_max_depth: 6,
+            scan_max_results: 5000,
+            excluded_directories: vec![
+                ".git", "node_modules", "__pycache__", ".venv", "venv", "target",
+                "build", ".cache", "dist", ".next", ".cargo",
+            ].into_iter().map(str::to_string).collect(),
+            excluded_extensions: vec!["tmp", "part", "swp", "lock"].into_iter().map(str::to_string).collect(),
+        }
+    }
+}
+impl Default for IndexingConfig {
+    fn default() -> Self {
+        Self {
+            pdf: PdfIndexingConfig::default(),
+            images: ImageIndexingConfig::default(),
+            embeddings_enabled: false,
+        }
+    }
+}
+impl Default for PdfIndexingConfig {
+    fn default() -> Self { Self { enabled: true, ocr_scanned_pages: true, page_limit: 500 } }
+}
+impl Default for ImageIndexingConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true, ocr: true, captions: false,
+            min_file_bytes: 10 * 1024, max_file_bytes: 25 * 1024 * 1024,
+            min_dimension: 128, batch_size: 2,
+        }
+    }
+}
+impl Default for ModelsConfig {
+    fn default() -> Self {
+        Self {
+            inference_threads: 2,
+            text_embedding: "all-minilm-l6-v2-q".into(),
+            image_embedding: "clip-vit-b32".into(),
+            ocr_printed: "ppocr".into(),
+            ocr_formula: "texo-distill-f16.gguf".into(),
+        }
+    }
+}
+impl Default for ResourceConfig {
+    fn default() -> Self { Self { max_inference_threads: 2 } }
+}
+impl Default for AnswerConfig {
+    fn default() -> Self {
+        Self {
+            provider: "ollama".into(),
+            endpoint: "http://127.0.0.1:11434".into(),
+            model: "qwen3.5:2b-q4_K_M".into(),
+            retrieval_limit: 8,
+            context_chars_per_passage: 1600,
+            context_window: 4096,
+            max_output_tokens: 180,
+            temperature: 0.0,
+            top_p: 0.7,
+            repeat_penalty: 1.08,
+            timeout_seconds: 60,
+        }
+    }
+}
+impl Default for CalendarConfig {
+    fn default() -> Self {
+        Self { default_event_duration_mins: 60, ics_globs: Vec::new(), evolution_db_globs: Vec::new() }
+    }
 }
 
 impl AppConfig {
-    pub fn load() -> Self {
-        let home = env::var("HOME")
+    pub fn load() -> std::result::Result<Self, String> {
+        let home = env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/tmp"));
+        let config_path = env::var_os("HYDROGEN_CONFIG")
             .map(PathBuf::from)
-            .unwrap_or_else(|_| PathBuf::from("/tmp"));
-        let home_str = home.to_string_lossy();
-        let state_dir = env::var("HYDROGEN_STATE_DIR")
-            .map(PathBuf::from)
-            .unwrap_or_else(|_| home.join(".local/state/quickshell-launcher"));
-        let models_dir = env::var("HYDROGEN_MODELS_DIR")
-            .map(PathBuf::from)
-            .unwrap_or_else(|_| home.join(".local/share/hydrogen/models"));
-        let default_event_duration_mins = env::var("DURATION")
-            .ok()
-            .and_then(|v| v.parse::<i64>().ok())
-            .filter(|&d| d > 0)
-            .unwrap_or(60);
+            .or_else(|| env::var_os("XDG_CONFIG_HOME").map(PathBuf::from).map(|p| p.join("hydrogen/config.toml")))
+            .unwrap_or_else(|| home.join(".config/hydrogen/config.toml"));
 
-        Self {
+        let mut settings = if config_path.is_file() {
+            let raw = fs::read_to_string(&config_path)
+                .map_err(|e| format!("cannot read {}: {e}", config_path.display()))?;
+            toml::from_str::<HydrogenSettings>(&raw)
+                .map_err(|e| format!("invalid {}: {e}", config_path.display()))?
+        } else {
+            HydrogenSettings::default()
+        };
+
+        // Environment variables remain supported as explicit, temporary overrides.
+        if let Some(value) = env::var_os("HYDROGEN_STATE_DIR") {
+            settings.paths.state_dir = Some(value.into());
+        }
+        if let Some(value) = env::var_os("HYDROGEN_MODELS_DIR") {
+            settings.paths.models_dir = Some(value.into());
+        }
+        if let Ok(value) = env::var("HYDROGEN_EMBEDDINGS") {
+            settings.indexing.embeddings_enabled = matches!(value.as_str(), "1") || value.eq_ignore_ascii_case("true");
+        }
+        if let Ok(value) = env::var("HYDROGEN_INFERENCE_THREADS").and_then(|v| v.parse::<usize>().map_err(|e| env::VarError::NotUnicode(e.to_string().into()))) {
+            settings.models.inference_threads = value;
+        }
+        if let Ok(value) = env::var("HYDROGEN_PDF_PAGE_LIMIT").and_then(|v| v.parse::<usize>().map_err(|e| env::VarError::NotUnicode(e.to_string().into()))) {
+            settings.indexing.pdf.page_limit = value;
+        }
+
+        settings.models.inference_threads = settings.models.inference_threads.clamp(1, settings.resources.max_inference_threads.max(1));
+        settings.indexing.pdf.page_limit = settings.indexing.pdf.page_limit.clamp(1, 500);
+        settings.indexing.images.batch_size = settings.indexing.images.batch_size.clamp(1, 4);
+        settings.answer.retrieval_limit = settings.answer.retrieval_limit.clamp(1, 16);
+        settings.search.scan_max_depth = settings.search.scan_max_depth.clamp(1, 32);
+        settings.search.scan_max_results = settings.search.scan_max_results.clamp(1, 100_000);
+
+        let state_dir = settings.paths.state_dir.clone().unwrap_or_else(|| home.join(".local/state/quickshell-launcher"));
+        let models_dir = settings.paths.models_dir.clone().unwrap_or_else(|| home.join(".local/share/hydrogen/models"));
+        let default_event_duration_mins = settings.calendar.default_event_duration_mins.max(1);
+        let ics_globs = settings.calendar.ics_globs.clone();
+        let evolution_db_globs = settings.calendar.evolution_db_globs.clone();
+
+        Ok(Self {
+            config_path,
             db_path: state_dir.join("content-index.db"),
             cache_txt: state_dir.join("file-index.txt"),
             rev_file: state_dir.join("index.rev"),
             img_lock_path: state_dir.join("image-sync.pid"),
             models_dir,
-            search_roots: vec![
-                home.join("Documents"),
-                home.join("Downloads"),
-                home.join("Pictures"),
-                home.join("Videos"),
-                home.join("Projects"),
-            ],
-            ics_globs: vec![
-                format!("{home_str}/.local/share/evolution/calendar/*/calendar.ics"),
-                format!("{home_str}/.calendars/**/*.ics"),
-                format!("{home_str}/.local/share/vdirsyncer/**/*.ics"),
-                format!("{home_str}/.local/share/khal/**/*.ics"),
-                format!("{home_str}/.config/quickshell/calendars/**/*.ics"),
-            ],
-            evolution_db_globs: vec![format!("{home_str}/.cache/evolution/calendar/*/cache.db")],
+            search_roots: settings.paths.roots.clone(),
+            ics_globs,
+            evolution_db_globs,
             state_dir,
             default_event_duration_mins,
-            embeddings_enabled: env::var("HYDROGEN_EMBEDDINGS")
-                .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-                .unwrap_or(false),
-            inference_threads: env::var("HYDROGEN_INFERENCE_THREADS")
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(2)
-                .clamp(1, 2),
-            image_batch_size: env::var("HYDROGEN_IMAGE_BATCH_SIZE")
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(2)
-                .clamp(1, 4),
-            pdf_page_limit: env::var("HYDROGEN_PDF_PAGE_LIMIT")
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(500)
-                .clamp(1, 500),
+            embeddings_enabled: settings.indexing.embeddings_enabled,
+            inference_threads: settings.models.inference_threads,
+            image_batch_size: settings.indexing.images.batch_size,
+            pdf_page_limit: settings.indexing.pdf.page_limit,
+            settings,
+        })
+    }
+
+    pub fn default_toml() -> std::result::Result<String, String> {
+        toml::to_string_pretty(&HydrogenSettings::default()).map_err(|e| e.to_string())
+    }
+
+    pub fn write_settings(&self) -> std::result::Result<(), String> {
+        if let Some(parent) = self.config_path.parent() {
+            fs::create_dir_all(parent).map_err(|e| e.to_string())?;
         }
+        let content = toml::to_string_pretty(&self.settings).map_err(|e| e.to_string())?;
+        fs::write(&self.config_path, content).map_err(|e| e.to_string())
     }
 }
