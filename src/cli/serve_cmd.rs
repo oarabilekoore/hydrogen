@@ -359,6 +359,7 @@ fn handle_api(mut request: Request, cfg: &AppConfig, store: &KnowledgeStore) {
             input.get("site_name").and_then(Value::as_str),
             &hash,
             cfg.settings.web.version_pages,
+            cfg.settings.web.max_versions_per_page,
         ) {
             Ok(id) => {
                 if cfg.settings.web.track_visits {
