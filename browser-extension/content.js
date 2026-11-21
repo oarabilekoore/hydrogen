@@ -40,7 +40,13 @@
   async function captureArticle(force = false) {
     if (excludedPath.test(location.pathname) || excludedHost.test(location.hostname)) return;
     const { text, paragraphs } = articleCandidate();
-    if (!force && (text.length < 800 || paragraphs < 4)) return;
+    let qualification = { minimum_text_length: 800, minimum_paragraphs: 4 };
+    try {
+      const config = await chrome.runtime.sendMessage({ type: "GET_CONFIG" });
+      if (config?.ok && config.web) qualification = { ...qualification, ...config.web };
+    } catch (_) {}
+    if (!force && (text.length < qualification.minimum_text_length ||
+        paragraphs < qualification.minimum_paragraphs)) return;
     if (text.length < 120) return;
     const meta = pageMetadata();
     const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(meta.canonical_url + "\n" + text));
