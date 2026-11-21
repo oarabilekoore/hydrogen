@@ -29,22 +29,16 @@ pub struct RustOcrProvider {
 }
 
 impl RustOcrProvider {
-    pub fn new(models_dir: PathBuf) -> Self {
+    pub fn new(models_dir: PathBuf, inference_threads: usize, captions_enabled: bool) -> Self {
         Self {
             models_dir,
-            inference_threads: std::env::var("HYDROGEN_INFERENCE_THREADS")
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(2)
-                .clamp(1, 2),
+            inference_threads: inference_threads.clamp(1, 2),
             printed: OnceLock::new(),
             formula: OnceLock::new(),
             #[cfg(feature = "image-captioning")]
             captioner: OnceLock::new(),
             #[cfg(feature = "image-captioning")]
-            captions_enabled: std::env::var("HYDROGEN_CAPTIONS")
-                .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-                .unwrap_or(false),
+            captions_enabled,
         }
     }
 
@@ -224,7 +218,7 @@ mod tests {
 
     #[test]
     fn model_paths_are_not_loaded_during_construction() {
-        let provider = RustOcrProvider::new(PathBuf::from("/nonexistent/hydrogen-models"));
+        let provider = RustOcrProvider::new(PathBuf::from("/nonexistent/hydrogen-models"), 2, false);
         assert!(provider.printed.get().is_none());
         assert!(provider.formula.get().is_none());
     }
