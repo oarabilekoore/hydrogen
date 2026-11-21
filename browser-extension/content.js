@@ -67,11 +67,10 @@
         content: cleanText(node)
       }));
     } else if (host.includes("gemini.google.com")) {
-      const user = [...document.querySelectorAll("user-query, .query-text")];
-      const assistant = [...document.querySelectorAll("model-response, .response-container")];
-      nodes = [...user.map(n => ({ role: "user", content: cleanText(n) })),
-               ...assistant.map(n => ({ role: "assistant", content: cleanText(n) }))];
-      nodes.sort((a, b) => 0);
+      nodes = [...document.querySelectorAll("user-query, model-response")].map(node => ({
+        role: node.matches("user-query") ? "user" : "assistant",
+        content: cleanText(node)
+      }));
     }
     return nodes.filter(item => (item.role === "user" || item.role === "assistant") && item.content.length > 0);
   }
