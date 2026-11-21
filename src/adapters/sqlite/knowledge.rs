@@ -276,8 +276,13 @@ impl KnowledgeStore {
 
     pub fn search_saved_knowledge(&self, query: &str, limit: usize) -> rusqlite::Result<Vec<KnowledgeHit>> {
         let conn = self.connect()?;
-        let query = query.trim();
-        if query.is_empty() { return Ok(Vec::new()); }
+        let terms: Vec<String> = query
+            .split(|character: char| !character.is_alphanumeric())
+            .filter(|term| term.chars().count() >= 2)
+            .map(|term| format!("\\"{}\\"", term.replace('"', "")))
+            .collect();
+        if terms.is_empty() { return Ok(Vec::new()); }
+        let fts_query = terms.join(" OR ");
         let mut hits = Vec::new();
         {
             let mut stmt = conn.prepare(
@@ -286,7 +291,7 @@ impl KnowledgeStore {
                  JOIN conversations c ON c.id=m.conversation_id
                  WHERE messages_fts MATCH ?1 ORDER BY bm25(messages_fts) LIMIT ?2",
             )?;
-            let rows = stmt.query_map(params![query, limit.clamp(1, 100) as i64], |row| {
+            let rows = stmt.query_map(params![fts_query, limit.clamp(1, 100) as i64], |row| {
                 Ok(KnowledgeHit {
                     kind: "conversation".into(),
                     id: row.get(0)?,
