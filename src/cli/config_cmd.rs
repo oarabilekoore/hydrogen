@@ -125,8 +125,6 @@ fn set_value(settings: &mut HydrogenSettings, key: &str, value: &str) -> Result<
         "web.track_visits" => settings.web.track_visits = parse_bool(value)?,
         "web.version_pages" => settings.web.version_pages = parse_bool(value)?,
         "web.max_page_size_mb" => settings.web.max_page_size_mb = number!(usize),
-        "web.feed_enabled" => settings.web.feed_enabled = parse_bool(value)?,
-        "web.feed_interval_hours" => settings.web.feed_interval_hours = number!(u64),
         "web.allow_domains" => settings.web.allow_domains = parse_list(value)?,
         "web.exclude_domains" => settings.web.exclude_domains = parse_list(value)?,
         "web.exclude_patterns" => settings.web.exclude_patterns = parse_list(value)?,

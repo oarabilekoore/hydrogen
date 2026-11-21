@@ -41,6 +41,7 @@ jobs:
         run: |
           python3 -m json.tool browser-extension/manifest.json >/dev/null
           node --check browser-extension/background.js
+          node --check browser-extension/vendor/Readability.js
           node --check browser-extension/content.js
           node --check browser-extension/popup.js
       - name: Check optional image-captioning backend

@@ -147,8 +147,6 @@ pub struct WebConfig {
     pub track_visits: bool,
     pub version_pages: bool,
     pub max_page_size_mb: usize,
-    pub feed_enabled: bool,
-    pub feed_interval_hours: u64,
     pub allow_domains: Vec<String>,
     pub exclude_domains: Vec<String>,
     pub exclude_patterns: Vec<String>,
@@ -391,8 +389,6 @@ impl Default for WebConfig {
             track_visits: true,
             version_pages: true,
             max_page_size_mb: 10,
-            feed_enabled: true,
-            feed_interval_hours: 12,
             allow_domains: Vec::new(),
             exclude_domains: Vec::new(),
             exclude_patterns: vec!["*/login/*".into(), "*/checkout/*".into()],
@@ -515,7 +511,6 @@ impl AppConfig {
         settings.web.minimum_text_length = settings.web.minimum_text_length.clamp(100, 100_000);
         settings.web.minimum_paragraphs = settings.web.minimum_paragraphs.clamp(1, 500);
         settings.web.max_page_size_mb = settings.web.max_page_size_mb.clamp(1, 100);
-        settings.web.feed_interval_hours = settings.web.feed_interval_hours.clamp(1, 168);
         if !settings.frontend.bind_address.starts_with("127.0.0.1:") {
             settings.frontend.bind_address = FrontendConfig::default().bind_address;
         }
