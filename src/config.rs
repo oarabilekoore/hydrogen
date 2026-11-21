@@ -394,10 +394,7 @@ impl Default for WebConfig {
             feed_enabled: true,
             feed_interval_hours: 12,
             allow_domains: Vec::new(),
-            exclude_domains: vec![
-                "banking.example".into(),
-                "online-cad.example".into(),
-            ],
+            exclude_domains: Vec::new(),
             exclude_patterns: vec![
                 "*/login/*".into(),
                 "*/checkout/*".into(),
