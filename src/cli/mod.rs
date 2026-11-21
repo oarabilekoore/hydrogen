@@ -23,7 +23,9 @@ pub struct Cli {
 
 #[derive(Subcommand, Debug)]
 pub enum Commands {
-    /// Answer a question from indexed documents using a local Ollama model\n    Answer(answer_cmd::AnswerArgs),\n    /// Manage the sparse TF-IDF + FTS5 + image OCR/VLM index
+    /// Answer a question from indexed documents using a local Ollama model
+    Answer(answer_cmd::AnswerArgs),
+    /// Manage the sparse TF-IDF + FTS5 + image OCR/VLM index
     Index(index_cmd::IndexArgs),
     /// Unified filename + sparse vector + FTS5 + vision search
     Query(query_cmd::QueryArgs),
@@ -39,7 +41,8 @@ pub enum Commands {
 
 pub fn dispatch(cli: Cli, cfg: &AppConfig) -> Result<()> {
     match cli.command {
-        Commands::Answer(args) => answer_cmd::run(args, cfg),\n        Commands::Index(args) => index_cmd::run(args, cfg),
+        Commands::Answer(args) => answer_cmd::run(args, cfg),
+        Commands::Index(args) => index_cmd::run(args, cfg),
         Commands::Query(args) => query_cmd::run(args, cfg),
         Commands::Daemon(args) => daemon_cmd::run(args, cfg),
         Commands::Doctor => doctor_cmd::run(cfg),
