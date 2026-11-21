@@ -518,6 +518,7 @@ impl AppConfig {
         settings.web.minimum_text_length = settings.web.minimum_text_length.clamp(100, 100_000);
         settings.web.minimum_paragraphs = settings.web.minimum_paragraphs.clamp(1, 100);
         settings.web.max_page_size_mb = settings.web.max_page_size_mb.clamp(1, 100);
+        settings.web.feed_check_interval_hours = settings.web.feed_check_interval_hours.clamp(1, 168);
         settings.frontend.port = settings.frontend.port.max(1024);
         settings.search.scan_max_depth = settings.search.scan_max_depth.clamp(1, 32);
         settings.search.scan_max_results = settings.search.scan_max_results.clamp(1, 100_000);
