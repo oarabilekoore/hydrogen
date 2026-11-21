@@ -32,6 +32,16 @@ pub struct ConversationRecord {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct FeedSource {
+    pub id: i64,
+    pub url: String,
+    pub title: String,
+    pub last_checked: i64,
+    pub last_error: Option<String>,
+    pub enabled: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct KnowledgeHit {
     pub kind: String,
     pub id: i64,
@@ -140,6 +150,14 @@ impl KnowledgeRepository {
              );
              CREATE INDEX IF NOT EXISTS idx_web_visits_page
                 ON web_visits(page_id, visited_at DESC);
+             CREATE TABLE IF NOT EXISTS feed_sources (
+                id INTEGER PRIMARY KEY,
+                url TEXT NOT NULL UNIQUE,
+                title TEXT NOT NULL DEFAULT '',
+                last_checked INTEGER NOT NULL DEFAULT 0,
+                last_error TEXT,
+                enabled INTEGER NOT NULL DEFAULT 1
+             );
              CREATE TABLE IF NOT EXISTS capture_sources (
                 id INTEGER PRIMARY KEY,
                 source_key TEXT NOT NULL UNIQUE,
@@ -310,6 +328,42 @@ impl KnowledgeRepository {
         Ok(hits)
     }
 
+    pub fn add_feed(&self, url: &str) -> Result<i64> {
+        let conn = self.connect()?;
+        conn.execute(
+            "INSERT OR IGNORE INTO feed_sources(url) VALUES(?1)",
+            [url],
+        )?;
+        conn.query_row("SELECT id FROM feed_sources WHERE url=?1", [url], |row| row.get(0))
+            .map_err(Into::into)
+    }
+
+    pub fn list_feeds(&self) -> Result<Vec<FeedSource>> {
+        let conn = self.connect()?;
+        let mut stmt = conn.prepare(
+            "SELECT id,url,title,last_checked,last_error,enabled
+             FROM feed_sources ORDER BY id"
+        )?;
+        let rows = stmt.query_map([], |row| Ok(FeedSource {
+            id: row.get(0)?,
+            url: row.get(1)?,
+            title: row.get(2)?,
+            last_checked: row.get(3)?,
+            last_error: row.get(4)?,
+            enabled: row.get::<_, i64>(5)? != 0,
+        }))?;
+        rows.collect::<std::result::Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    pub fn mark_feed_checked(&self, id: i64, title: &str, error: Option<&str>) -> Result<()> {
+        let conn = self.connect()?;
+        conn.execute(
+            "UPDATE feed_sources SET title=?1,last_checked=unixepoch(),last_error=?2 WHERE id=?3",
+            params![title,error,id],
+        )?;
+        Ok(())
+    }
+
     pub fn save_web_page(
         &self, url: &str, canonical_url: &str, title: &str, author: &str,
         published_at: &str, site_name: &str, readable_text: &str, saved_html: &str,
@@ -325,9 +379,9 @@ impl KnowledgeRepository {
                 published_at=excluded.published_at, site_name=excluded.site_name,
                 readable_text=excluded.readable_text, saved_html=excluded.saved_html,
                 content_hash=excluded.content_hash,
-                last_seen=unixepoch(), visits=web_pages.visits+1,
+                last_seen=unixepoch(), visits=web_pages.visits+?11,
                 manually_saved=MAX(web_pages.manually_saved, excluded.manually_saved)",
-            params![canonical_url,url,title,author,published_at,site_name,readable_text,saved_html,content_hash,manually_saved as i64],
+            params![canonical_url,url,title,author,published_at,site_name,readable_text,saved_html,content_hash,manually_saved as i64,track_visit as i64],
         )?;
         let page_id: i64 = tx.query_row(
             "SELECT id FROM web_pages WHERE canonical_url=?1", [canonical_url], |row| row.get(0)
