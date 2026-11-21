@@ -64,22 +64,37 @@ fn passage_key(hit: &crate::domain::document::SearchHit) -> String {
     format!("{}#{}", hit.path, hit.page.unwrap_or(0))
 }
 
-
 fn escape_html(value: &str) -> String {
-    value.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;").replace('\'', "&#39;")
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#39;")
 }
 
 fn source_file_url(path: &str, page: Option<u64>) -> String {
     let mut url = String::from("file://");
     for byte in path.bytes() {
-        if byte.is_ascii_alphanumeric() || b"/-._~".contains(&byte) { url.push(byte as char); }
-        else { url.push_str(&format!("%{byte:02X}")); }
+        if byte.is_ascii_alphanumeric() || b"/-._~".contains(&byte) {
+            url.push(byte as char);
+        } else {
+            url.push_str(&format!("%{byte:02X}"));
+        }
     }
-    if let Some(page) = page { url.push_str(&format!("#page={page}")); }
+    if let Some(page) = page {
+        url.push_str(&format!("#page={page}"));
+    }
     url
 }
 
-fn write_answer_html(cfg: &AppConfig, query: &str, answer: &str, model: &str, sources: &[Value]) -> std::io::Result<String> {
+fn write_answer_html(
+    cfg: &AppConfig,
+    query: &str,
+    answer: &str,
+    model: &str,
+    sources: &[Value],
+) -> std::io::Result<String> {
     let mut source_html = String::new();
     for source in sources {
         let id = source.get("id").and_then(Value::as_u64).unwrap_or(0);
@@ -88,13 +103,21 @@ fn write_answer_html(cfg: &AppConfig, query: &str, answer: &str, model: &str, so
         let page = source.get("page").and_then(Value::as_u64);
         let line = source.get("line").and_then(Value::as_u64);
         let snippet = source.get("snippet").and_then(Value::as_str).unwrap_or("");
-        let location = page.map(|n| format!("Page {n}")).or_else(|| line.map(|n| format!("Line {n}"))).unwrap_or_else(|| "Indexed passage".to_string());
+        let location = page
+            .map(|n| format!("Page {n}"))
+            .or_else(|| line.map(|n| format!("Line {n}")))
+            .unwrap_or_else(|| "Indexed passage".to_string());
         source_html.push_str(&format!(
             "<article class=\"source\" id=\"source-{id}\"><div class=\"source-head\"><a href=\"{}\">{}</a><span>{}</span></div><p>{}</p><pre>{}</pre></article>",
-            escape_html(&source_file_url(path, page)), escape_html(name), escape_html(&location), escape_html(path), escape_html(snippet)
+            escape_html(&source_file_url(path, page)),
+            escape_html(name),
+            escape_html(&location),
+            escape_html(path),
+            escape_html(snippet)
         ));
     }
-    let html = format!(r#"<!doctype html>
+    let html = format!(
+        r#"<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{} · Hydrogen Answer</title>
 <style>
@@ -114,10 +137,19 @@ footer {{ color:var(--muted); font-size:12px; margin-top:32px; }}
 <section class="answer">{}</section><section class="sources"><h2>Sources</h2>{}</section>
 <footer>This answer was generated from the indexed local passages listed above. Verify important details against the original documents.</footer>
 </main></body></html>"#,
-        escape_html(query), escape_html(query), escape_html(model), sources.len(), escape_html(answer), source_html);
+        escape_html(query),
+        escape_html(query),
+        escape_html(model),
+        sources.len(),
+        escape_html(answer),
+        source_html
+    );
     let directory = cfg.state_dir.join("answers");
     std::fs::create_dir_all(&directory)?;
-    let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs();
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
     let digest = blake3::hash(query.as_bytes()).to_hex();
     let path = directory.join(format!("answer-{stamp}-{}.html", &digest[..10]));
     std::fs::write(&path, html)?;
@@ -298,43 +330,84 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
             let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
             let parsed = serde_json::from_str::<Value>(&body).ok();
             if output.status.success() {
-                let answer = parsed.as_ref().and_then(|value| value.get("response")).and_then(Value::as_str).map(str::to_owned);
-                let error = if answer.as_deref().unwrap_or("").trim().is_empty() { Some("Ollama returned an empty response.".to_string()) } else { None };
+                let answer = parsed
+                    .as_ref()
+                    .and_then(|value| value.get("response"))
+                    .and_then(Value::as_str)
+                    .map(str::to_owned);
+                let error = if answer.as_deref().unwrap_or("").trim().is_empty() {
+                    Some("Ollama returned an empty response.".to_string())
+                } else {
+                    None
+                };
                 (answer, error)
             } else {
-                let api_error = parsed.as_ref().and_then(|value| value.get("error")).and_then(Value::as_str).map(str::to_owned);
-                let detail = api_error.or_else(|| if !stderr.is_empty() { Some(stderr) } else if !body.trim().is_empty() { Some(body.trim().to_string()) } else { None })
+                let api_error = parsed
+                    .as_ref()
+                    .and_then(|value| value.get("error"))
+                    .and_then(Value::as_str)
+                    .map(str::to_owned);
+                let detail = api_error
+                    .or_else(|| {
+                        if !stderr.is_empty() {
+                            Some(stderr)
+                        } else if !body.trim().is_empty() {
+                            Some(body.trim().to_string())
+                        } else {
+                            None
+                        }
+                    })
                     .unwrap_or_else(|| format!("curl exited with {}", output.status));
-                (None, Some(format!("Ollama request to {} failed: {}", answer_cfg.endpoint, detail)))
+                (
+                    None,
+                    Some(format!(
+                        "Ollama request to {} failed: {}",
+                        answer_cfg.endpoint, detail
+                    )),
+                )
             }
         }
-        Err(error) => (None, Some(format!("Could not start curl for Ollama request: {error}"))),
+        Err(error) => (
+            None,
+            Some(format!("Could not start curl for Ollama request: {error}")),
+        ),
     };
 
     match response {
         Some(answer) if !answer.trim().is_empty() => {
             let answer = answer.trim();
             let html_path = if args.html {
-                Some(write_answer_html(cfg, query, answer, model, &sources).map_err(|error| {
-                    crate::error::HydrogenError::Config(format!("could not write local answer page: {error}"))
-                })?)
-            } else { None };
-            println!("{}", json!({
-                "status": "ready", "model": model, "answer": answer,
-                "sources": sources, "html_path": html_path
-            }));
+                Some(
+                    write_answer_html(cfg, query, answer, model, &sources).map_err(|error| {
+                        crate::error::HydrogenError::Config(format!(
+                            "could not write local answer page: {error}"
+                        ))
+                    })?,
+                )
+            } else {
+                None
+            };
+            println!(
+                "{}",
+                json!({
+                    "status": "ready", "model": model, "answer": answer,
+                    "sources": sources, "html_path": html_path
+                })
+            );
         }
         _ => {
-            println!("{}", json!({
-                "status": "unavailable", "model": model, "answer": "",
-                "sources": sources,
-                "error": generation_error.unwrap_or_else(|| "Ollama returned no answer.".to_string())
-            }));
+            println!(
+                "{}",
+                json!({
+                    "status": "unavailable", "model": model, "answer": "",
+                    "sources": sources,
+                    "error": generation_error.unwrap_or_else(|| "Ollama returned no answer.".to_string())
+                })
+            );
         }
     }
     Ok(())
 }
-
 
 #[cfg(test)]
 mod html_tests {
@@ -342,7 +415,10 @@ mod html_tests {
 
     #[test]
     fn html_escaping_prevents_markup_injection() {
-        assert_eq!(escape_html("<script a=\"x\">"), "&lt;script a=&quot;x&quot;&gt;");
+        assert_eq!(
+            escape_html("<script a=\"x\">"),
+            "&lt;script a=&quot;x&quot;&gt;"
+        );
     }
 
     #[test]
