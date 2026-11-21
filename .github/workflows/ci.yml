@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   check:
@@ -19,19 +19,6 @@ jobs:
         with:
           components: rustfmt
       - uses: Swatinem/rust-cache@v2
-      - name: Apply rustfmt and commit formatting
-        if: github.event_name == 'pull_request'
-        run: |
-          git fetch origin "$GITHUB_HEAD_REF"
-          git checkout -B "$GITHUB_HEAD_REF" FETCH_HEAD
-          cargo fmt --all
-          if ! git diff --quiet; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add -u
-            git commit -m "style: apply rustfmt"
-            git push origin "HEAD:${GITHUB_HEAD_REF}"
-          fi
       - name: Check formatting
         run: cargo fmt --all -- --check
       - name: Compile
