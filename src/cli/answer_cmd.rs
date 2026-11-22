@@ -181,7 +181,7 @@ fn think_option_error(error: &str) -> bool {
 
 fn increase_output_tokens(payload: &mut Value, multiplier: u64) {
     let current = payload.pointer("/options/num_predict").and_then(Value::as_u64).unwrap_or(180);
-    let increased = current.saturating_mul(multiplier).max(512).min(2048);
+    let increased = current.saturating_mul(multiplier).max(512).min(2048.max(current));
     payload["options"]["num_predict"] = json!(increased);
 }
 
@@ -936,6 +936,9 @@ mod html_tests {
         payload["options"]["num_predict"] = json!(1800);
         increase_output_tokens(&mut payload, 2);
         assert_eq!(payload.pointer("/options/num_predict").and_then(Value::as_u64), Some(2048));
+        payload["options"]["num_predict"] = json!(3000);
+        increase_output_tokens(&mut payload, 2);
+        assert_eq!(payload.pointer("/options/num_predict").and_then(Value::as_u64), Some(3000));
     }
 
     #[test]
