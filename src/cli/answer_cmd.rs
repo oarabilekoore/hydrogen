@@ -150,7 +150,8 @@ fn stream_ollama_chat(endpoint: &str, payload: &str, timeout_seconds: u64, mut o
     }
     let answer = strip_think_blocks(&raw);
     if answer.is_empty() {
-        return Err(format!("Ollama completed without answer text (thinking_chars={thinking_chars}). The thinking channel is not treated as an answer."));
+        let observed_thinking = if raw.is_empty() { thinking_chars } else { raw.chars().count() };
+        return Err(format!("Ollama completed without answer text (thinking_chars={observed_thinking}). The thinking channel is not treated as an answer."));
     }
     Ok(answer)
 }
@@ -245,20 +246,40 @@ fn extract_ollama_answer(value: &Value) -> Option<String> {
         .filter(|answer| !answer.is_empty())
 }
 
+fn has_thinking_output(value: &Value) -> bool {
+    let separate = value.pointer("/message/thinking")
+        .and_then(Value::as_str)
+        .map(|text| !text.trim().is_empty())
+        .unwrap_or(false);
+    let content = value.pointer("/message/content").and_then(Value::as_str).unwrap_or("");
+    separate || (!content.is_empty() && strip_think_blocks(content).is_empty()
+        && content.to_ascii_lowercase().contains("<think>"))
+}
+
 fn ollama_empty_diagnostic(value: &Value) -> String {
     let done_reason = value
         .get("done_reason")
         .and_then(Value::as_str)
         .unwrap_or("unknown");
-    let thinking_chars = value
+    let separate_thinking_chars = value
         .pointer("/message/thinking")
         .and_then(Value::as_str)
         .map(str::len)
         .unwrap_or(0);
+    let content = value.pointer("/message/content").and_then(Value::as_str).unwrap_or("");
+    let thinking_chars = if separate_thinking_chars > 0 { separate_thinking_chars } else if has_thinking_output(value) { content.chars().count() } else { 0 };
     let eval_count = value.get("eval_count").and_then(Value::as_u64).unwrap_or(0);
     format!(
         "Ollama completed without answer text (done_reason={done_reason}, thinking_chars={thinking_chars}, eval_count={eval_count}). The thinking channel is not treated as an answer. Try a non-thinking model or increase answer.max_output_tokens."
     )
+}
+
+fn thinking_only_stream_error(error: &str) -> bool {
+    error.split("thinking_chars=").nth(1)
+        .and_then(|value| value.split(|ch: char| !ch.is_ascii_digit()).next())
+        .and_then(|value| value.parse::<usize>().ok())
+        .map(|count| count > 0)
+        .unwrap_or(false)
 }
 
 fn escape_html(value: &str) -> String {
@@ -689,7 +710,7 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
                     Err(retry_error) => (None, Some(format!("{error}; retry without thinking also failed: {retry_error}"))),
                 }
             }
-            Err(error) if thinking_supported && error.contains("thinking_chars=") => {
+            Err(error) if thinking_supported && thinking_only_stream_error(&error) => {
                 increase_output_tokens(&mut payload_value, 2);
                 match stream_ollama_chat(&answer_cfg.endpoint, &payload_value.to_string(), answer_cfg.timeout_seconds, &mut emit) {
                     Ok(answer) => (Some(answer), None),
@@ -713,7 +734,7 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
                 let answer = extract_ollama_answer(&value);
                 if answer.as_deref().unwrap_or("").trim().is_empty()
                     && thinking_supported
-                    && value.pointer("/message/thinking").and_then(Value::as_str).map(|text| !text.is_empty()).unwrap_or(false) {
+                    && has_thinking_output(&value) {
                     increase_output_tokens(&mut payload_value, 2);
                     match request_ollama_chat(&answer_cfg.endpoint, &payload_value.to_string(), answer_cfg.timeout_seconds) {
                         Ok(retry) => {
@@ -877,6 +898,18 @@ mod html_tests {
         let diagnostic = ollama_empty_diagnostic(&value);
         assert!(diagnostic.contains("thinking_chars=17"));
         assert!(diagnostic.contains("done_reason=length"));
+    }
+
+    #[test]
+    fn detects_separate_and_tagged_thinking_without_treating_it_as_answer_text() {
+        let separate = json!({"message":{"content":"","thinking":"internal reasoning"}});
+        let tagged = json!({"message":{"content":"<think>internal reasoning</think>"}});
+        let ordinary_empty = json!({"message":{"content":""}});
+        assert!(has_thinking_output(&separate));
+        assert!(has_thinking_output(&tagged));
+        assert!(!has_thinking_output(&ordinary_empty));
+        assert!(thinking_only_stream_error("Ollama completed without answer text (thinking_chars=18)."));
+        assert!(!thinking_only_stream_error("Ollama completed without answer text (thinking_chars=0)."));
     }
 
     #[test]
