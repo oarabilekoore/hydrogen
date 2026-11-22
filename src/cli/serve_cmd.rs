@@ -197,7 +197,7 @@ fn prune_jobs(jobs: &mut HashMap<String, Value>) {
 fn set_job(jobs: &JobStore, id: &str, mut value: Value) {
     if let Ok(mut jobs) = jobs.lock() {
         if let Some(previous) = jobs.get(id) {
-            for key in ["answer", "chunks", "seq", "created_at"] {
+            for key in ["answer", "chunks", "seq", "created_at", "thinking_chars"] {
                 if value.get(key).is_none() {
                     if let Some(previous_value) = previous.get(key) {
                         value[key] = previous_value.clone();
@@ -228,6 +228,18 @@ fn append_job_delta(jobs: &JobStore, id: &str, delta: &str) {
                     chunks.drain(0..excess);
                 }
             }
+        }
+    }
+}
+
+fn append_job_thinking(jobs: &JobStore, id: &str, chars: usize) {
+    if let Ok(mut jobs) = jobs.lock() {
+        if let Some(job) = jobs.get_mut(id) {
+            job["thinking_chars"] = json!(chars);
+            if job.get("status").and_then(Value::as_str) == Some("generating") {
+                job["status"] = Value::String("thinking".into());
+            }
+            job["updated_at"] = json!(unix_seconds());
         }
     }
 }
@@ -266,7 +278,7 @@ fn queue_answer_job(jobs: &JobStore, conversation_id: &str, question: String, mo
     let job_id = format!("job_{}", &blake3::hash(material.as_bytes()).to_hex()[..24]);
     if let Ok(mut jobs) = jobs.lock() {
         prune_jobs(&mut jobs);
-        jobs.insert(job_id.clone(), json!({"id":job_id,"status":"queued","answer":"","chunks":[],"seq":0,"created_at":unix_seconds(),"updated_at":unix_seconds(),"model":model}));
+        jobs.insert(job_id.clone(), json!({"id":job_id,"status":"queued","answer":"","chunks":[],"seq":0,"thinking_chars":0,"created_at":unix_seconds(),"updated_at":unix_seconds(),"model":model}));
     }
     let worker_jobs = Arc::clone(jobs);
     let worker_conversation = conversation_id.to_string();
@@ -315,6 +327,11 @@ fn queue_answer_job(jobs: &JobStore, conversation_id: &str, question: String, mo
                 Some("delta") => {
                     if let Some(delta) = event.get("text").and_then(Value::as_str) {
                         append_job_delta(&worker_jobs, &worker_id, delta);
+                    }
+                }
+                Some("thinking") => {
+                    if let Some(chars) = event.get("chars").and_then(Value::as_u64) {
+                        append_job_thinking(&worker_jobs, &worker_id, chars as usize);
                     }
                 }
                 Some("result") => { result = event.get("result").cloned(); }
