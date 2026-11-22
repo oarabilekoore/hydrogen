@@ -107,7 +107,7 @@ fn visible_stream_text(raw: &str) -> String {
             in_think = true;
         } else {
             let tail = &lower[cursor..];
-            let held = (1..="<think>".len() - 1).rev().find(|length| "<think>".starts_with(&tail[tail.len().saturating_sub(*length)..]));
+            let held = (1..=6).rev().find(|length| lower.as_bytes().ends_with(&b"<think>"[..*length]));
             let end = held.map(|length| raw.len() - length).unwrap_or(raw.len());
             output.push_str(&raw[cursor..end]);
             break;
@@ -643,8 +643,7 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
         ])
         .output();
 
-    let (response, generation_error) =
-        match output {
+    match output {
             Ok(output) => {
                 let body = String::from_utf8_lossy(&output.stdout).to_string();
                 let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
@@ -695,7 +694,7 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
                 None,
                 Some(format!("Could not start curl for Ollama request: {error}")),
             ),
-        };
+        }
     };
 
     match response {
