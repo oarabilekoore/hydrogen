@@ -25,6 +25,9 @@ pub struct AnswerArgs {
     /// Generate the HTML answer and open it in the default browser
     #[arg(long)]
     pub browser: bool,
+    /// Reuse an existing conversation as multi-turn model context
+    #[arg(long)]
+    pub conversation: Option<String>,
     /// Do not create a saved conversation (used by the frontend chat worker)
     #[arg(long, hide = true)]
     pub no_save: bool,
@@ -495,6 +498,24 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
         return Ok(());
     }
 
+    // Recent turns help resolve references; retrieved excerpts remain the only factual evidence.
+    let mut history: Vec<Value> = if let Some(conversation_id) = args.conversation.as_deref() {
+        KnowledgeStore::open(&cfg.db_path)
+            .and_then(|knowledge| knowledge.get_messages(conversation_id))
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|message| matches!(message.role.as_str(), "user" | "assistant"))
+            .map(|message| json!({
+                "role": message.role,
+                "content": message.content.chars().take(4000).collect::<String>()
+            }))
+            .collect()
+    } else { Vec::new() };
+    if history.last().and_then(|message| message.get("role")).and_then(Value::as_str) == Some("user")
+        && history.last().and_then(|message| message.get("content")).and_then(Value::as_str) == Some(query) {
+        history.pop();
+    }
+    if history.len() > 12 { history.drain(..history.len() - 12); }
     let prompt = format!(
         "You are a source-grounded study assistant. The excerpts below are the ONLY permitted evidence.\n\
          Answer the exact question using only the terminology and meaning supported by the supplied indexed sources.\n\
@@ -509,12 +530,15 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
     // to the provider API rather than being guessed by the client.
     let payload = json!({
         "model": model,
-        "messages": [
-            {
-                "role": "user",
-                "content": prompt
-            }
-        ],
+        "messages": {
+            let mut messages = vec![json!({
+                "role":"system",
+                "content":"You are a source-grounded study assistant. Conversation history helps resolve references, but only the current retrieved excerpts may support factual claims. Do not treat earlier assistant messages as evidence."
+            })];
+            messages.extend(history);
+            messages.push(json!({"role":"user","content":prompt}));
+            messages
+        },
         "stream": false,
         "options": {
             "num_ctx": answer_cfg.context_window,
