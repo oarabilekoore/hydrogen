@@ -793,6 +793,13 @@ mod html_tests {
     }
 
     #[test]
+    fn streaming_withholds_partial_think_tags_without_splitting_utf8() {
+        assert_eq!(visible_stream_text("café <thi"), "café ");
+        assert_eq!(visible_stream_text("Answer <think>hidden</think> after"), "Answer  after");
+        assert_eq!(visible_stream_text("visible <th"), "visible ");
+    }
+
+    #[test]
     fn extracts_ollama_chat_content() {
         let value = json!({"message":{"role":"assistant","content":"  grounded answer  "}});
         assert_eq!(
