@@ -241,11 +241,26 @@ fn url_matches_patterns(url: &str, patterns: &[String]) -> bool {
         Pattern::new(pattern.trim()).map(|compiled| compiled.matches_with(url, options)).unwrap_or(false)
     })
 }
+const BUILTIN_EXCLUDED_DOMAINS: &[&str] = &[
+    "paypal.com", "stripe.com", "chase.com", "bankofamerica.com",
+    "wellsfargo.com", "accounts.google.com", "login.microsoftonline.com",
+];
+const BUILTIN_EXCLUDED_PATTERNS: &[&str] = &[
+    "*://*/login*", "*://*/signin*", "*://*/checkout*",
+    "*://*/payment*", "*://*/account*", "*://*/settings*",
+];
+
 fn web_rule_decision(web: &crate::config::WebConfig, url: &str) -> std::result::Result<String, String> {
     let normalized = normalize_http_url(url).map_err(str::to_string)?;
-    if web.exclude_domains.iter().any(|domain| url_domain_matches(&normalized, domain)) { return Err("domain is excluded".into()); }
+    if BUILTIN_EXCLUDED_DOMAINS.iter().any(|domain| url_domain_matches(&normalized, domain))
+        || web.exclude_domains.iter().any(|domain| url_domain_matches(&normalized, domain)) {
+        return Err("domain is excluded".into());
+    }
     if !web.allow_domains.is_empty() && !web.allow_domains.iter().any(|domain| url_domain_matches(&normalized, domain)) { return Err("domain is not in the allow list".into()); }
-    if url_matches_patterns(&normalized, &web.exclude_patterns) { return Err("URL matches an excluded pattern".into()); }
+    let builtin_patterns: Vec<String> = BUILTIN_EXCLUDED_PATTERNS.iter().map(|value| (*value).to_string()).collect();
+    if url_matches_patterns(&normalized, &builtin_patterns) || url_matches_patterns(&normalized, &web.exclude_patterns) {
+        return Err("URL matches an excluded pattern".into());
+    }
     Ok(normalized)
 }
 
@@ -270,7 +285,7 @@ fn handle_api(mut request: Request, cfg: &AppConfig, store: &KnowledgeStore, job
     }
 
     if parts.as_slice() == ["api", "rules"] && method == Method::Get {
-        json(request, 200, json!({"rules":cfg.settings.web})); return;
+        json(request, 200, json!({"rules":cfg.settings.web,"protected_domains":BUILTIN_EXCLUDED_DOMAINS,"protected_patterns":BUILTIN_EXCLUDED_PATTERNS})); return;
     }
     if parts.as_slice() == ["api", "rules", "test"] && method == Method::Post {
         let body = match read_body(&mut request) { Ok(v) => v, Err(e) => { json(request,400,json!({"error":e.to_string()})); return; } };
