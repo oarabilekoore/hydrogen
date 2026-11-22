@@ -963,6 +963,16 @@ mod html_tests {
     }
 
     #[test]
+    fn prefers_a_bounded_thinking_level_when_ollama_advertises_one() {
+        let qwen = json!({"thinking":{"values":["low","medium","high"],"default":"medium"}});
+        assert_eq!(model_thinking_mode(Some(&qwen)), Some(json!("low")));
+        let boolean_only = json!({"thinking":{"values":[true,false],"default":true}});
+        assert_eq!(model_thinking_mode(Some(&boolean_only)), Some(json!(true)));
+        let unsupported = json!({"capabilities":["completion","tools"]});
+        assert_eq!(model_thinking_mode(Some(&unsupported)), None);
+    }
+
+    #[test]
     fn identifies_think_option_compatibility_errors() {
         assert!(think_option_error("Ollama returned 400: model does not support thinking"));
         assert!(think_option_error("invalid think parameter"));
