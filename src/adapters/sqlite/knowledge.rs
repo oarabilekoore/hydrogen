@@ -722,6 +722,19 @@ mod tests {
     }
 
     #[test]
+    fn regeneration_can_remove_only_the_latest_assistant_message() {
+        let store = test_store("regenerate-message");
+        let id = store.create_conversation("Regenerate").unwrap();
+        store.append_message(&id, "user", "Question", None).unwrap();
+        let answer = store.append_message(&id, "assistant", "Old answer", Some("model")).unwrap();
+        assert!(store.delete_message(&id, &answer).unwrap());
+        let messages = store.get_messages(&id).unwrap();
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].role, "user");
+        assert!(!store.delete_message(&id, &answer).unwrap());
+    }
+
+    #[test]
     fn conversations_persist_and_are_searchable() {
         let store = test_store("conversation");
         let id = store.create_conversation("New conversation").unwrap();
