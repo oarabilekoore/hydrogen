@@ -298,10 +298,10 @@ fn queue_answer_job(jobs: &JobStore, conversation_id: &str, question: String, mo
                 return;
             }
         };
-        let mut reader = BufReader::new(stdout);
+        let reader = BufReader::new(stdout);
         let mut result: Option<Value> = None;
         let mut parse_error: Option<String> = None;
-        for line in reader.by_ref().lines() {
+        for line in reader.lines() {
             let line = match line {
                 Ok(line) => line,
                 Err(error) => { parse_error = Some(format!("could not read answer stream: {error}")); break; }
@@ -321,7 +321,6 @@ fn queue_answer_job(jobs: &JobStore, conversation_id: &str, question: String, mo
                 _ => {}
             }
         }
-        drop(reader);
         let output = match child.wait_with_output() {
             Ok(output) => output,
             Err(error) => {
@@ -362,7 +361,7 @@ fn queue_answer_job(jobs: &JobStore, conversation_id: &str, question: String, mo
 fn request_security_error(request: &Request, bind_address: &str, token: &str) -> Option<(u16, &'static str)> {
     let header_value = |name: &str| {
         request.headers().iter()
-            .find(|item| item.field.as_str().eq_ignore_ascii_case(name))
+            .find(|item| item.field.as_str().as_bytes().eq_ignore_ascii_case(name.as_bytes()))
             .map(|item| item.value.as_str())
     };
 
