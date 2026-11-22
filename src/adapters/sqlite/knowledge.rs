@@ -207,6 +207,11 @@ impl KnowledgeStore {
         Ok(conn.execute("DELETE FROM conversations WHERE id=?1", params![conversation_id])? > 0)
     }
 
+    pub fn delete_message(&self, conversation_id: &str, message_id: &str) -> rusqlite::Result<bool> {
+        let conn = self.connect()?;
+        Ok(conn.execute("DELETE FROM messages WHERE id=?1 AND conversation_id=?2 AND role='assistant'", params![message_id, conversation_id])? > 0)
+    }
+
     pub fn get_messages(&self, conversation_id: &str) -> rusqlite::Result<Vec<StoredMessage>> {
         let conn = self.connect()?;
         let mut stmt = conn.prepare(
@@ -714,6 +719,19 @@ mod tests {
         let id = store.create_conversation("Still works").unwrap();
         assert!(!store.list_conversations(10).unwrap()[0].pinned);
         assert!(!id.is_empty());
+    }
+
+    #[test]
+    fn regeneration_can_remove_only_the_latest_assistant_message() {
+        let store = test_store("regenerate-message");
+        let id = store.create_conversation("Regenerate").unwrap();
+        store.append_message(&id, "user", "Question", None).unwrap();
+        let answer = store.append_message(&id, "assistant", "Old answer", Some("model")).unwrap();
+        assert!(store.delete_message(&id, &answer).unwrap());
+        let messages = store.get_messages(&id).unwrap();
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].role, "user");
+        assert!(!store.delete_message(&id, &answer).unwrap());
     }
 
     #[test]

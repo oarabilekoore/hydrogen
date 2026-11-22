@@ -25,6 +25,9 @@ pub struct AnswerArgs {
     /// Generate the HTML answer and open it in the default browser
     #[arg(long)]
     pub browser: bool,
+    /// Reuse an existing conversation as multi-turn model context
+    #[arg(long)]
+    pub conversation: Option<String>,
     /// Do not create a saved conversation (used by the frontend chat worker)
     #[arg(long, hide = true)]
     pub no_save: bool,
@@ -65,6 +68,21 @@ fn query_variants(query: &str, max_variants: usize) -> Vec<String> {
     drop(push);
     variants.truncate(max_variants);
     variants
+}
+
+fn recent_history_messages(mut history: Vec<Value>, query: &str) -> Vec<Value> {
+    history.retain(|message| matches!(message.get("role").and_then(Value::as_str), Some("user") | Some("assistant")));
+    if history.last().and_then(|message| message.get("role")).and_then(Value::as_str) == Some("user")
+        && history.last().and_then(|message| message.get("content")).and_then(Value::as_str) == Some(query) {
+        history.pop();
+    }
+    if history.len() > 6 { history.drain(..history.len() - 6); }
+    for message in &mut history {
+        if let Some(content) = message.get("content").and_then(Value::as_str).map(|value| value.chars().take(1500).collect::<String>()) {
+            message["content"] = Value::String(content);
+        }
+    }
+    history
 }
 
 fn passage_key(hit: &crate::domain::document::SearchHit) -> String {
@@ -495,6 +513,16 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
         return Ok(());
     }
 
+    // Recent turns help resolve references; retrieved excerpts remain the only factual evidence.
+    let stored_history: Vec<Value> = if let Some(conversation_id) = args.conversation.as_deref() {
+        KnowledgeStore::open(&cfg.db_path)
+            .and_then(|knowledge| knowledge.get_messages(conversation_id))
+            .unwrap_or_default()
+            .into_iter()
+            .map(|message| json!({"role":message.role,"content":message.content}))
+            .collect()
+    } else { Vec::new() };
+    let history = recent_history_messages(stored_history, query);
     let prompt = format!(
         "You are a source-grounded study assistant. The excerpts below are the ONLY permitted evidence.\n\
          Answer the exact question using only the terminology and meaning supported by the supplied indexed sources.\n\
@@ -507,14 +535,15 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
     // Do not force the Ollama-specific `think` option here. It is not
     // supported by every model/version; model capability negotiation belongs
     // to the provider API rather than being guessed by the client.
+    let mut messages = vec![json!({
+        "role":"system",
+        "content":"You are a source-grounded study assistant. Conversation history helps resolve references, but only the current retrieved excerpts may support factual claims. Do not treat earlier assistant messages as evidence."
+    })];
+    messages.extend(history);
+    messages.push(json!({"role":"user","content":prompt}));
     let payload = json!({
         "model": model,
-        "messages": [
-            {
-                "role": "user",
-                "content": prompt
-            }
-        ],
+        "messages": messages,
         "stream": false,
         "options": {
             "num_ctx": answer_cfg.context_window,
@@ -670,6 +699,21 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
 #[cfg(test)]
 mod html_tests {
     use super::*;
+
+    #[test]
+    fn conversation_history_excludes_the_current_user_turn_and_bounds_context() {
+        let history = vec![
+            json!({"role":"user","content":"first"}),
+            json!({"role":"assistant","content":"reply"}),
+            json!({"role":"user","content":"current question"}),
+        ];
+        let prepared = recent_history_messages(history, "current question");
+        assert_eq!(prepared.len(), 2);
+        assert_eq!(prepared[0]["content"], "first");
+        let long = "x".repeat(2000);
+        let prepared = recent_history_messages(vec![json!({"role":"assistant","content":long})], "next");
+        assert_eq!(prepared[0]["content"].as_str().unwrap().chars().count(), 1500);
+    }
 
     #[test]
     fn extracts_ollama_chat_content() {
