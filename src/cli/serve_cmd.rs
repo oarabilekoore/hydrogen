@@ -505,14 +505,18 @@ fn handle_api(mut request: Request, cfg: &AppConfig, store: &KnowledgeStore, job
         return;
     }
 
-    if parts.len() == 4 && parts[0] == "api" && parts[1] == "conversations" && parts[3] == "retry" && method == Method::Post {
+    if parts.len() == 4 && parts[0] == "api" && parts[1] == "conversations" && parts[3] == "regenerate" && method == Method::Post {
         let conversation_id = parts[2];
         match store.get_messages(conversation_id) {
             Ok(messages) => {
-                let latest = messages.iter().rev().find(|message| message.role == "user");
-                let unanswered = messages.last().map(|message| message.role == "user").unwrap_or(false);
-                if !unanswered { json(request,409,json!({"error":"there is no unanswered user message to retry"})); return; }
-                let Some(question) = latest.map(|message| message.content.clone()) else { json(request,404,json!({"error":"conversation has no user message to retry"})); return; };
+                let latest_assistant = messages.last().filter(|message| message.role == "assistant");
+                let question = if let Some(answer) = latest_assistant {
+                    let question = messages.iter().rev().skip(1).find(|message| message.role == "user").map(|message| message.content.clone());
+                    if store.delete_message(conversation_id, &answer.id).unwrap_or(false) { question } else { None }
+                } else if messages.last().map(|message| message.role == "user").unwrap_or(false) {
+                    messages.iter().rev().find(|message| message.role == "user").map(|message| message.content.clone())
+                } else { None };
+                let Some(question) = question else { json(request,409,json!({"error":"there is no latest answer or unanswered user message to regenerate"})); return; };
                 let model = cfg.settings.answer.model.clone();
                 let job_id = queue_answer_job(jobs,conversation_id,question,model,cfg.db_path.clone());
                 json(request,202,json!({"status":"queued","job_id":job_id,"conversation_id":conversation_id}));
@@ -561,7 +565,7 @@ fn handle_api(mut request: Request, cfg: &AppConfig, store: &KnowledgeStore, job
         json(
             request,
             202,
-            json!({"status":"queued","job_id":job_id,"conversation_id":conversation}),
+            json!({"status":"queued","job_id":job_id,"conversation_id":conversation_id}),
         );
         return;
     }
