@@ -157,6 +157,41 @@ fn set_job(jobs: &JobStore, id: &str, value: Value) {
     }
 }
 
+fn queue_answer_job(jobs: &JobStore, conversation_id: &str, question: String, model: String, db_path: std::path::PathBuf) -> String {
+    let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos();
+    let material = format!("{}:{}:{}", std::process::id(), stamp, conversation_id);
+    let job_id = format!("job_{}", &blake3::hash(material.as_bytes()).to_hex()[..24]);
+    set_job(jobs, &job_id, json!({"id":job_id,"status":"queued"}));
+    let worker_jobs = Arc::clone(jobs);
+    let worker_conversation = conversation_id.to_string();
+    let worker_id = job_id.clone();
+    thread::spawn(move || {
+        set_job(&worker_jobs, &worker_id, json!({"id":worker_id,"status":"generating","model":model}));
+        let args = vec!["answer".to_string(), "--no-save".to_string(), "--conversation".to_string(), worker_conversation.clone(), "--model".to_string(), model.clone(), question];
+        let borrowed: Vec<&str> = args.iter().map(String::as_str).collect();
+        let result = match run_cli(&borrowed) {
+            Ok(output) => match serde_json::from_slice::<Value>(&output.stdout) {
+                Ok(value) => value,
+                Err(error) => json!({"status":"unavailable","answer":"","sources":[],"error":format!("answer worker returned invalid JSON: {error}; stderr: {}",String::from_utf8_lossy(&output.stderr).trim())}),
+            },
+            Err(error) => json!({"status":"unavailable","answer":"","sources":[],"error":format!("could not start Hydrogen answer worker: {error}")}),
+        };
+        if result.get("status").and_then(Value::as_str) == Some("ready") {
+            let answer = result.get("answer").and_then(Value::as_str).unwrap_or("");
+            let model = result.get("model").and_then(Value::as_str);
+            let sources = result.get("sources");
+            let saved = KnowledgeStore::open(&db_path).and_then(|knowledge| knowledge.append_message_with_sources(&worker_conversation,"assistant",answer,model,sources));
+            if let Err(error) = saved {
+                set_job(&worker_jobs,&worker_id,json!({"id":worker_id,"status":"failed","error":format!("answer generated but could not be saved: {error}"),"generation":result}));
+                return;
+            }
+        }
+        let status = result.get("status").and_then(Value::as_str).unwrap_or("unavailable");
+        let final_status = if status == "ready" { "ready" } else { "unavailable" };
+        set_job(&worker_jobs,&worker_id,json!({"id":worker_id,"status":final_status,"result":result}));
+    });
+    job_id
+}
 fn request_security_error(request: &Request, bind_address: &str, token: &str) -> Option<(u16, &'static str)> {
     let header_value = |name: &str| {
         request.headers().iter()
@@ -470,6 +505,22 @@ fn handle_api(mut request: Request, cfg: &AppConfig, store: &KnowledgeStore, job
         return;
     }
 
+    if parts.len() == 4 && parts[0] == "api" && parts[1] == "conversations" && parts[3] == "retry" && method == Method::Post {
+        let conversation_id = parts[2];
+        match store.get_messages(conversation_id) {
+            Ok(messages) => {
+                let latest = messages.iter().rev().find(|message| message.role == "user");
+                let unanswered = messages.last().map(|message| message.role == "user").unwrap_or(false);
+                if !unanswered { json(request,409,json!({"error":"there is no unanswered user message to retry"})); return; }
+                let Some(question) = latest.map(|message| message.content.clone()) else { json(request,404,json!({"error":"conversation has no user message to retry"})); return; };
+                let model = cfg.settings.answer.model.clone();
+                let job_id = queue_answer_job(jobs,conversation_id,question,model,cfg.db_path.clone());
+                json(request,202,json!({"status":"queued","job_id":job_id,"conversation_id":conversation_id}));
+            },
+            Err(error) => json(request,500,json!({"error":error.to_string()})),
+        }
+        return;
+    }
     if parts.len() == 4
         && parts[0] == "api"
         && parts[1] == "conversations"
@@ -505,98 +556,8 @@ fn handle_api(mut request: Request, cfg: &AppConfig, store: &KnowledgeStore, job
             return;
         }
         let question = content.to_string();
-        let selected_model = input.get("model").and_then(Value::as_str)
-            .map(str::trim).filter(|value| !value.is_empty()).map(str::to_owned);
-        let conversation = conversation_id.to_string();
-        let stamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos();
-        let material = format!("{}:{}:{}", std::process::id(), stamp, conversation);
-        let job_id = format!("job_{}", &blake3::hash(material.as_bytes()).to_hex()[..24]);
-        set_job(jobs, &job_id, json!({"id":job_id,"status":"queued"}));
-
-        let worker_jobs = Arc::clone(jobs);
-        let worker_conversation = conversation.clone();
-        let db_path = cfg.db_path.clone();
-        let model = selected_model.unwrap_or_else(|| cfg.settings.answer.model.clone());
-        let worker_id = job_id.clone();
-        thread::spawn(move || {
-            set_job(
-                &worker_jobs,
-                &worker_id,
-                json!({"id":worker_id,"status":"generating","model":model}),
-            );
-            let output = run_cli(&["answer", "--no-save", "--model", &model, &question]);
-            let result = match output {
-                Ok(output) => match serde_json::from_slice::<Value>(&output.stdout) {
-                    Ok(value) => value,
-                    Err(error) => json!({
-                        "status":"unavailable",
-                        "answer":"",
-                        "sources":[],
-                        "error":format!(
-                            "answer worker returned invalid JSON: {error}; stderr: {}",
-                            String::from_utf8_lossy(&output.stderr).trim()
-                        )
-                    }),
-                },
-                Err(error) => json!({
-                    "status":"unavailable",
-                    "answer":"",
-                    "sources":[],
-                    "error":format!("could not start Hydrogen answer worker: {error}")
-                }),
-            };
-
-            if result.get("status").and_then(Value::as_str) == Some("ready") {
-                let answer = result.get("answer").and_then(Value::as_str).unwrap_or("");
-                let model = result.get("model").and_then(Value::as_str);
-                let sources = result.get("sources");
-                let saved = KnowledgeStore::open(&db_path).and_then(|knowledge| {
-                    knowledge.append_message_with_sources(
-                        &worker_conversation,
-                        "assistant",
-                        answer,
-                        model,
-                        sources,
-                    )
-                });
-                if let Err(error) = saved {
-                    set_job(
-                        &worker_jobs,
-                        &worker_id,
-                        json!({
-                            "id":worker_id,
-                            "status":"failed",
-                            "error":format!("answer generated but could not be saved: {error}"),
-                            "generation":result
-                        }),
-                    );
-                    return;
-                }
-            }
-
-            let status = result
-                .get("status")
-                .and_then(Value::as_str)
-                .unwrap_or("unavailable");
-            let final_status = if status == "ready" {
-                "ready"
-            } else {
-                "unavailable"
-            };
-            set_job(
-                &worker_jobs,
-                &worker_id,
-                json!({
-                    "id":worker_id,
-                    "status":final_status,
-                    "result":result
-                }),
-            );
-        });
-
+        let selected_model = input.get("model").and_then(Value::as_str).map(str::trim).filter(|value| !value.is_empty()).unwrap_or(&cfg.settings.answer.model).to_string();
+        let job_id = queue_answer_job(jobs, conversation_id, question, selected_model, cfg.db_path.clone());
         json(
             request,
             202,
