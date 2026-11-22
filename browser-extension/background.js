@@ -3,7 +3,7 @@ async function apiBase() {
   const stored = await chrome.storage.local.get({ apiBase: DEFAULT_API });
   return String(stored.apiBase || DEFAULT_API).replace(/\/$/, "");
 }
-const defaults = { enabled: true, captureArticles: true, captureChats: true, excludedHosts: [] };
+const defaults = { enabled: true, captureArticles: true, captureChats: true, excludedHosts: [], apiToken: "" };
 const historyImports = new Map();
 let historyImportBusy = false;
 
@@ -30,7 +30,7 @@ async function importRecentHistory(days = 30, limit = 25) {
   if (historyImportBusy) throw new Error("A history import is already running.");
   const prefs = await settings();
   if (!prefs.enabled || !prefs.captureArticles) throw new Error("Enable automatic article capture before importing history.");
-  const configResponse = await fetch((await apiBase()) + "/api/settings", { cache: "no-store" });
+  const configResponse = await fetch((await apiBase()) + "/api/settings", { cache: "no-store", headers: await apiHeaders() });
   if (!configResponse.ok) throw new Error("Hydrogen service is unavailable.");
   const appConfig = await configResponse.json();
   const web = appConfig.settings?.web || {};
@@ -71,10 +71,16 @@ async function settings() {
   return { ...defaults, ...stored };
 }
 
+async function apiHeaders() {
+  const { apiToken = "" } = await chrome.storage.local.get({ apiToken: "" });
+  if (!apiToken) throw new Error("Pair the extension with Hydrogen first.");
+  return { "Content-Type": "application/json", "Authorization": "Bearer " + apiToken };
+}
+
 async function post(path, payload) {
   const response = await fetch((await apiBase()) + path, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: await apiHeaders(),
     body: JSON.stringify(payload)
   });
   const body = await response.json().catch(() => ({}));
