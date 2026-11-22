@@ -70,6 +70,21 @@ fn query_variants(query: &str, max_variants: usize) -> Vec<String> {
     variants
 }
 
+fn recent_history_messages(mut history: Vec<Value>, query: &str) -> Vec<Value> {
+    history.retain(|message| matches!(message.get("role").and_then(Value::as_str), Some("user") | Some("assistant")));
+    if history.last().and_then(|message| message.get("role")).and_then(Value::as_str) == Some("user")
+        && history.last().and_then(|message| message.get("content")).and_then(Value::as_str) == Some(query) {
+        history.pop();
+    }
+    if history.len() > 6 { history.drain(..history.len() - 6); }
+    for message in &mut history {
+        if let Some(content) = message.get("content").and_then(Value::as_str).map(|value| value.chars().take(1500).collect::<String>()) {
+            message["content"] = Value::String(content);
+        }
+    }
+    history
+}
+
 fn passage_key(hit: &crate::domain::document::SearchHit) -> String {
     format!("{}#{}", hit.path, hit.page.unwrap_or(0))
 }
@@ -499,23 +514,15 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
     }
 
     // Recent turns help resolve references; retrieved excerpts remain the only factual evidence.
-    let mut history: Vec<Value> = if let Some(conversation_id) = args.conversation.as_deref() {
+    let stored_history: Vec<Value> = if let Some(conversation_id) = args.conversation.as_deref() {
         KnowledgeStore::open(&cfg.db_path)
             .and_then(|knowledge| knowledge.get_messages(conversation_id))
             .unwrap_or_default()
             .into_iter()
-            .filter(|message| matches!(message.role.as_str(), "user" | "assistant"))
-            .map(|message| json!({
-                "role": message.role,
-                "content": message.content.chars().take(4000).collect::<String>()
-            }))
+            .map(|message| json!({"role":message.role,"content":message.content}))
             .collect()
     } else { Vec::new() };
-    if history.last().and_then(|message| message.get("role")).and_then(Value::as_str) == Some("user")
-        && history.last().and_then(|message| message.get("content")).and_then(Value::as_str) == Some(query) {
-        history.pop();
-    }
-    if history.len() > 12 { history.drain(..history.len() - 12); }
+    let history = recent_history_messages(stored_history, query);
     let prompt = format!(
         "You are a source-grounded study assistant. The excerpts below are the ONLY permitted evidence.\n\
          Answer the exact question using only the terminology and meaning supported by the supplied indexed sources.\n\
@@ -692,6 +699,21 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
 #[cfg(test)]
 mod html_tests {
     use super::*;
+
+    #[test]
+    fn conversation_history_excludes_the_current_user_turn_and_bounds_context() {
+        let history = vec![
+            json!({"role":"user","content":"first"}),
+            json!({"role":"assistant","content":"reply"}),
+            json!({"role":"user","content":"current question"}),
+        ];
+        let prepared = recent_history_messages(history, "current question");
+        assert_eq!(prepared.len(), 2);
+        assert_eq!(prepared[0]["content"], "first");
+        let long = "x".repeat(2000);
+        let prepared = recent_history_messages(vec![json!({"role":"assistant","content":long})], "next");
+        assert_eq!(prepared[0]["content"].as_str().unwrap().chars().count(), 1500);
+    }
 
     #[test]
     fn extracts_ollama_chat_content() {
