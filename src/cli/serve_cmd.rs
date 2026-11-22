@@ -184,7 +184,7 @@ fn request_security_error(request: &Request, bind_address: &str, token: &str) ->
 
     if request.method() == &Method::Options { return None; }
     let path = request.url().split('?').next().unwrap_or("/");
-    let is_health = path == "/api/health" && request.method() == &Method::Get;
+    let is_health = (path == "/api/health" || path == "/") && request.method() == &Method::Get;
     if !is_health {
         let authorization = header_value("Authorization").unwrap_or("");
         let supplied = authorization.strip_prefix("Bearer ").unwrap_or("");
@@ -842,6 +842,14 @@ pub fn run(cfg: &AppConfig) -> Result<()> {
     eprintln!("Hydrogen frontend API listening at http://{address}");
     for request in server.incoming_requests() {
         let url = request.url().to_string();
+        if let Some((status, message)) = request_security_error(&request, address, &token) {
+            json(request, status, json!({"error":message}));
+            continue;
+        }
+        if request.method() == &Method::Options {
+            respond(request, 204, "application/json; charset=utf-8", String::new());
+            continue;
+        }
         if request.method() == &Method::Get && (url == "/" || url.starts_with("/?")) {
             respond(
                 request,
@@ -850,14 +858,6 @@ pub fn run(cfg: &AppConfig) -> Result<()> {
                 FRONTEND.replace("__HYDROGEN_API_TOKEN__", &token),
             );
         } else if url.starts_with("/api/") {
-            if let Some((status, message)) = request_security_error(&request, address, &token) {
-                json(request, status, json!({"error":message}));
-                continue;
-            }
-            if request.method() == &Method::Options {
-                respond(request, 204, "application/json; charset=utf-8", String::new());
-                continue;
-            }
             // Each request gets its own worker thread. Long-running RAG inference
             // must never block health checks, history, search, or job polling.
             let effective_cfg = AppConfig::load().unwrap_or_else(|_| cfg.clone());
