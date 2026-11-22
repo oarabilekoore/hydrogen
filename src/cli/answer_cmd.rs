@@ -847,6 +847,22 @@ mod html_tests {
     use super::*;
 
     #[test]
+    fn grounding_mode_changes_the_answer_evidence_policy() {
+        let (grounded_system, grounded_prompt) =
+            build_answer_prompts("Define entropy", "[1] Lecture notes\\nEntropy is a state function.", true);
+        assert!(grounded_system.contains("only the current retrieved excerpts"));
+        assert!(grounded_prompt.contains("ONLY permitted evidence"));
+        assert!(grounded_prompt.contains("[1] Lecture notes"));
+
+        let (general_system, general_prompt) =
+            build_answer_prompts("What is entropy?", "", false);
+        assert!(general_system.contains("general knowledge and reasoning"));
+        assert!(general_prompt.contains("You may use general knowledge"));
+        assert!(general_prompt.contains("No matching indexed excerpts were found."));
+        assert!(!general_prompt.contains("ONLY permitted evidence"));
+    }
+
+    #[test]
     fn conversation_history_excludes_the_current_user_turn_and_bounds_context() {
         let history = vec![
             json!({"role":"user","content":"first"}),
