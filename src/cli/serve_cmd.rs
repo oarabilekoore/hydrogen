@@ -160,6 +160,43 @@ fn handle_api(mut request: Request, cfg: &AppConfig, store: &KnowledgeStore, job
         return;
     }
 
+    if parts.as_slice() == ["api", "history"] && method == Method::Get {
+        let limit = query_parameter(&url, "limit")
+            .and_then(|value| value.parse::<usize>().ok())
+            .unwrap_or(100)
+            .clamp(1, 500);
+        match store.list_visits(limit) {
+            Ok(visits) => json(request, 200, json!({"visits":visits})),
+            Err(error) => json(request, 500, json!({"error":error.to_string()})),
+        }
+        return;
+    }
+
+    if parts.as_slice() == ["api", "models"] && method == Method::Get {
+        let endpoint = cfg.settings.answer.endpoint.trim_end_matches('/');
+        let output = Command::new("curl")
+            .args(["--silent", "--show-error", "--fail", "--connect-timeout", "2", "--max-time", "5", &format!("{endpoint}/api/tags")])
+            .output();
+        match output {
+            Ok(output) if output.status.success() => {
+                match serde_json::from_slice::<Value>(&output.stdout) {
+                    Ok(value) => {
+                        let models = value.get("models").and_then(Value::as_array)
+                            .cloned().unwrap_or_default();
+                        json(request, 200, json!({"models":models,"selected":cfg.settings.answer.model}));
+                    }
+                    Err(error) => json(request, 502, json!({"error":format!("Ollama returned invalid model data: {error}")})),
+                }
+            }
+            Ok(output) => json(request, 502, json!({
+                "error":String::from_utf8_lossy(&output.stderr).trim().to_string(),
+                "selected":cfg.settings.answer.model
+            })),
+            Err(error) => json(request, 502, json!({"error":format!("could not query Ollama models: {error}")})),
+        }
+        return;
+    }
+
     if parts.len() == 3 && parts[0] == "api" && parts[1] == "jobs" && method == Method::Get {
         let id = parts[2];
         let value = jobs.lock().ok().and_then(|jobs| jobs.get(id).cloned());
