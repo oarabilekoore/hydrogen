@@ -7,7 +7,8 @@ use clap::Args;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::path::Path;
-use std::process::Command;
+use std::io::{BufRead, BufReader, Write};
+use std::process::{Command, Stdio};
 
 #[derive(Args, Debug)]
 pub struct AnswerArgs {
@@ -28,6 +29,9 @@ pub struct AnswerArgs {
     /// Reuse an existing conversation as multi-turn model context
     #[arg(long)]
     pub conversation: Option<String>,
+    /// Emit incremental Ollama token events as newline-delimited JSON
+    #[arg(long, hide = true)]
+    pub stream: bool,
     /// Do not create a saved conversation (used by the frontend chat worker)
     #[arg(long, hide = true)]
     pub no_save: bool,
@@ -83,6 +87,67 @@ fn recent_history_messages(mut history: Vec<Value>, query: &str) -> Vec<Value> {
         }
     }
     history
+}
+
+fn visible_stream_text(raw: &str) -> String {
+    let lower = raw.to_ascii_lowercase();
+    let mut output = String::new();
+    let mut cursor = 0;
+    let mut in_think = false;
+    while cursor < raw.len() {
+        if in_think {
+            if let Some(relative) = lower[cursor..].find("</think>") {
+                cursor += relative + "</think>".len();
+                in_think = false;
+            } else { break; }
+        } else if let Some(relative) = lower[cursor..].find("<think>") {
+            let start = cursor + relative;
+            output.push_str(&raw[cursor..start]);
+            cursor = start + "<think>".len();
+            in_think = true;
+        } else {
+            let tail = &lower[cursor..];
+            let held = (1..="<think>".len() - 1).rev().find(|length| "<think>".starts_with(&tail[tail.len().saturating_sub(*length)..]));
+            let end = held.map(|length| raw.len() - length).unwrap_or(raw.len());
+            output.push_str(&raw[cursor..end]);
+            break;
+        }
+    }
+    output
+}
+
+fn stream_ollama_chat(endpoint: &str, payload: &str, timeout_seconds: u64, mut on_delta: impl FnMut(&str)) -> std::result::Result<String, String> {
+    let mut child = Command::new("curl")
+        .args(["--silent", "--show-error", "--fail-with-body", "--no-buffer", "--connect-timeout", "2", "--max-time", &timeout_seconds.to_string(), &format!("{}/api/chat", endpoint.trim_end_matches('/')), "-H", "Content-Type: application/json", "--data-binary", payload])
+        .stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()
+        .map_err(|error| format!("Could not start curl for Ollama request: {error}"))?;
+    let stdout = child.stdout.take().ok_or_else(|| "could not read Ollama stream".to_string())?;
+    let reader = BufReader::new(stdout);
+    let mut raw = String::new();
+    let mut emitted = 0usize;
+    let mut stream_error = None;
+    for line in reader.lines() {
+        let line = line.map_err(|error| format!("could not read Ollama stream: {error}"))?;
+        if line.trim().is_empty() { continue; }
+        let value: Value = serde_json::from_str(&line).map_err(|error| format!("Ollama returned invalid streaming JSON: {error}"))?;
+        if let Some(error) = value.get("error").and_then(Value::as_str) { stream_error = Some(error.to_string()); break; }
+        if let Some(token) = value.pointer("/message/content").and_then(Value::as_str) {
+            raw.push_str(token);
+            let visible = visible_stream_text(&raw);
+            if visible.len() > emitted { on_delta(&visible[emitted..]); emitted = visible.len(); }
+        }
+        if value.get("done").and_then(Value::as_bool) == Some(true) { break; }
+    }
+    drop(reader);
+    let output = child.wait_with_output().map_err(|error| format!("could not finish Ollama stream: {error}"))?;
+    if let Some(error) = stream_error { return Err(format!("Ollama request failed: {error}")); }
+    if !output.status.success() {
+        let detail = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(format!("Ollama streaming request failed ({}): {}", output.status, if detail.is_empty() { "no diagnostic returned" } else { &detail }));
+    }
+    let answer = strip_think_blocks(&raw);
+    if answer.is_empty() { return Err("Ollama completed without answer text. Try a non-thinking model or increase answer.max_output_tokens.".to_string()); }
+    Ok(answer)
 }
 
 fn passage_key(hit: &crate::domain::document::SearchHit) -> String {
@@ -349,10 +414,9 @@ footer {{ color:var(--muted); font-size:12px; margin-top:32px; }}
 pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
     let query = args.query.trim();
     if query.chars().count() < cfg.settings.answer.min_query_chars || !cfg.db_path.exists() {
-        println!(
-            "{}",
-            json!({"status":"no_context","answer":"","sources":[]})
-        );
+        let result = json!({"status":"no_context","answer":"","sources":[]});
+        if args.stream { println!("{}", json!({"event":"result","result":result})); }
+        else { println!("{}", result); }
         return Ok(());
     }
 
@@ -555,6 +619,13 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
     })
     .to_string();
 
+    let (response, generation_error) = if args.stream {
+        let mut emit = |text: &str| { println!("{}", json!({"event":"delta","text":text})); let _ = std::io::stdout().flush(); };
+        match stream_ollama_chat(&answer_cfg.endpoint, &payload, answer_cfg.timeout_seconds, &mut emit) {
+            Ok(answer) => (Some(answer), None),
+            Err(error) => (None, Some(error)),
+        }
+    } else {
     let output = Command::new("curl")
         .args([
             "--silent",
@@ -625,6 +696,7 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
                 Some(format!("Could not start curl for Ollama request: {error}")),
             ),
         };
+    };
 
     match response {
         Some(answer) if !answer.trim().is_empty() => {
@@ -672,25 +744,23 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
             } else {
                 false
             };
-            println!(
-                "{}",
-                json!({
-                    "status": "ready", "model": model, "answer": answer,
-                    "sources": sources, "html_path": html_path,
-                    "browser_opened": browser_opened,
-                    "conversation_id": conversation_id
-                })
-            );
+            let result = json!({
+                "status": "ready", "model": model, "answer": answer,
+                "sources": sources, "html_path": html_path,
+                "browser_opened": browser_opened,
+                "conversation_id": conversation_id
+            });
+            if args.stream { println!("{}", json!({"event":"result","result":result})); }
+            else { println!("{}", result); }
         }
         _ => {
-            println!(
-                "{}",
-                json!({
-                    "status": "unavailable", "model": model, "answer": "",
-                    "sources": sources,
-                    "error": generation_error.unwrap_or_else(|| "Ollama returned no answer.".to_string())
-                })
-            );
+            let result = json!({
+                "status": "unavailable", "model": model, "answer": "",
+                "sources": sources,
+                "error": generation_error.unwrap_or_else(|| "Ollama returned no answer.".to_string())
+            });
+            if args.stream { println!("{}", json!({"event":"result","result":result})); }
+            else { println!("{}", result); }
         }
     }
     Ok(())
@@ -713,6 +783,14 @@ mod html_tests {
         let long = "x".repeat(2000);
         let prepared = recent_history_messages(vec![json!({"role":"assistant","content":long})], "next");
         assert_eq!(prepared[0]["content"].as_str().unwrap().chars().count(), 1500);
+    }
+
+    #[test]
+    fn streaming_hides_partial_and_complete_thinking_blocks() {
+        assert_eq!(visible_stream_text("Answer <thi"), "Answer ");
+        assert_eq!(visible_stream_text("Answer <think>secret"), "Answer ");
+        assert_eq!(visible_stream_text("Answer <think>secret</think> done"), "Answer  done");
+        assert_eq!(visible_stream_text("Visible"), "Visible");
     }
 
     #[test]
