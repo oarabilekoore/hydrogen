@@ -73,14 +73,40 @@ fn passage_key(hit: &crate::domain::document::SearchHit) -> String {
 
 /// Extract the user-facing answer from both Ollama chat and legacy generate
 /// response shapes. Deliberately never substitute the model's thinking field.
+fn strip_think_blocks(input: &str) -> String {
+    let mut output = String::with_capacity(input.len());
+    let mut rest = input;
+    let mut in_think = false;
+    loop {
+        let lower = rest.to_ascii_lowercase();
+        if in_think {
+            if let Some(end) = lower.find("</think>") {
+                rest = &rest[end + "</think>".len()..];
+                in_think = false;
+            } else {
+                break;
+            }
+        } else if let Some(start) = lower.find("<think>") {
+            output.push_str(&rest[..start]);
+            rest = &rest[start + "<think>".len()..];
+            in_think = true;
+        } else {
+            output.push_str(rest);
+            break;
+        }
+    }
+    output.trim().to_string()
+}
+
+/// Extract user-facing answer text from Ollama chat and legacy generate responses.
+/// Thinking blocks are never exposed as answer text.
 fn extract_ollama_answer(value: &Value) -> Option<String> {
     value
         .pointer("/message/content")
         .and_then(Value::as_str)
         .or_else(|| value.get("response").and_then(Value::as_str))
-        .map(str::trim)
+        .map(strip_think_blocks)
         .filter(|answer| !answer.is_empty())
-        .map(str::to_owned)
 }
 
 fn ollama_empty_diagnostic(value: &Value) -> String {
@@ -478,9 +504,9 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
          If sources disagree or are incomplete, explicitly say so. Keep the answer concise.\n\n\
          QUESTION:\n{query}\n\nRETRIEVED INDEXED EXCERPTS:\n{context}\nANSWER:"
     );
-    // Use /api/chat and explicitly disable thinking for this source-grounded
-    // answer path. Small local models can otherwise spend the entire output
-    // budget in a private reasoning channel and return an empty final answer.
+    // Do not force the Ollama-specific `think` option here. It is not
+    // supported by every model/version; model capability negotiation belongs
+    // to the provider API rather than being guessed by the client.
     let payload = json!({
         "model": model,
         "messages": [
@@ -490,7 +516,6 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
             }
         ],
         "stream": false,
-        "think": false,
         "options": {
             "num_ctx": answer_cfg.context_window,
             "num_predict": answer_cfg.max_output_tokens,
@@ -662,6 +687,18 @@ mod html_tests {
             extract_ollama_answer(&value).as_deref(),
             Some("legacy answer")
         );
+    }
+
+    #[test]
+    fn strips_think_blocks_without_removing_surrounding_answer() {
+        let value = json!({"message":{"content":"Before. <think>private reasoning</think> After."}});
+        assert_eq!(extract_ollama_answer(&value).as_deref(), Some("Before.  After."));
+    }
+
+    #[test]
+    fn ignores_a_response_that_contains_only_a_think_block() {
+        let value = json!({"response":"<think>private reasoning</think>"});
+        assert_eq!(extract_ollama_answer(&value), None);
     }
 
     #[test]

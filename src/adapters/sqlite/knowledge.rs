@@ -42,6 +42,15 @@ pub struct WebPageRecord {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct VisitSummary {
+    pub id: i64,
+    pub page_id: i64,
+    pub url: String,
+    pub title: String,
+    pub visited_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct KnowledgeHit {
     pub kind: String,
     pub id: String,
@@ -390,6 +399,26 @@ impl KnowledgeStore {
             )?;
         }
         Ok(())
+    }
+
+    /// Return the most recent visits to pages in the local knowledge store.
+    pub fn list_visits(&self, limit: usize) -> rusqlite::Result<Vec<VisitSummary>> {
+        let conn = self.connect()?;
+        let mut statement = conn.prepare(
+            "SELECT v.id,v.page_id,p.url,p.title,v.visited_at
+             FROM web_visits v JOIN web_pages p ON p.id=v.page_id
+             ORDER BY v.visited_at DESC,v.id DESC LIMIT ?1",
+        )?;
+        let rows = statement.query_map(params![limit.clamp(1, 500) as i64], |row| {
+            Ok(VisitSummary {
+                id: row.get(0)?,
+                page_id: row.get(1)?,
+                url: row.get(2)?,
+                title: row.get(3)?,
+                visited_at: row.get(4)?,
+            })
+        })?;
+        rows.collect()
     }
 
     pub fn search_saved_knowledge(

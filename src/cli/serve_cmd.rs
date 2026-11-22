@@ -100,6 +100,50 @@ fn set_job(jobs: &JobStore, id: &str, value: Value) {
     }
 }
 
+fn request_security_error(request: &Request, bind_address: &str) -> Option<(u16, &'static str)> {
+    let header_value = |name: &str| {
+        request.headers().iter()
+            .find(|item| item.field.equiv(name))
+            .map(|item| item.value.as_str())
+    };
+
+    let port = bind_address.rsplit_once(':').map(|(_, port)| port).unwrap_or("");
+    let host = header_value("Host");
+    let valid_host = host.map(|value| {
+        let value = value.trim().to_ascii_lowercase();
+        value == bind_address.to_ascii_lowercase()
+            || value == format!("localhost:{port}")
+            || value == format!("127.0.0.1:{port}")
+            || value == format!("[::1]:{port}")
+    }).unwrap_or(false);
+    if !valid_host {
+        return Some((400, "invalid Host header"));
+    }
+
+    if let Some(origin) = header_value("Origin") {
+        let origin = origin.trim().trim_end_matches('/');
+        let valid_origin = origin == format!("http://localhost:{port}")
+            || origin == format!("http://127.0.0.1:{port}")
+            || origin == format!("http://[::1]:{port}")
+            || origin.starts_with("chrome-extension://");
+        if !valid_origin {
+            return Some((403, "request Origin is not allowed"));
+        }
+    }
+
+    let is_mutating = request.method() == &Method::Post
+        || request.method() == &Method::Put
+        || request.method() == &Method::Patch
+        || request.method() == &Method::Delete;
+    if is_mutating {
+        let content_type = header_value("Content-Type").unwrap_or("");
+        if !content_type.to_ascii_lowercase().starts_with("application/json") {
+            return Some((415, "mutating API requests must use application/json"));
+        }
+    }
+    None
+}
+
 fn handle_api(mut request: Request, cfg: &AppConfig, store: &KnowledgeStore, jobs: &JobStore) {
     let method = request.method().clone();
     let url = request.url().to_string();
@@ -117,6 +161,43 @@ fn handle_api(mut request: Request, cfg: &AppConfig, store: &KnowledgeStore, job
             200,
             json!({"status":"ok","model":cfg.settings.answer.model}),
         );
+        return;
+    }
+
+    if parts.as_slice() == ["api", "history"] && method == Method::Get {
+        let limit = query_parameter(&url, "limit")
+            .and_then(|value| value.parse::<usize>().ok())
+            .unwrap_or(100)
+            .clamp(1, 500);
+        match store.list_visits(limit) {
+            Ok(visits) => json(request, 200, json!({"visits":visits})),
+            Err(error) => json(request, 500, json!({"error":error.to_string()})),
+        }
+        return;
+    }
+
+    if parts.as_slice() == ["api", "models"] && method == Method::Get {
+        let endpoint = cfg.settings.answer.endpoint.trim_end_matches('/');
+        let output = Command::new("curl")
+            .args(["--silent", "--show-error", "--fail", "--connect-timeout", "2", "--max-time", "5", &format!("{endpoint}/api/tags")])
+            .output();
+        match output {
+            Ok(output) if output.status.success() => {
+                match serde_json::from_slice::<Value>(&output.stdout) {
+                    Ok(value) => {
+                        let models = value.get("models").and_then(Value::as_array)
+                            .cloned().unwrap_or_default();
+                        json(request, 200, json!({"models":models,"selected":cfg.settings.answer.model}));
+                    }
+                    Err(error) => json(request, 502, json!({"error":format!("Ollama returned invalid model data: {error}")})),
+                }
+            }
+            Ok(output) => json(request, 502, json!({
+                "error":String::from_utf8_lossy(&output.stderr).trim().to_string(),
+                "selected":cfg.settings.answer.model
+            })),
+            Err(error) => json(request, 502, json!({"error":format!("could not query Ollama models: {error}")})),
+        }
         return;
     }
 
@@ -203,6 +284,8 @@ fn handle_api(mut request: Request, cfg: &AppConfig, store: &KnowledgeStore, job
             return;
         }
         let question = content.to_string();
+        let selected_model = input.get("model").and_then(Value::as_str)
+            .map(str::trim).filter(|value| !value.is_empty()).map(str::to_owned);
         let conversation = conversation_id.to_string();
         let stamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -215,7 +298,7 @@ fn handle_api(mut request: Request, cfg: &AppConfig, store: &KnowledgeStore, job
         let worker_jobs = Arc::clone(jobs);
         let worker_conversation = conversation.clone();
         let db_path = cfg.db_path.clone();
-        let model = cfg.settings.answer.model.clone();
+        let model = selected_model.unwrap_or_else(|| cfg.settings.answer.model.clone());
         let worker_id = job_id.clone();
         thread::spawn(move || {
             set_job(
@@ -223,7 +306,7 @@ fn handle_api(mut request: Request, cfg: &AppConfig, store: &KnowledgeStore, job
                 &worker_id,
                 json!({"id":worker_id,"status":"generating","model":model}),
             );
-            let output = run_cli(&["answer", "--no-save", &question]);
+            let output = run_cli(&["answer", "--no-save", "--model", &model, &question]);
             let result = match output {
                 Ok(output) => match serde_json::from_slice::<Value>(&output.stdout) {
                     Ok(value) => value,
@@ -655,6 +738,10 @@ pub fn run(cfg: &AppConfig) -> Result<()> {
                 FRONTEND.to_string(),
             );
         } else if url.starts_with("/api/") {
+            if let Some((status, message)) = request_security_error(&request, address) {
+                json(request, status, json!({"error":message}));
+                continue;
+            }
             // Each request gets its own worker thread. Long-running RAG inference
             // must never block health checks, history, search, or job polling.
             let effective_cfg = AppConfig::load().unwrap_or_else(|_| cfg.clone());
