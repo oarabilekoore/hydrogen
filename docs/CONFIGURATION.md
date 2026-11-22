@@ -1,38 +1,22 @@
 # Hydrogen configuration
 
-Hydrogen is configured centrally through:
+Hydrogen uses one validated TOML configuration for its CLI, daemon, local HTTP service, web frontend and integrations.
 
-`~/.config/hydrogen/config.toml`
+The default file is `~/.config/hydrogen/config.toml`. Override the location with `HYDROGEN_CONFIG`, or set `XDG_CONFIG_HOME` to change the parent configuration directory. If the file does not exist, Hydrogen uses built-in defaults. It does not write a configuration file automatically.
 
-Override the location with `HYDROGEN_CONFIG`, or set `XDG_CONFIG_HOME` to
-change the parent configuration directory. If the file does not exist,
-Hydrogen uses the built-in defaults. It never writes a configuration file
-automatically.
+Create a starter file and inspect effective settings:
 
-Create a complete starter file:
-
-```sh
+~~~sh
 hydrogen config init
-```
-
-Inspect the effective configuration (including environment overrides):
-
-```sh
 hydrogen config show
 hydrogen config path
-```
+~~~
 
 ## Example
 
-```toml
+~~~toml
 [paths]
-roots = [
-  "~/Documents",
-  "~/Downloads",
-  "~/Pictures",
-  "~/Videos",
-  "~/Projects",
-]
+roots = ["~/Documents", "~/Downloads", "~/Pictures", "~/Videos", "~/Projects"]
 
 [search]
 default_limit = 25
@@ -88,81 +72,56 @@ timeout_seconds = 60
 debounce_ms = 350
 reconcile_interval_seconds = 60
 poll_interval_ms = 150
-```
+~~~
 
-Paths support normal TOML strings. Use absolute paths or paths relative to the
-home directory; Hydrogen expands a leading `~` in configured search roots,
-state directories and model directories.
+Paths support normal TOML strings. Use absolute paths or paths relative to the home directory; Hydrogen expands a leading `~` in configured search roots, state directories and model directories.
 
-## What is configurable
+## Configuration groups
 
-- `paths.roots`: directories scanned by both one-shot sync and the daemon.
+- `paths.roots`: directories scanned by one-shot sync and the daemon.
 - `paths.state_dir` and `paths.models_dir`: index/cache and model storage.
-- `search.*`: default result count, hidden files, scan depth, scan cap and
-  excluded directory names/extensions.
-- `indexing.pdf.enabled`: whether PDF page indexing is enabled.
-- `indexing.pdf.ocr_scanned_pages`: render and OCR image-only/scanned PDF pages.
-  Enabled by default, so image-only lecture PDFs are not silently ignored.
-- `indexing.images.*`: standalone image content indexing, printed OCR, optional
-  captioning, size/dimension thresholds, batch size and skipped directories. Disabling
-  this turns off image OCR/caption/embedding work; ordinary file metadata remains searchable.
-- `indexing.embeddings_enabled`: whether semantic text and visual embeddings
-  are maintained and used by default search.
-- `models.*` and `resources.*`: OCR model paths and the CPU inference budget.
-- `answer.*`: Ollama endpoint/model, retrieval count, context and generation
-  limits. `hydrogen answer QUESTION` uses these values; CLI flags can override
-  the model and passage count for one invocation.
+- `search.*`: result count, hidden files, scan depth, scan cap and excluded directory names/extensions.
+- `indexing.pdf.*`: PDF page indexing, scanned-page OCR and page limits.
+- `indexing.images.*`: standalone image indexing, printed OCR, optional captioning, size/dimension thresholds, batch size and skipped directories.
+- `indexing.embeddings_enabled`: whether semantic text and visual embeddings are maintained and used by default search.
+- `models.*` and `resources.*`: OCR model paths and CPU inference budget.
+- `answer.*`: Ollama endpoint/model, retrieval count, context and generation limits.
 - `watch.*`: filesystem event debounce, reconciliation and polling intervals.
+- `frontend.*`: local service bind address and automatic frontend service startup.
+- `web.*`: article capture, qualification, page versioning and domain/URL rules.
+- `conversations.*`: conversation indexing and browser conversation capture.
 - `calendar.*`: calendar globs and default event duration.
 
-Hydrogen intentionally does not claim to extract every arbitrary embedded image
-object from otherwise text-based PDFs. The PDF image setting controls OCR of
-scanned/image-only pages, which is the existing supported path. Embedded-object
-extraction would be a separate indexing feature.
+Hydrogen does not claim to extract every arbitrary embedded image object from otherwise text-based PDFs. The PDF image setting controls OCR of scanned/image-only pages. Embedded-object extraction would be a separate feature.
 
 ## Updating settings
 
-You can edit TOML directly, or use the validated setter for common options:
+Edit TOML directly, or use the validated setter for common options:
 
-```sh
+~~~sh
 hydrogen config set answer.model qwen3.5:2b-q4_K_M
 hydrogen config set answer.retrieval_limit 8
 hydrogen config set indexing.pdf.ocr_scanned_pages true
 hydrogen config set indexing.images.enabled true
 hydrogen config set indexing.embeddings_enabled true
 hydrogen config set paths.roots '["/home/me/Documents", "/home/me/Notes"]'
-```
+~~~
 
-For list settings, pass a JSON array or a comma-separated list. `config set`
-writes the configuration file and refuses unknown keys. `config show` displays
-the effective settings after validation and environment overrides.
+For list settings, pass a JSON array or a comma-separated list. `config set` writes the configuration file and refuses unknown keys. `config show` displays effective settings after validation and environment overrides.
 
-Legacy environment overrides remain supported for state/model directories,
-semantic indexing, inference threads, PDF page limits and image captions.
-The TOML file is the normal source of truth; environment variables are intended
-for service-level overrides and temporary testing.
+Legacy environment overrides remain supported for state/model directories, semantic indexing, inference threads, PDF page limits and image captions. TOML is the normal source of truth; environment variables are intended for service-level overrides and temporary testing.
 
-## Launcher integration
+## Client and launcher integration
 
-The Quickshell launcher should call Hydrogen without duplicating model names,
-RAG limits, search limits or indexing environment variables:
+All clients should use Hydrogen's own configuration rather than duplicating model names, RAG limits, search limits or indexing environment variables. For example:
 
 - `hydrogen query QUESTION`
 - `hydrogen answer QUESTION`
 - `hydrogen index sync`
 - `hydrogen index sync-images`
 
-Those commands use the effective Hydrogen configuration. The launcher reads
-`hydrogen config show` to reflect whether semantic indexing is enabled, and
-changes that setting through `hydrogen config set`.
+A desktop launcher may read `hydrogen config show` to display effective settings and use `hydrogen config set` to change supported values. This is not specific to Quickshell; any shell, launcher or application can follow the same contract.
 
+## Fixed implementation boundaries
 
-## Intentionally fixed implementation boundaries
-
-Not every constant should become a user preference. Supported file-format lists,
-SQLite schema details, parser/decompression safety ceilings, and low-level OCR
-engine invariants remain code-owned. They protect correctness and memory use
-rather than express ordinary user policy. The configurable limits are validated
-and clamped to safe ranges. If a new backend or file format is added, it should
-extend the schema deliberately instead of adding another unrelated environment
-variable or launcher-only constant.
+Supported file-format lists, SQLite schema details, parser/decompression safety ceilings and low-level OCR engine invariants remain code-owned. They protect correctness and memory use rather than express ordinary user policy. Configurable limits are validated and clamped to safe ranges.
