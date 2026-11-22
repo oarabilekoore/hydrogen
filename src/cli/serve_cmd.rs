@@ -631,7 +631,7 @@ fn handle_api(mut request: Request, cfg: &AppConfig, store: &KnowledgeStore, job
         if url.is_empty() || title.trim().is_empty() || content.trim().is_empty() { json(request,400,json!({"error":"url, title and readable content are required"})); return; }
         let normalized_url = match normalize_http_url(url) { Ok(v) => v, Err(e) => { json(request,400,json!({"error":e})); return; } };
         let canonical = match normalize_http_url(canonical_raw) { Ok(v) => v, Err(e) => { json(request,400,json!({"error":format!("invalid canonical URL: {e}")})); return; } };
-        if let Err(reason) = web_rule_decision(&cfg.settings.web, &normalized_url) { json(request,403,json!({"error":format!("page blocked by web capture rules: {reason}")})); return; }
+        if let Err(reason) = web_rule_decision(&cfg.settings.web, &normalized_url).and_then(|_| web_rule_decision(&cfg.settings.web, &canonical)) { json(request,403,json!({"error":format!("page blocked by web capture rules: {reason}")})); return; }
         let max_bytes = cfg
             .settings
             .web
@@ -668,7 +668,7 @@ fn handle_api(mut request: Request, cfg: &AppConfig, store: &KnowledgeStore, job
         ) {
             Ok(id) => {
                 if cfg.settings.web.track_visits {
-                    let _ = store.record_visit(canonical);
+                    let _ = store.record_visit(&canonical);
                 }
                 json(
                     request,
@@ -999,5 +999,39 @@ mod query_tests {
         assert!(super::constant_time_eq("0123456789abcdef", "0123456789abcdef"));
         assert!(!super::constant_time_eq("0123456789abcdef", "0123456789abcdeg"));
         assert!(!super::constant_time_eq("", "0123456789abcdef"));
+    }
+
+    #[test]
+    fn url_normalization_removes_fragments_and_default_ports() {
+        assert_eq!(super::normalize_http_url("HTTPS://Example.COM:443/article#section").unwrap(), "https://example.com/article");
+        assert!(super::normalize_http_url("file:///etc/passwd").is_err());
+        assert!(super::normalize_http_url("https://user:pass@example.com/").is_err());
+    }
+
+    #[test]
+    fn domain_rules_match_only_exact_hosts_and_subdomains() {
+        assert!(super::url_domain_matches("https://blog.example.com/post", "example.com"));
+        assert!(super::url_domain_matches("https://example.com/post", "example.com"));
+        assert!(!super::url_domain_matches("https://notexample.com/post", "example.com"));
+    }
+
+    #[test]
+    fn empty_patterns_do_not_exclude_every_url_and_globs_match_paths() {
+        assert!(!super::url_matches_patterns("https://example.com/article", &[]));
+        assert!(!super::url_matches_patterns("https://example.com/article", &["".into()]));
+        assert!(super::url_matches_patterns("https://example.com/login?next=/home", &["*://*/login*".into()]));
+        assert!(!super::url_matches_patterns("https://example.com/blog/login-tips", &["*://*/login*".into()]));
+    }
+
+    #[test]
+    fn web_rules_respect_allow_and_exclude_lists() {
+        let mut web = crate::config::WebConfig::default();
+        web.exclude_domains.clear();
+        web.exclude_patterns.clear();
+        web.allow_domains = vec!["example.com".into()];
+        assert!(super::web_rule_decision(&web, "https://blog.example.com/post").is_ok());
+        assert!(super::web_rule_decision(&web, "https://other.test/post").is_err());
+        web.exclude_domains.push("private.example.com".into());
+        assert!(super::web_rule_decision(&web, "https://private.example.com/post").is_err());
     }
 }
