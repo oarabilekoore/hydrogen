@@ -12,6 +12,8 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 use tiny_http::{Header, Method, Request, Response, Server, StatusCode};
+use glob::{MatchOptions, Pattern};
+use url::Url;
 
 const FRONTEND: &str = include_str!("../frontend/index.html");
 
@@ -210,6 +212,43 @@ fn request_security_error(request: &Request, bind_address: &str, token: &str) ->
     None
 }
 
+fn normalize_http_url(raw: &str) -> std::result::Result<String, &'static str> {
+    let mut parsed = Url::parse(raw.trim()).map_err(|_| "URL must be an absolute HTTP or HTTPS URL")?;
+    if !matches!(parsed.scheme(), "http" | "https") || parsed.host_str().is_none()
+        || !parsed.username().is_empty() || parsed.password().is_some() {
+        return Err("only HTTP and HTTPS URLs without embedded credentials are supported");
+    }
+    parsed.set_fragment(None);
+    Ok(parsed.to_string())
+}
+fn normalized_domain(raw: &str) -> Option<String> {
+    let value = raw.trim().trim_start_matches('.').trim_end_matches('.').to_ascii_lowercase();
+    if value.is_empty() || value.contains('/') || value.contains('*') || value.contains(':') { return None; }
+    let parsed = Url::parse(&format!("http://{value}/")).ok()?;
+    let host = parsed.host_str()?.to_ascii_lowercase();
+    (host == value).then_some(host)
+}
+fn url_domain_matches(url: &str, domain: &str) -> bool {
+    let host = Url::parse(url).ok().and_then(|value| value.host_str().map(str::to_ascii_lowercase));
+    match (host, normalized_domain(domain)) {
+        (Some(host), Some(domain)) => host == domain || host.ends_with(&format!(".{domain}")),
+        _ => false,
+    }
+}
+fn url_matches_patterns(url: &str, patterns: &[String]) -> bool {
+    let options = MatchOptions { case_sensitive: false, require_literal_leading_dot: false, require_literal_separator: false };
+    patterns.iter().filter(|pattern| !pattern.trim().is_empty()).any(|pattern| {
+        Pattern::new(pattern.trim()).map(|compiled| compiled.matches_with(url, options)).unwrap_or(false)
+    })
+}
+fn web_rule_decision(web: &crate::config::WebConfig, url: &str) -> std::result::Result<String, String> {
+    let normalized = normalize_http_url(url).map_err(str::to_string)?;
+    if web.exclude_domains.iter().any(|domain| url_domain_matches(&normalized, domain)) { return Err("domain is excluded".into()); }
+    if !web.allow_domains.is_empty() && !web.allow_domains.iter().any(|domain| url_domain_matches(&normalized, domain)) { return Err("domain is not in the allow list".into()); }
+    if url_matches_patterns(&normalized, &web.exclude_patterns) { return Err("URL matches an excluded pattern".into()); }
+    Ok(normalized)
+}
+
 fn handle_api(mut request: Request, cfg: &AppConfig, store: &KnowledgeStore, jobs: &JobStore) {
     let method = request.method().clone();
     let url = request.url().to_string();
@@ -227,6 +266,58 @@ fn handle_api(mut request: Request, cfg: &AppConfig, store: &KnowledgeStore, job
             200,
             json!({"status":"ok","model":cfg.settings.answer.model}),
         );
+        return;
+    }
+
+    if parts.as_slice() == ["api", "rules"] && method == Method::Get {
+        json(request, 200, json!({"rules":cfg.settings.web})); return;
+    }
+    if parts.as_slice() == ["api", "rules", "test"] && method == Method::Post {
+        let body = match read_body(&mut request) { Ok(v) => v, Err(e) => { json(request,400,json!({"error":e.to_string()})); return; } };
+        let input: Value = serde_json::from_str(&body).unwrap_or_else(|_| json!({}));
+        let raw = input.get("url").and_then(Value::as_str).unwrap_or("");
+        match web_rule_decision(&cfg.settings.web, raw) {
+            Ok(normalized) => json(request,200,json!({"allowed":true,"normalized_url":normalized})),
+            Err(reason) => json(request,200,json!({"allowed":false,"reason":reason})),
+        }
+        return;
+    }
+    if parts.as_slice() == ["api", "rules", "ignore"] && method == Method::Post {
+        let body = match read_body(&mut request) { Ok(v) => v, Err(e) => { json(request,400,json!({"error":e.to_string()})); return; } };
+        let input: Value = serde_json::from_str(&body).unwrap_or_else(|_| json!({}));
+        let raw = input.get("url").and_then(Value::as_str).unwrap_or("");
+        let host = match Url::parse(raw).ok().filter(|v| matches!(v.scheme(),"http"|"https")).and_then(|v| v.host_str().map(str::to_ascii_lowercase)) {
+            Some(v) => v, None => { json(request,400,json!({"error":"valid HTTP or HTTPS URL required"})); return; }
+        };
+        let mut settings = cfg.settings.clone();
+        if !settings.web.exclude_domains.iter().any(|v| normalized_domain(v).as_deref() == Some(host.as_str())) { settings.web.exclude_domains.push(host.clone()); }
+        match cfg.write_settings(&settings) { Ok(()) => json(request,200,json!({"status":"ignored","domain":host})), Err(e) => json(request,500,json!({"error":e})) }
+        return;
+    }
+    if parts.as_slice() == ["api", "rules"] && method == Method::Put {
+        let body = match read_body(&mut request) { Ok(v) => v, Err(e) => { json(request,400,json!({"error":e.to_string()})); return; } };
+        let input: Value = match serde_json::from_str(&body) { Ok(v) => v, Err(e) => { json(request,400,json!({"error":e.to_string()})); return; } };
+        let mut settings = cfg.settings.clone();
+        let web = &mut settings.web;
+        if let Some(values) = input.get("allow_domains").and_then(Value::as_array) {
+            let mut out = Vec::new();
+            for item in values { let raw = item.as_str().unwrap_or(""); let Some(value) = normalized_domain(raw) else { json(request,400,json!({"error":format!("invalid allowed domain: {raw}")})); return; }; if !out.contains(&value) { out.push(value); } }
+            web.allow_domains = out;
+        }
+        if let Some(values) = input.get("exclude_domains").and_then(Value::as_array) {
+            let mut out = Vec::new();
+            for item in values { let raw = item.as_str().unwrap_or(""); let Some(value) = normalized_domain(raw) else { json(request,400,json!({"error":format!("invalid excluded domain: {raw}")})); return; }; if !out.contains(&value) { out.push(value); } }
+            web.exclude_domains = out;
+        }
+        if let Some(values) = input.get("exclude_patterns").and_then(Value::as_array) {
+            let mut out = Vec::new();
+            for item in values { let raw = item.as_str().unwrap_or("").trim(); if raw.is_empty() { continue; } if Pattern::new(raw).is_err() { json(request,400,json!({"error":format!("invalid glob pattern: {raw}")})); return; } out.push(raw.to_string()); }
+            web.exclude_patterns = out;
+        }
+        if let Some(v) = input.get("minimum_text_length").and_then(Value::as_u64) { web.minimum_text_length = (v as usize).clamp(100,100000); }
+        if let Some(v) = input.get("minimum_paragraphs").and_then(Value::as_u64) { web.minimum_paragraphs = (v as usize).clamp(1,500); }
+        if let Some(v) = input.get("max_page_size_mb").and_then(Value::as_u64) { web.max_page_size_mb = (v as usize).clamp(1,100); }
+        match cfg.write_settings(&settings) { Ok(()) => json(request,200,json!({"status":"updated","rules":settings.web})), Err(e) => json(request,500,json!({"error":e})) }
         return;
     }
 
@@ -534,85 +625,13 @@ fn handle_api(mut request: Request, cfg: &AppConfig, store: &KnowledgeStore, job
         let url = input.get("url").and_then(Value::as_str).unwrap_or("");
         let title = input.get("title").and_then(Value::as_str).unwrap_or("");
         let content = input.get("content").and_then(Value::as_str).unwrap_or("");
-        let canonical = input
-            .get("canonical_url")
-            .and_then(Value::as_str)
-            .unwrap_or(url);
-        let manual = input
-            .get("manual")
-            .and_then(Value::as_bool)
-            .unwrap_or(false);
-        if !cfg.settings.web.enabled || (!cfg.settings.web.auto_index && !manual) {
-            json(
-                request,
-                403,
-                json!({"error":"automatic web indexing is disabled in Hydrogen configuration"}),
-            );
-            return;
-        }
-        if url.is_empty() || title.is_empty() || content.trim().is_empty() {
-            json(
-                request,
-                400,
-                json!({"error":"url, title and readable content are required"}),
-            );
-            return;
-        }
-        let host = url
-            .split_once("://")
-            .map(|(_, rest)| rest)
-            .unwrap_or(&url)
-            .split('/')
-            .next()
-            .unwrap_or("")
-            .split(':')
-            .next()
-            .unwrap_or("")
-            .to_ascii_lowercase();
-        let domain_matches = |domain: &str| host == domain || host.ends_with(&format!(".{domain}"));
-        if cfg
-            .settings
-            .web
-            .exclude_domains
-            .iter()
-            .any(|domain| domain_matches(&domain.to_ascii_lowercase()))
-        {
-            json(
-                request,
-                403,
-                json!({"error":"this domain is excluded by Hydrogen configuration"}),
-            );
-            return;
-        }
-        if !cfg.settings.web.allow_domains.is_empty()
-            && !cfg
-                .settings
-                .web
-                .allow_domains
-                .iter()
-                .any(|domain| domain_matches(&domain.to_ascii_lowercase()))
-        {
-            json(
-                request,
-                403,
-                json!({"error":"this domain is not in web.allow_domains"}),
-            );
-            return;
-        }
-        let excluded_url = cfg.settings.web.exclude_patterns.iter().any(|pattern| {
-            pattern
-                .split('*')
-                .filter(|part| !part.is_empty())
-                .all(|part| url.contains(part))
-        });
-        if excluded_url {
-            json(
-                request,
-                403,
-                json!({"error":"this URL matches a Hydrogen exclusion rule"}),
-            );
-            return;
-        }
+        let canonical_raw = input.get("canonical_url").and_then(Value::as_str).filter(|v| !v.trim().is_empty()).unwrap_or(url);
+        let manual = input.get("manual").and_then(Value::as_bool).unwrap_or(false);
+        if !cfg.settings.web.enabled || (!cfg.settings.web.auto_index && !manual) { json(request,403,json!({"error":"web indexing is disabled in Hydrogen configuration"})); return; }
+        if url.is_empty() || title.trim().is_empty() || content.trim().is_empty() { json(request,400,json!({"error":"url, title and readable content are required"})); return; }
+        let normalized_url = match normalize_http_url(url) { Ok(v) => v, Err(e) => { json(request,400,json!({"error":e})); return; } };
+        let canonical = match normalize_http_url(canonical_raw) { Ok(v) => v, Err(e) => { json(request,400,json!({"error":format!("invalid canonical URL: {e}")})); return; } };
+        if let Err(reason) = web_rule_decision(&cfg.settings.web, &normalized_url) { json(request,403,json!({"error":format!("page blocked by web capture rules: {reason}")})); return; }
         let max_bytes = cfg
             .settings
             .web
@@ -637,8 +656,8 @@ fn handle_api(mut request: Request, cfg: &AppConfig, store: &KnowledgeStore, job
         }
         let hash = blake3::hash(content.as_bytes()).to_hex().to_string();
         match store.save_web_page(
-            url,
-            canonical,
+            &normalized_url,
+            &canonical,
             title,
             content,
             input.get("author").and_then(Value::as_str),
