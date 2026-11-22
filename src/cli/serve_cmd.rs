@@ -100,6 +100,46 @@ fn set_job(jobs: &JobStore, id: &str, value: Value) {
     }
 }
 
+fn request_security_error(request: &Request, bind_address: &str) -> Option<(u16, &'static str)> {
+    let header_value = |name: &str| {
+        request.headers().iter()
+            .find(|item| item.field.equiv(name))
+            .map(|item| item.value.as_str())
+    };
+
+    let port = bind_address.rsplit_once(':').map(|(_, port)| port).unwrap_or("");
+    let host = header_value("Host");
+    let valid_host = host.map(|value| {
+        let value = value.trim().to_ascii_lowercase();
+        value == bind_address.to_ascii_lowercase()
+            || value == format!("localhost:{port}")
+            || value == format!("127.0.0.1:{port}")
+            || value == format!("[::1]:{port}")
+    }).unwrap_or(false);
+    if !valid_host {
+        return Some((400, "invalid Host header"));
+    }
+
+    if let Some(origin) = header_value("Origin") {
+        let origin = origin.trim().trim_end_matches('/');
+        let valid_origin = origin == format!("http://localhost:{port}")
+            || origin == format!("http://127.0.0.1:{port}")
+            || origin == format!("http://[::1]:{port}")
+            || origin.starts_with("chrome-extension://");
+        if !valid_origin {
+            return Some((403, "request Origin is not allowed"));
+        }
+    }
+
+    if matches!(*request.method(), Method::Post | Method::Put | Method::Patch | Method::Delete) {
+        let content_type = header_value("Content-Type").unwrap_or("");
+        if !content_type.to_ascii_lowercase().starts_with("application/json") {
+            return Some((415, "mutating API requests must use application/json"));
+        }
+    }
+    None
+}
+
 fn handle_api(mut request: Request, cfg: &AppConfig, store: &KnowledgeStore, jobs: &JobStore) {
     let method = request.method().clone();
     let url = request.url().to_string();
@@ -655,6 +695,10 @@ pub fn run(cfg: &AppConfig) -> Result<()> {
                 FRONTEND.to_string(),
             );
         } else if url.starts_with("/api/") {
+            if let Some((status, message)) = request_security_error(&request, address) {
+                json(request, status, json!({"error":message}));
+                continue;
+            }
             // Each request gets its own worker thread. Long-running RAG inference
             // must never block health checks, history, search, or job polling.
             let effective_cfg = AppConfig::load().unwrap_or_else(|_| cfg.clone());
