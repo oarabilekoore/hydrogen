@@ -1,9 +1,10 @@
 const ids = ["enabled", "captureArticles", "captureChats"];
 (async () => {
-  const values = await chrome.storage.local.get({ enabled: true, captureArticles: true, captureChats: true, apiBase: "http://127.0.0.1:17891", excludedHosts: [] });
+  const values = await chrome.storage.local.get({ enabled: true, captureArticles: true, captureChats: true, apiBase: "http://127.0.0.1:17891", excludedHosts: [], apiToken: "" });
   ids.forEach(id => { document.getElementById(id).checked = !!values[id]; });
   document.getElementById("excludedHosts").value = (values.excludedHosts || []).join(", ");
   document.getElementById("apiBase").value = values.apiBase;
+  document.getElementById("apiToken").placeholder = values.apiToken ? "Token saved. Enter a new one to replace it." : "Paste token from hydrogen --print-api-token";
 })();
 ids.forEach(id => document.getElementById(id).addEventListener("change", async event => {
   await chrome.storage.local.set({ [id]: event.target.checked });
@@ -44,4 +45,27 @@ document.getElementById("importHistory").addEventListener("click", async () => {
 document.getElementById("apiBase").addEventListener("change", async event => {
   await chrome.storage.local.set({ apiBase: event.target.value.trim() || "http://127.0.0.1:17891" });
   document.getElementById("status").textContent = "Hydrogen service address saved.";
+});
+
+
+document.getElementById("pair").addEventListener("click", async () => {
+  const status = document.getElementById("status");
+  const token = document.getElementById("apiToken").value.trim();
+  const apiBase = (document.getElementById("apiBase").value.trim() || "http://127.0.0.1:17891").replace(/\/$/, "");
+  if (!token) { status.textContent = "Enter the API token first."; return; }
+  status.textContent = "Checking Hydrogen token…";
+  try {
+    const response = await fetch(apiBase + "/api/settings", {
+      cache: "no-store",
+      headers: { "Authorization": "Bearer " + token }
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(body.error || "Hydrogen rejected this token.");
+    await chrome.storage.local.set({ apiToken: token, apiBase });
+    document.getElementById("apiToken").value = "";
+    document.getElementById("apiToken").placeholder = "Token saved.";
+    status.textContent = "Paired with Hydrogen successfully.";
+  } catch (error) {
+    status.textContent = "Pairing failed: " + error.message;
+  }
 });
