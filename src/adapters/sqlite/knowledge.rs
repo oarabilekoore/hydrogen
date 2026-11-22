@@ -686,6 +686,37 @@ mod tests {
     }
 
     #[test]
+    fn conversations_can_be_renamed_pinned_and_deleted() {
+        let store = test_store("conversation-management");
+        let first = store.create_conversation("First").unwrap();
+        let second = store.create_conversation("Second").unwrap();
+
+        assert!(store.update_conversation(&second, Some("Renamed second"), Some(true)).unwrap());
+        let conversations = store.list_conversations(10).unwrap();
+        assert_eq!(conversations[0].id, second);
+        assert_eq!(conversations[0].title, "Renamed second");
+        assert!(conversations[0].pinned);
+        assert_eq!(conversations[1].id, first);
+        assert!(!conversations[1].pinned);
+
+        store.append_message(&second, "user", "A message to cascade", None).unwrap();
+        assert!(store.delete_conversation(&second).unwrap());
+        assert!(store.get_messages(&second).unwrap().is_empty());
+        assert!(!store.delete_conversation(&second).unwrap());
+    }
+
+    #[test]
+    fn pinned_column_migration_is_safe_to_run_repeatedly() {
+        let store = test_store("conversation-pinned-migration");
+        let conn = store.connect().unwrap();
+        ensure_schema(&conn).unwrap();
+        ensure_schema(&conn).unwrap();
+        let id = store.create_conversation("Still works").unwrap();
+        assert!(!store.list_conversations(10).unwrap()[0].pinned);
+        assert!(!id.is_empty());
+    }
+
+    #[test]
     fn conversations_persist_and_are_searchable() {
         let store = test_store("conversation");
         let id = store.create_conversation("New conversation").unwrap();
