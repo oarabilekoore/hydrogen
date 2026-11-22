@@ -298,10 +298,10 @@ fn queue_answer_job(jobs: &JobStore, conversation_id: &str, question: String, mo
                 return;
             }
         };
-        let mut reader = BufReader::new(stdout);
+        let reader = BufReader::new(stdout);
         let mut result: Option<Value> = None;
         let mut parse_error: Option<String> = None;
-        for line in reader.by_ref().lines() {
+        for line in reader.lines() {
             let line = match line {
                 Ok(line) => line,
                 Err(error) => { parse_error = Some(format!("could not read answer stream: {error}")); break; }
@@ -321,7 +321,6 @@ fn queue_answer_job(jobs: &JobStore, conversation_id: &str, question: String, mo
                 _ => {}
             }
         }
-        drop(reader);
         let output = match child.wait_with_output() {
             Ok(output) => output,
             Err(error) => {
@@ -362,7 +361,7 @@ fn queue_answer_job(jobs: &JobStore, conversation_id: &str, question: String, mo
 fn request_security_error(request: &Request, bind_address: &str, token: &str) -> Option<(u16, &'static str)> {
     let header_value = |name: &str| {
         request.headers().iter()
-            .find(|item| item.field.as_str().eq_ignore_ascii_case(name))
+            .find(|item| item.field.as_str().as_bytes().eq_ignore_ascii_case(name.as_bytes()))
             .map(|item| item.value.as_str())
     };
 
@@ -438,10 +437,74 @@ fn url_domain_matches(url: &str, domain: &str) -> bool {
     }
 }
 fn url_matches_patterns(url: &str, patterns: &[String]) -> bool {
-    let options = MatchOptions { case_sensitive: false, require_literal_leading_dot: false, require_literal_separator: false };
-    patterns.iter().filter(|pattern| !pattern.trim().is_empty()).any(|pattern| {
-        Pattern::new(pattern.trim()).map(|compiled| compiled.matches_with(url, options)).unwrap_or(false)
-    })
+    let parsed = match Url::parse(url) {
+        Ok(parsed) => parsed,
+        Err(_) => return false,
+    };
+    let options = MatchOptions {
+        case_sensitive: false,
+        require_literal_leading_dot: false,
+        require_literal_separator: true,
+    };
+
+    let matches = |candidate: &str, pattern: &str| {
+        Pattern::new(pattern)
+            .map(|compiled| compiled.matches_with(candidate, options))
+            .unwrap_or(false)
+    };
+
+    patterns.iter().filter_map(|pattern| {
+        let pattern = pattern.trim();
+        if pattern.is_empty() {
+            return None;
+        }
+
+        // URL patterns are matched by component. In particular, a path wildcard
+        // must not consume a slash into a different path segment, while query
+        // strings must not make an otherwise matching path fail.
+        let (scheme_pattern, remainder) = match pattern.split_once("://") {
+            Some(parts) => parts,
+            None => return Some(matches(url, pattern)),
+        };
+        let (authority_pattern, path_pattern) = remainder
+            .split_once('/')
+            .map(|(authority, path)| (authority, Some(format!("/{path}"))))
+            .unwrap_or((remainder, None));
+
+        let host = parsed.host_str()?;
+        let authority = match parsed.port() {
+            Some(port) => format!("{host}:{port}"),
+            None => host.to_string(),
+        };
+
+        let scheme_matches = matches!(parsed.scheme(), "http" | "https")
+            && matches(parsed.scheme(), scheme_pattern);
+        let authority_matches = matches(&authority, authority_pattern);
+        let path_matches = match path_pattern {
+            None => true,
+            Some(path_pattern) => {
+                let (path_glob, query_glob) = path_pattern
+                    .split_once('?')
+                    .map(|(path, query)| (path, Some(query)))
+                    .unwrap_or((&path_pattern, None));
+                let path = parsed.path();
+                // Match the complete path first. If a trailing wildcard is
+                // intended to cover a route, also test each segment boundary.
+                // This makes "/checkout*" cover "/checkout/order" without
+                // allowing it to match unrelated paths such as "/blog/checkout".
+                let path_matches = matches(path, path_glob)
+                    || path.match_indices('/')
+                        .skip(1)
+                        .any(|(index, _)| matches(&path[..index], path_glob));
+                let query_matches = query_glob.map(|query_glob| {
+                    matches(parsed.query().unwrap_or(""), query_glob)
+                }).unwrap_or(true);
+                path_matches && query_matches
+            }
+        };
+
+        Some(scheme_matches && authority_matches && path_matches)
+    }).any(|matched| matched)
 }
 const BUILTIN_EXCLUDED_DOMAINS: &[&str] = &[
     "paypal.com", "stripe.com", "chase.com", "bankofamerica.com",
