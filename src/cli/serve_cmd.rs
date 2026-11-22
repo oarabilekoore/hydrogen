@@ -1048,5 +1048,7 @@ mod query_tests {
         assert!(super::web_rule_decision(&web, "https://other.test/post").is_err());
         web.exclude_domains.push("private.example.com".into());
         assert!(super::web_rule_decision(&web, "https://private.example.com/post").is_err());
+        assert!(super::web_rule_decision(&web, "https://www.paypal.com/login").is_err());
+        assert!(super::web_rule_decision(&web, "https://example.com/checkout/order").is_err());
     }
 }
