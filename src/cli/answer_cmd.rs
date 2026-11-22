@@ -106,7 +106,6 @@ fn visible_stream_text(raw: &str) -> String {
             cursor = start + "<think>".len();
             in_think = true;
         } else {
-            let tail = &lower[cursor..];
             let held = (1..=6).rev().find(|length| lower.as_bytes().ends_with(&b"<think>"[..*length]));
             let end = held.map(|length| raw.len() - length).unwrap_or(raw.len());
             output.push_str(&raw[cursor..end]);
