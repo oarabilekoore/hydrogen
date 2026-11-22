@@ -298,10 +298,10 @@ fn queue_answer_job(jobs: &JobStore, conversation_id: &str, question: String, mo
                 return;
             }
         };
-        let reader = BufReader::new(stdout);
+        let mut reader = BufReader::new(stdout);
         let mut result: Option<Value> = None;
         let mut parse_error: Option<String> = None;
-        for line in reader.lines() {
+        for line in reader.by_ref().lines() {
             let line = match line {
                 Ok(line) => line,
                 Err(error) => { parse_error = Some(format!("could not read answer stream: {error}")); break; }
@@ -362,7 +362,7 @@ fn queue_answer_job(jobs: &JobStore, conversation_id: &str, question: String, mo
 fn request_security_error(request: &Request, bind_address: &str, token: &str) -> Option<(u16, &'static str)> {
     let header_value = |name: &str| {
         request.headers().iter()
-            .find(|item| item.field.equiv(name))
+            .find(|item| item.field.as_str().eq_ignore_ascii_case(name))
             .map(|item| item.value.as_str())
     };
 
@@ -1071,7 +1071,7 @@ pub fn open_frontend(
     conversation: Option<&str>,
     page: Option<&str>,
 ) -> Result<()> {
-    let token = api_token(cfg).map_err(|error| HydrogenError::Config(format!("could not initialise API token: {error}")))?;
+    let _token = api_token(cfg).map_err(|error| HydrogenError::Config(format!("could not initialise API token: {error}")))?;
     let address = cfg.settings.frontend.bind_address.as_str();
     if TcpStream::connect(address).is_err() {
         if !cfg.settings.frontend.auto_start {
