@@ -13,6 +13,7 @@ pub struct ConversationSummary {
     pub created_at: i64,
     pub updated_at: i64,
     pub message_count: i64,
+    pub pinned: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -159,9 +160,9 @@ impl KnowledgeStore {
     pub fn list_conversations(&self, limit: usize) -> rusqlite::Result<Vec<ConversationSummary>> {
         let conn = self.connect()?;
         let mut stmt = conn.prepare(
-            "SELECT c.id,c.title,c.created_at,c.updated_at,COUNT(m.id)
+            "SELECT c.id,c.title,c.created_at,c.updated_at,COUNT(m.id),c.pinned
              FROM conversations c LEFT JOIN messages m ON m.conversation_id=c.id
-             GROUP BY c.id ORDER BY c.updated_at DESC LIMIT ?1",
+             GROUP BY c.id ORDER BY c.pinned DESC,c.updated_at DESC LIMIT ?1",
         )?;
         let rows = stmt.query_map(params![limit.clamp(1, 500) as i64], |row| {
             Ok(ConversationSummary {
@@ -170,9 +171,40 @@ impl KnowledgeStore {
                 created_at: row.get(2)?,
                 updated_at: row.get(3)?,
                 message_count: row.get(4)?,
+                pinned: row.get::<_, i64>(5)? != 0,
             })
         })?;
         rows.collect()
+    }
+
+    pub fn update_conversation(
+        &self,
+        conversation_id: &str,
+        title: Option<&str>,
+        pinned: Option<bool>,
+    ) -> rusqlite::Result<bool> {
+        let conn = self.connect()?;
+        let changed = match (title, pinned) {
+            (Some(title), Some(pinned)) => conn.execute(
+                "UPDATE conversations SET title=?2,pinned=?3,updated_at=unixepoch() WHERE id=?1",
+                params![conversation_id, title.trim(), pinned],
+            )?,
+            (Some(title), None) => conn.execute(
+                "UPDATE conversations SET title=?2,updated_at=unixepoch() WHERE id=?1",
+                params![conversation_id, title.trim()],
+            )?,
+            (None, Some(pinned)) => conn.execute(
+                "UPDATE conversations SET pinned=?2,updated_at=unixepoch() WHERE id=?1",
+                params![conversation_id, pinned],
+            )?,
+            (None, None) => 0,
+        };
+        Ok(changed > 0)
+    }
+
+    pub fn delete_conversation(&self, conversation_id: &str) -> rusqlite::Result<bool> {
+        let conn = self.connect()?;
+        Ok(conn.execute("DELETE FROM conversations WHERE id=?1", params![conversation_id])? > 0)
     }
 
     pub fn get_messages(&self, conversation_id: &str) -> rusqlite::Result<Vec<StoredMessage>> {
@@ -606,6 +638,24 @@ pub fn ensure_schema(conn: &Connection) -> rusqlite::Result<()> {
     if !has_sources_column {
         conn.execute("ALTER TABLE messages ADD COLUMN sources_json TEXT", [])?;
     }
+    let has_pinned_column = {
+        let mut statement = conn.prepare("PRAGMA table_info(conversations)")?;
+        let rows = statement.query_map([], |row| row.get::<_, String>(1))?;
+        let mut found = false;
+        for column in rows {
+            if column? == "pinned" {
+                found = true;
+                break;
+            }
+        }
+        found
+    };
+    if !has_pinned_column {
+        conn.execute(
+            "ALTER TABLE conversations ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0",
+            [],
+        )?;
+    }
     Ok(())
 }
 
@@ -633,6 +683,37 @@ mod tests {
             NEXT_ID.fetch_add(1, Ordering::Relaxed)
         ));
         KnowledgeStore::open(&path).expect("create test knowledge store")
+    }
+
+    #[test]
+    fn conversations_can_be_renamed_pinned_and_deleted() {
+        let store = test_store("conversation-management");
+        let first = store.create_conversation("First").unwrap();
+        let second = store.create_conversation("Second").unwrap();
+
+        assert!(store.update_conversation(&second, Some("Renamed second"), Some(true)).unwrap());
+        let conversations = store.list_conversations(10).unwrap();
+        assert_eq!(conversations[0].id, second);
+        assert_eq!(conversations[0].title, "Renamed second");
+        assert!(conversations[0].pinned);
+        assert_eq!(conversations[1].id, first);
+        assert!(!conversations[1].pinned);
+
+        store.append_message(&second, "user", "A message to cascade", None).unwrap();
+        assert!(store.delete_conversation(&second).unwrap());
+        assert!(store.get_messages(&second).unwrap().is_empty());
+        assert!(!store.delete_conversation(&second).unwrap());
+    }
+
+    #[test]
+    fn pinned_column_migration_is_safe_to_run_repeatedly() {
+        let store = test_store("conversation-pinned-migration");
+        let conn = store.connect().unwrap();
+        ensure_schema(&conn).unwrap();
+        ensure_schema(&conn).unwrap();
+        let id = store.create_conversation("Still works").unwrap();
+        assert!(!store.list_conversations(10).unwrap()[0].pinned);
+        assert!(!id.is_empty());
     }
 
     #[test]
