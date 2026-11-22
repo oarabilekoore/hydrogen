@@ -207,6 +207,11 @@ impl KnowledgeStore {
         Ok(conn.execute("DELETE FROM conversations WHERE id=?1", params![conversation_id])? > 0)
     }
 
+    pub fn delete_message(&self, conversation_id: &str, message_id: &str) -> rusqlite::Result<bool> {
+        let conn = self.connect()?;
+        Ok(conn.execute("DELETE FROM messages WHERE id=?1 AND conversation_id=?2 AND role='assistant'", params![message_id, conversation_id])? > 0)
+    }
+
     pub fn get_messages(&self, conversation_id: &str) -> rusqlite::Result<Vec<StoredMessage>> {
         let conn = self.connect()?;
         let mut stmt = conn.prepare(
