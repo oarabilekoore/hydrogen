@@ -69,3 +69,21 @@ document.getElementById("pair").addEventListener("click", async () => {
     status.textContent = "Pairing failed: " + error.message;
   }
 });
+
+
+document.getElementById("ignoreSite").addEventListener("click", async () => {
+  const status = document.getElementById("status");
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.url || !/^https?:/.test(tab.url)) throw new Error("This tab has no website domain to ignore.");
+    const { apiBase = "http://127.0.0.1:17891", apiToken = "" } = await chrome.storage.local.get({ apiBase: "http://127.0.0.1:17891", apiToken: "" });
+    if (!apiToken) throw new Error("Pair the extension with Hydrogen first.");
+    const response = await fetch(String(apiBase).replace(/\/$/, "") + "/api/rules/ignore", {
+      method: "POST", headers: { "Content-Type": "application/json", "Authorization": "Bearer " + apiToken },
+      body: JSON.stringify({ url: tab.url })
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(body.error || "Hydrogen could not update its rules.");
+    status.textContent = "Ignored " + body.domain + " and its subdomains.";
+  } catch (error) { status.textContent = "Could not ignore site: " + error.message; }
+});

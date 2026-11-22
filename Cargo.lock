@@ -1768,6 +1768,7 @@ dependencies = [
  "serde_json",
  "texo-ocr",
  "thiserror 2.0.21",
+ "url",
  "walkdir",
  "zip 2.6.1",
 ]

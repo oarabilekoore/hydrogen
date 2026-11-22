@@ -95,6 +95,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
   (async () => {
     const prefs = await settings();
+    if (sender.tab?.incognito || chrome.extension?.inIncognitoContext) throw new Error("Hydrogen does not capture private/incognito browsing.");
     if (!prefs.enabled) throw new Error("Capture is paused");
     const host = new URL(sender.url || message.url || "https://invalid.local").hostname;
     if (prefs.excludedHosts.some(item => host === item || host.endsWith("." + item))) {

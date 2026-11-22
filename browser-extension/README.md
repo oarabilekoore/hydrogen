@@ -18,6 +18,10 @@ The extension source files and background implementation are shared. Only the ma
 
 The bundled Hydrogen web frontend receives its token from the local server at page-render time. API routes require bearer authentication; `/api/health` remains available without authentication for basic service checks.
 
+## Website capture rules
+
+Hydrogen applies server-side allow lists, excluded domains and URL glob patterns to every article capture, including manual captures. Empty exclusion patterns are ignored. The extension refuses to capture private/incognito tabs. Use **Ignore this site** in the extension popup to add the active website domain and its subdomains to Hydrogen's persistent exclusion list. The web settings page includes a URL rule tester. Article qualification thresholds (minimum text length, paragraph count and maximum page size) remain configurable in Hydrogen settings.
+
 ## Behaviour
 
 - Uses the bundled Mozilla Readability library to extract article text, metadata and paragraph structure, with a structural DOM fallback.

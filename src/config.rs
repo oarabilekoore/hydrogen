@@ -390,8 +390,8 @@ impl Default for WebConfig {
             version_pages: true,
             max_page_size_mb: 10,
             allow_domains: Vec::new(),
-            exclude_domains: Vec::new(),
-            exclude_patterns: vec!["*/login/*".into(), "*/checkout/*".into()],
+            exclude_domains: vec!["paypal.com".into(),"stripe.com".into(),"chase.com".into(),"bankofamerica.com".into(),"wellsfargo.com".into(),"accounts.google.com".into(),"login.microsoftonline.com".into()],
+            exclude_patterns: vec!["*://*/login*".into(),"*://*/signin*".into(),"*://*/checkout*".into(),"*://*/payment*".into(),"*://*/account*".into(),"*://*/settings*".into()],
         }
     }
 }
