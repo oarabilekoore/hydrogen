@@ -284,6 +284,8 @@ fn handle_api(mut request: Request, cfg: &AppConfig, store: &KnowledgeStore, job
             return;
         }
         let question = content.to_string();
+        let selected_model = input.get("model").and_then(Value::as_str)
+            .map(str::trim).filter(|value| !value.is_empty()).map(str::to_owned);
         let conversation = conversation_id.to_string();
         let stamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -296,7 +298,7 @@ fn handle_api(mut request: Request, cfg: &AppConfig, store: &KnowledgeStore, job
         let worker_jobs = Arc::clone(jobs);
         let worker_conversation = conversation.clone();
         let db_path = cfg.db_path.clone();
-        let model = cfg.settings.answer.model.clone();
+        let model = selected_model.unwrap_or_else(|| cfg.settings.answer.model.clone());
         let worker_id = job_id.clone();
         thread::spawn(move || {
             set_job(
@@ -304,7 +306,7 @@ fn handle_api(mut request: Request, cfg: &AppConfig, store: &KnowledgeStore, job
                 &worker_id,
                 json!({"id":worker_id,"status":"generating","model":model}),
             );
-            let output = run_cli(&["answer", "--no-save", &question]);
+            let output = run_cli(&["answer", "--no-save", "--model", &model, &question]);
             let result = match output {
                 Ok(output) => match serde_json::from_slice::<Value>(&output.stdout) {
                     Ok(value) => value,
