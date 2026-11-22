@@ -3,11 +3,11 @@ use crate::config::AppConfig;
 use crate::error::{HydrogenError, Result};
 use serde_json::{json, Value};
 use std::collections::HashMap;
-use std::io::Read;
+use std::io::{BufRead, BufReader, Read};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::net::TcpStream;
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
@@ -161,37 +161,103 @@ fn queue_answer_job(jobs: &JobStore, conversation_id: &str, question: String, mo
     let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos();
     let material = format!("{}:{}:{}", std::process::id(), stamp, conversation_id);
     let job_id = format!("job_{}", &blake3::hash(material.as_bytes()).to_hex()[..24]);
-    set_job(jobs, &job_id, json!({"id":job_id,"status":"queued"}));
+    set_job(jobs, &job_id, json!({"id":job_id,"status":"queued","answer":"","model":model}));
     let worker_jobs = Arc::clone(jobs);
     let worker_conversation = conversation_id.to_string();
     let worker_id = job_id.clone();
     thread::spawn(move || {
-        set_job(&worker_jobs, &worker_id, json!({"id":worker_id,"status":"generating","model":model}));
-        let args = vec!["answer".to_string(), "--no-save".to_string(), "--conversation".to_string(), worker_conversation.clone(), "--model".to_string(), model.clone(), question];
-        let borrowed: Vec<&str> = args.iter().map(String::as_str).collect();
-        let result = match run_cli(&borrowed) {
-            Ok(output) => match serde_json::from_slice::<Value>(&output.stdout) {
-                Ok(value) => value,
-                Err(error) => json!({"status":"unavailable","answer":"","sources":[],"error":format!("answer worker returned invalid JSON: {error}; stderr: {}",String::from_utf8_lossy(&output.stderr).trim())}),
-            },
-            Err(error) => json!({"status":"unavailable","answer":"","sources":[],"error":format!("could not start Hydrogen answer worker: {error}")}),
+        set_job(&worker_jobs, &worker_id, json!({"id":worker_id,"status":"generating","answer":"","model":model}));
+        let executable = match std::env::current_exe() {
+            Ok(path) => path,
+            Err(error) => {
+                set_job(&worker_jobs,&worker_id,json!({"id":worker_id,"status":"failed","error":format!("could not locate Hydrogen executable: {error}")}));
+                return;
+            }
+        };
+        let mut child = match Command::new(executable)
+            .args(["answer","--no-save","--stream","--conversation",&worker_conversation,"--model",&model,&question])
+            .stdout(Stdio::piped()).stderr(Stdio::piped()).spawn() {
+            Ok(child) => child,
+            Err(error) => {
+                set_job(&worker_jobs,&worker_id,json!({"id":worker_id,"status":"failed","error":format!("could not start Hydrogen answer worker: {error}")}));
+                return;
+            }
+        };
+        let stdout = match child.stdout.take() {
+            Some(stdout) => stdout,
+            None => {
+                set_job(&worker_jobs,&worker_id,json!({"id":worker_id,"status":"failed","error":"answer worker stdout was unavailable"}));
+                return;
+            }
+        };
+        let reader = BufReader::new(stdout);
+        let mut result: Option<Value> = None;
+        let mut parse_error: Option<String> = None;
+        for line in reader.lines() {
+            let line = match line {
+                Ok(line) => line,
+                Err(error) => { parse_error = Some(format!("could not read answer stream: {error}")); break; }
+            };
+            if line.trim().is_empty() { continue; }
+            let event: Value = match serde_json::from_str(&line) {
+                Ok(event) => event,
+                Err(error) => { parse_error = Some(format!("answer worker emitted invalid stream JSON: {error}")); break; }
+            };
+            match event.get("event").and_then(Value::as_str) {
+                Some("delta") => {
+                    if let Some(delta) = event.get("text").and_then(Value::as_str) {
+                        if let Ok(mut jobs) = worker_jobs.lock() {
+                            if let Some(job) = jobs.get_mut(&worker_id) {
+                                let mut answer = job.get("answer").and_then(Value::as_str).unwrap_or("").to_string();
+                                answer.push_str(delta);
+                                job["answer"] = Value::String(answer);
+                                job["status"] = Value::String("streaming".to_string());
+                            }
+                        }
+                    }
+                }
+                Some("result") => { result = event.get("result").cloned(); }
+                _ => {}
+            }
+        }
+        drop(reader);
+        let output = match child.wait_with_output() {
+            Ok(output) => output,
+            Err(error) => {
+                set_job(&worker_jobs,&worker_id,json!({"id":worker_id,"status":"failed","error":format!("could not finish answer worker: {error}")}));
+                return;
+            }
+        };
+        if let Some(error) = parse_error {
+            set_job(&worker_jobs,&worker_id,json!({"id":worker_id,"status":"failed","error":error,"stderr":String::from_utf8_lossy(&output.stderr).trim()}));
+            return;
+        }
+        let result = match result {
+            Some(result) => result,
+            None => {
+                let detail = String::from_utf8_lossy(&output.stderr).trim().to_string();
+                set_job(&worker_jobs,&worker_id,json!({"id":worker_id,"status":"failed","error":if detail.is_empty() { format!("answer worker exited without a final result ({})",output.status) } else { detail }}));
+                return;
+            }
         };
         if result.get("status").and_then(Value::as_str) == Some("ready") {
             let answer = result.get("answer").and_then(Value::as_str).unwrap_or("");
-            let model = result.get("model").and_then(Value::as_str);
+            let answer_model = result.get("model").and_then(Value::as_str);
             let sources = result.get("sources");
-            let saved = KnowledgeStore::open(&db_path).and_then(|knowledge| knowledge.append_message_with_sources(&worker_conversation,"assistant",answer,model,sources));
+            let saved = KnowledgeStore::open(&db_path).and_then(|knowledge| knowledge.append_message_with_sources(&worker_conversation,"assistant",answer,answer_model,sources));
             if let Err(error) = saved {
                 set_job(&worker_jobs,&worker_id,json!({"id":worker_id,"status":"failed","error":format!("answer generated but could not be saved: {error}"),"generation":result}));
                 return;
             }
+            set_job(&worker_jobs,&worker_id,json!({"id":worker_id,"status":"ready","result":result}));
+        } else {
+            let status = result.get("status").and_then(Value::as_str).unwrap_or("unavailable");
+            set_job(&worker_jobs,&worker_id,json!({"id":worker_id,"status":if status == "unavailable" {"unavailable"} else {"failed"},"result":result}));
         }
-        let status = result.get("status").and_then(Value::as_str).unwrap_or("unavailable");
-        let final_status = if status == "ready" { "ready" } else { "unavailable" };
-        set_job(&worker_jobs,&worker_id,json!({"id":worker_id,"status":final_status,"result":result}));
     });
     job_id
 }
+
 fn request_security_error(request: &Request, bind_address: &str, token: &str) -> Option<(u16, &'static str)> {
     let header_value = |name: &str| {
         request.headers().iter()
