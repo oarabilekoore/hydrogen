@@ -124,12 +124,16 @@ fn stream_ollama_chat(endpoint: &str, payload: &str, timeout_seconds: u64, mut o
     let reader = BufReader::new(stdout);
     let mut raw = String::new();
     let mut emitted = 0usize;
+    let mut thinking_chars = 0usize;
     let mut stream_error = None;
     for line in reader.lines() {
         let line = line.map_err(|error| format!("could not read Ollama stream: {error}"))?;
         if line.trim().is_empty() { continue; }
         let value: Value = serde_json::from_str(&line).map_err(|error| format!("Ollama returned invalid streaming JSON: {error}"))?;
         if let Some(error) = value.get("error").and_then(Value::as_str) { stream_error = Some(error.to_string()); break; }
+        if let Some(thinking) = value.pointer("/message/thinking").and_then(Value::as_str) {
+            thinking_chars = thinking_chars.saturating_add(thinking.chars().count());
+        }
         if let Some(token) = value.pointer("/message/content").and_then(Value::as_str) {
             raw.push_str(token);
             let visible = visible_stream_text(&raw);
@@ -145,8 +149,58 @@ fn stream_ollama_chat(endpoint: &str, payload: &str, timeout_seconds: u64, mut o
         return Err(format!("Ollama streaming request failed ({}): {}", output.status, if detail.is_empty() { "no diagnostic returned" } else { &detail }));
     }
     let answer = strip_think_blocks(&raw);
-    if answer.is_empty() { return Err("Ollama completed without answer text. Try a non-thinking model or increase answer.max_output_tokens.".to_string()); }
+    if answer.is_empty() {
+        return Err(format!("Ollama completed without answer text (thinking_chars={thinking_chars}). The thinking channel is not treated as an answer."));
+    }
     Ok(answer)
+}
+
+fn ollama_show(endpoint: &str, model: &str, timeout_seconds: u64) -> Option<Value> {
+    let payload = json!({"model":model}).to_string();
+    let output = Command::new("curl")
+        .args(["--silent", "--show-error", "--fail", "--connect-timeout", "2", "--max-time", &timeout_seconds.to_string(), &format!("{}/api/show", endpoint.trim_end_matches('/')), "-H", "Content-Type: application/json", "--data-binary", &payload])
+        .output().ok()?;
+    if !output.status.success() { return None; }
+    serde_json::from_slice(&output.stdout).ok()
+}
+
+fn model_supports_thinking(show: Option<&Value>) -> bool {
+    show.and_then(|value| value.get("capabilities"))
+        .and_then(Value::as_array)
+        .map(|capabilities| capabilities.iter().any(|capability| capability.as_str() == Some("thinking")))
+        .unwrap_or(false)
+}
+
+fn think_option_error(error: &str) -> bool {
+    let lower = error.to_ascii_lowercase();
+    (lower.contains("think") || lower.contains("thinking"))
+        && (lower.contains("unsupported") || lower.contains("not support") || lower.contains("unknown field")
+            || lower.contains("invalid") || lower.contains("400") || lower.contains("bad request"))
+}
+
+fn increase_output_tokens(payload: &mut Value, multiplier: u64) {
+    let current = payload.pointer("/options/num_predict").and_then(Value::as_u64).unwrap_or(180);
+    let increased = current.saturating_mul(multiplier).max(512).min(2048);
+    payload["options"]["num_predict"] = json!(increased);
+}
+
+fn request_ollama_chat(endpoint: &str, payload: &str, timeout_seconds: u64) -> std::result::Result<Value, String> {
+    let output = Command::new("curl")
+        .args(["--silent", "--show-error", "--fail-with-body", "--connect-timeout", "2", "--max-time", &timeout_seconds.to_string(), &format!("{}/api/chat", endpoint.trim_end_matches('/')), "-H", "Content-Type: application/json", "--data-binary", payload])
+        .output()
+        .map_err(|error| format!("Could not start curl for Ollama request: {error}"))?;
+    let body = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    let parsed = serde_json::from_str::<Value>(&body).ok();
+    if output.status.success() {
+        return parsed.ok_or_else(|| format!("Ollama returned a non-JSON response: {}", body.chars().take(240).collect::<String>()));
+    }
+    let api_error = parsed.as_ref().and_then(|value| value.get("error")).and_then(Value::as_str);
+    let detail = api_error.map(str::to_owned)
+        .or_else(|| (!stderr.is_empty()).then_some(stderr))
+        .or_else(|| (!body.trim().is_empty()).then(|| body.trim().to_string()))
+        .unwrap_or_else(|| format!("curl exited with {}", output.status));
+    Err(format!("Ollama request failed ({}): {}", output.status, detail))
 }
 
 fn passage_key(hit: &crate::domain::document::SearchHit) -> String {
@@ -595,104 +649,87 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
          If sources disagree or are incomplete, explicitly say so. Keep the answer concise.\n\n\
          QUESTION:\n{query}\n\nRETRIEVED INDEXED EXCERPTS:\n{context}\nANSWER:"
     );
-    // Do not force the Ollama-specific `think` option here. It is not
-    // supported by every model/version; model capability negotiation belongs
-    // to the provider API rather than being guessed by the client.
     let mut messages = vec![json!({
         "role":"system",
         "content":"You are a source-grounded study assistant. Conversation history helps resolve references, but only the current retrieved excerpts may support factual claims. Do not treat earlier assistant messages as evidence."
     })];
     messages.extend(history);
     messages.push(json!({"role":"user","content":prompt}));
-    let payload = json!({
+
+    // Ollama exposes per-model capabilities through /api/show. Only enable
+    // thinking when the selected model explicitly advertises that capability.
+    let show = ollama_show(&answer_cfg.endpoint, model, answer_cfg.timeout_seconds.min(5));
+    let thinking_supported = model_supports_thinking(show.as_ref());
+    let mut payload_value = json!({
         "model": model,
         "messages": messages,
         "stream": false,
         "options": {
             "num_ctx": answer_cfg.context_window,
-            "num_predict": answer_cfg.max_output_tokens,
+            "num_predict": if thinking_supported { answer_cfg.max_output_tokens.max(512) } else { answer_cfg.max_output_tokens },
             "temperature": answer_cfg.temperature,
             "top_p": answer_cfg.top_p,
             "repeat_penalty": answer_cfg.repeat_penalty
         }
-    })
-    .to_string();
+    });
+    if thinking_supported {
+        payload_value["think"] = json!(true);
+    }
 
     let (response, generation_error) = if args.stream {
         let mut emit = |text: &str| { println!("{}", json!({"event":"delta","text":text})); let _ = std::io::stdout().flush(); };
+        let payload = payload_value.to_string();
         match stream_ollama_chat(&answer_cfg.endpoint, &payload, answer_cfg.timeout_seconds, &mut emit) {
             Ok(answer) => (Some(answer), None),
+            Err(error) if payload_value.get("think").is_some() && think_option_error(&error) => {
+                payload_value.as_object_mut().map(|object| object.remove("think"));
+                match stream_ollama_chat(&answer_cfg.endpoint, &payload_value.to_string(), answer_cfg.timeout_seconds, &mut emit) {
+                    Ok(answer) => (Some(answer), None),
+                    Err(retry_error) => (None, Some(format!("{error}; retry without thinking also failed: {retry_error}"))),
+                }
+            }
+            Err(error) if thinking_supported && error.contains("thinking_chars=") => {
+                increase_output_tokens(&mut payload_value, 2);
+                match stream_ollama_chat(&answer_cfg.endpoint, &payload_value.to_string(), answer_cfg.timeout_seconds, &mut emit) {
+                    Ok(answer) => (Some(answer), None),
+                    Err(retry_error) => (None, Some(format!("{error}; retry with a larger output budget failed: {retry_error}"))),
+                }
+            }
             Err(error) => (None, Some(error)),
         }
     } else {
-    let output = Command::new("curl")
-        .args([
-            "--silent",
-            "--show-error",
-            "--fail-with-body",
-            "--connect-timeout",
-            "2",
-            "--max-time",
-            &answer_cfg.timeout_seconds.to_string(),
-            &format!("{}/api/chat", answer_cfg.endpoint.trim_end_matches('/')),
-            "-H",
-            "Content-Type: application/json",
-            "--data-binary",
-            &payload,
-        ])
-        .output();
-
-    match output {
-            Ok(output) => {
-                let body = String::from_utf8_lossy(&output.stdout).to_string();
-                let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-                let parsed = serde_json::from_str::<Value>(&body).ok();
-                if output.status.success() {
-                    let answer = parsed.as_ref().and_then(extract_ollama_answer);
-                    let error =
-                        if answer.as_deref().unwrap_or("").trim().is_empty() {
-                            Some(parsed.as_ref().map(ollama_empty_diagnostic).unwrap_or_else(
-                                || {
-                                    format!(
-                                        "Ollama returned a non-JSON response: {}",
-                                        body.chars().take(240).collect::<String>()
-                                    )
-                                },
-                            ))
-                        } else {
-                            None
-                        };
-                    (answer, error)
+        let first = request_ollama_chat(&answer_cfg.endpoint, &payload_value.to_string(), answer_cfg.timeout_seconds);
+        let first = match first {
+            Err(error) if payload_value.get("think").is_some() && think_option_error(&error) => {
+                payload_value.as_object_mut().map(|object| object.remove("think"));
+                request_ollama_chat(&answer_cfg.endpoint, &payload_value.to_string(), answer_cfg.timeout_seconds)
+                    .map_err(|retry| format!("{error}; retry without thinking also failed: {retry}"))
+            }
+            other => other,
+        };
+        match first {
+            Ok(value) => {
+                let answer = extract_ollama_answer(&value);
+                if answer.as_deref().unwrap_or("").trim().is_empty()
+                    && thinking_supported
+                    && value.pointer("/message/thinking").and_then(Value::as_str).map(|text| !text.is_empty()).unwrap_or(false) {
+                    increase_output_tokens(&mut payload_value, 2);
+                    match request_ollama_chat(&answer_cfg.endpoint, &payload_value.to_string(), answer_cfg.timeout_seconds) {
+                        Ok(retry) => {
+                            let retry_answer = extract_ollama_answer(&retry);
+                            if retry_answer.as_deref().unwrap_or("").trim().is_empty() {
+                                (None, Some(ollama_empty_diagnostic(&retry)))
+                            } else { (retry_answer, None) }
+                        }
+                        Err(error) => (None, Some(format!("Ollama used its thinking budget without producing answer text; retry failed: {error}"))),
+                    }
+                } else if answer.as_deref().unwrap_or("").trim().is_empty() {
+                    (None, Some(ollama_empty_diagnostic(&value)))
                 } else {
-                    let api_error = parsed
-                        .as_ref()
-                        .and_then(|value| value.get("error"))
-                        .and_then(Value::as_str)
-                        .map(str::to_owned);
-                    let detail = api_error
-                        .or_else(|| {
-                            if !stderr.is_empty() {
-                                Some(stderr)
-                            } else if !body.trim().is_empty() {
-                                Some(body.trim().to_string())
-                            } else {
-                                None
-                            }
-                        })
-                        .unwrap_or_else(|| format!("curl exited with {}", output.status));
-                    (
-                        None,
-                        Some(format!(
-                            "Ollama request to {} failed: {}",
-                            answer_cfg.endpoint, detail
-                        )),
-                    )
+                    (answer, None)
                 }
             }
-            Err(error) => (
-                None,
-                Some(format!("Could not start curl for Ollama request: {error}")),
-            ),
+            Err(error) => (None, Some(error)),
         }
     };
 
