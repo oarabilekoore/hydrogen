@@ -131,7 +131,11 @@ fn request_security_error(request: &Request, bind_address: &str) -> Option<(u16,
         }
     }
 
-    if matches!(*request.method(), Method::Post | Method::Put | Method::Patch | Method::Delete) {
+    let is_mutating = request.method() == &Method::Post
+        || request.method() == &Method::Put
+        || request.method() == &Method::Patch
+        || request.method() == &Method::Delete;
+    if is_mutating {
         let content_type = header_value("Content-Type").unwrap_or("");
         if !content_type.to_ascii_lowercase().starts_with("application/json") {
             return Some((415, "mutating API requests must use application/json"));
