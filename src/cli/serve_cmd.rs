@@ -487,7 +487,15 @@ fn url_matches_patterns(url: &str, patterns: &[String]) -> bool {
                     .split_once('?')
                     .map(|(path, query)| (path, Some(query)))
                     .unwrap_or((&path_pattern, None));
-                let path_matches = matches(parsed.path(), path_glob);
+                let path = parsed.path();
+                // Match the complete path first. If a trailing wildcard is
+                // intended to cover a route, also test each segment boundary.
+                // This makes "/checkout*" cover "/checkout/order" without
+                // allowing it to match unrelated paths such as "/blog/checkout".
+                let path_matches = matches(path, path_glob)
+                    || path.match_indices('/')
+                        .skip(1)
+                        .any(|(index, _)| matches(&path[..index], path_glob));
                 let query_matches = query_glob.map(|query_glob| {
                     matches(parsed.query().unwrap_or(""), query_glob)
                 }).unwrap_or(true);
