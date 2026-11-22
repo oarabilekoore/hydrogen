@@ -13,6 +13,7 @@ pub struct ConversationSummary {
     pub created_at: i64,
     pub updated_at: i64,
     pub message_count: i64,
+    pub pinned: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -159,9 +160,9 @@ impl KnowledgeStore {
     pub fn list_conversations(&self, limit: usize) -> rusqlite::Result<Vec<ConversationSummary>> {
         let conn = self.connect()?;
         let mut stmt = conn.prepare(
-            "SELECT c.id,c.title,c.created_at,c.updated_at,COUNT(m.id)
+            "SELECT c.id,c.title,c.created_at,c.updated_at,COUNT(m.id),c.pinned
              FROM conversations c LEFT JOIN messages m ON m.conversation_id=c.id
-             GROUP BY c.id ORDER BY c.updated_at DESC LIMIT ?1",
+             GROUP BY c.id ORDER BY c.pinned DESC,c.updated_at DESC LIMIT ?1",
         )?;
         let rows = stmt.query_map(params![limit.clamp(1, 500) as i64], |row| {
             Ok(ConversationSummary {
@@ -170,9 +171,40 @@ impl KnowledgeStore {
                 created_at: row.get(2)?,
                 updated_at: row.get(3)?,
                 message_count: row.get(4)?,
+                pinned: row.get::<_, i64>(5)? != 0,
             })
         })?;
         rows.collect()
+    }
+
+    pub fn update_conversation(
+        &self,
+        conversation_id: &str,
+        title: Option<&str>,
+        pinned: Option<bool>,
+    ) -> rusqlite::Result<bool> {
+        let conn = self.connect()?;
+        let changed = match (title, pinned) {
+            (Some(title), Some(pinned)) => conn.execute(
+                "UPDATE conversations SET title=?2,pinned=?3,updated_at=unixepoch() WHERE id=?1",
+                params![conversation_id, title.trim(), pinned],
+            )?,
+            (Some(title), None) => conn.execute(
+                "UPDATE conversations SET title=?2,updated_at=unixepoch() WHERE id=?1",
+                params![conversation_id, title.trim()],
+            )?,
+            (None, Some(pinned)) => conn.execute(
+                "UPDATE conversations SET pinned=?2,updated_at=unixepoch() WHERE id=?1",
+                params![conversation_id, pinned],
+            )?,
+            (None, None) => 0,
+        };
+        Ok(changed > 0)
+    }
+
+    pub fn delete_conversation(&self, conversation_id: &str) -> rusqlite::Result<bool> {
+        let conn = self.connect()?;
+        Ok(conn.execute("DELETE FROM conversations WHERE id=?1", params![conversation_id])? > 0)
     }
 
     pub fn get_messages(&self, conversation_id: &str) -> rusqlite::Result<Vec<StoredMessage>> {
@@ -619,7 +651,19 @@ fn new_id(prefix: &str) -> String {
     format!(
         "{prefix}_{}",
         &blake3::hash(material.as_bytes()).to_hex()[..24]
-    )
+    )?;
+    let has_pinned: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM pragma_table_info('conversations') WHERE name='pinned')",
+        [],
+        |row| row.get(0),
+    )?;
+    if !has_pinned {
+        conn.execute(
+            "ALTER TABLE conversations ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0",
+            [],
+        )?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]
