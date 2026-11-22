@@ -187,7 +187,7 @@ fn prune_jobs(jobs: &mut HashMap<String, Value>) {
             ))
             .collect();
         completed.sort_by_key(|(_, created_at)| *created_at);
-        let remove_count = jobs.len().saturating_sub(JOB_MAX_RETAINED);
+        let remove_count = completed.len().saturating_sub(JOB_MAX_RETAINED);
         for (id, _) in completed.into_iter().take(remove_count) {
             jobs.remove(&id);
         }
