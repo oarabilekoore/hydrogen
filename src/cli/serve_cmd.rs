@@ -4,6 +4,8 @@ use crate::error::{HydrogenError, Result};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::io::Read;
+use std::fs::{self, OpenOptions};
+use std::io::Write;
 use std::net::TcpStream;
 use std::process::Command;
 use std::sync::{Arc, Mutex};
@@ -18,11 +20,60 @@ fn header(name: &str, value: &str) -> Header {
 }
 
 fn respond(request: Request, status: u16, content_type: &str, body: String) {
-    let response = Response::from_string(body)
+    let origin = request.headers().iter()
+        .find(|item| item.field.equiv("Origin"))
+        .map(|item| item.value.as_str().to_string());
+    let mut response = Response::from_string(body)
         .with_status_code(StatusCode(status))
         .with_header(header("Content-Type", content_type))
         .with_header(header("Cache-Control", "no-store"));
+    if let Some(origin) = origin.filter(|value| value.starts_with("chrome-extension://")
+        || value.starts_with("http://localhost:")
+        || value.starts_with("http://127.0.0.1:")
+        || value.starts_with("http://[::1]:")) {
+        response = response
+            .with_header(header("Access-Control-Allow-Origin", &origin))
+            .with_header(header("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS"))
+            .with_header(header("Access-Control-Allow-Headers", "Content-Type, Authorization"))
+            .with_header(header("Vary", "Origin"));
+    }
     let _ = request.respond(response);
+}
+
+fn api_token(cfg: &AppConfig) -> std::io::Result<String> {
+    fs::create_dir_all(&cfg.state_dir)?;
+    let path = cfg.state_dir.join("hydrogen-api-token");
+    if path.exists() {
+        return Ok(fs::read_to_string(path)?.trim().to_string());
+    }
+    let mut bytes = [0u8; 32];
+    OpenOptions::new().read(true).open("/dev/urandom")?.read_exact(&mut bytes)?;
+    let token: String = bytes.iter().map(|byte| format!("{byte:02x}")).collect();
+    let mut file = OpenOptions::new().write(true).create_new(true).open(&path)?;
+    file.write_all(token.as_bytes())?;
+    file.write_all(b"\n")?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600))?;
+    }
+    Ok(token)
+}
+
+pub fn print_api_token(cfg: &AppConfig) -> Result<()> {
+    let token = api_token(cfg).map_err(|error| HydrogenError::Config(format!("could not initialise API token: {error}")))?;
+    println!("{token}");
+    Ok(())
+}
+
+fn constant_time_eq(left: &str, right: &str) -> bool {
+    let a = left.as_bytes();
+    let b = right.as_bytes();
+    let mut difference = a.len() ^ b.len();
+    for index in 0..a.len().max(b.len()) {
+        difference |= (a.get(index).copied().unwrap_or(0) ^ b.get(index).copied().unwrap_or(0)) as usize;
+    }
+    difference == 0
 }
 
 fn json(request: Request, status: u16, value: Value) {
@@ -100,7 +151,7 @@ fn set_job(jobs: &JobStore, id: &str, value: Value) {
     }
 }
 
-fn request_security_error(request: &Request, bind_address: &str) -> Option<(u16, &'static str)> {
+fn request_security_error(request: &Request, bind_address: &str, token: &str) -> Option<(u16, &'static str)> {
     let header_value = |name: &str| {
         request.headers().iter()
             .find(|item| item.field.equiv(name))
@@ -128,6 +179,17 @@ fn request_security_error(request: &Request, bind_address: &str) -> Option<(u16,
             || origin.starts_with("chrome-extension://");
         if !valid_origin {
             return Some((403, "request Origin is not allowed"));
+        }
+    }
+
+    if request.method() == &Method::Options { return None; }
+    let path = request.url().split('?').next().unwrap_or("/");
+    let is_health = path == "/api/health" && request.method() == &Method::Get;
+    if !is_health {
+        let authorization = header_value("Authorization").unwrap_or("");
+        let supplied = authorization.strip_prefix("Bearer ").unwrap_or("");
+        if !constant_time_eq(supplied, token) {
+            return Some((401, "missing or invalid API token"));
         }
     }
 
@@ -766,6 +828,7 @@ fn handle_api(mut request: Request, cfg: &AppConfig, store: &KnowledgeStore, job
 }
 
 pub fn run(cfg: &AppConfig) -> Result<()> {
+    let token = api_token(cfg).map_err(|error| HydrogenError::Config(format!("could not initialise API token: {error}")))?;
     let address = cfg.settings.frontend.bind_address.as_str();
     let server = Server::http(address).map_err(|error| {
         HydrogenError::Config(format!(
@@ -784,11 +847,15 @@ pub fn run(cfg: &AppConfig) -> Result<()> {
                 request,
                 200,
                 "text/html; charset=utf-8",
-                FRONTEND.to_string(),
+                FRONTEND.replace("__HYDROGEN_API_TOKEN__", &token),
             );
         } else if url.starts_with("/api/") {
-            if let Some((status, message)) = request_security_error(&request, address) {
+            if let Some((status, message)) = request_security_error(&request, address, &token) {
                 json(request, status, json!({"error":message}));
+                continue;
+            }
+            if request.method() == &Method::Options {
+                respond(request, 204, "application/json; charset=utf-8", String::new());
                 continue;
             }
             // Each request gets its own worker thread. Long-running RAG inference
@@ -829,6 +896,7 @@ pub fn open_frontend(
     conversation: Option<&str>,
     page: Option<&str>,
 ) -> Result<()> {
+    let token = api_token(cfg).map_err(|error| HydrogenError::Config(format!("could not initialise API token: {error}")))?;
     let address = cfg.settings.frontend.bind_address.as_str();
     if TcpStream::connect(address).is_err() {
         if !cfg.settings.frontend.auto_start {
