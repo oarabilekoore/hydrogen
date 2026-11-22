@@ -35,6 +35,9 @@ pub struct AnswerArgs {
     /// Do not create a saved conversation (used by the frontend chat worker)
     #[arg(long, hide = true)]
     pub no_save: bool,
+    /// Allow general model knowledge instead of restricting answers to retrieved excerpts
+    #[arg(long)]
+    pub no_grounding: bool,
 }
 
 fn query_variants(query: &str, max_variants: usize) -> Vec<String> {
@@ -485,9 +488,34 @@ footer {{ color:var(--muted); font-size:12px; margin-top:32px; }}
     Ok(path.to_string_lossy().into_owned())
 }
 
+fn build_answer_prompts(query: &str, context: &str, grounding: bool) -> (&'static str, String) {
+    if grounding {
+        (
+            "You are a source-grounded study assistant. Conversation history helps resolve references, but only the current retrieved excerpts may support factual claims. Do not treat earlier assistant messages as evidence.",
+            format!(
+                "You are a source-grounded study assistant. The excerpts below are the ONLY permitted evidence.\n\
+                 Answer the exact question using only the terminology and meaning supported by the supplied indexed sources.\n\
+                 Do not answer from general knowledge or memory. Do not infer a definition from a question that merely mentions the term.\n\
+                 If no excerpt actually explains or defines the requested concept, respond exactly: 'I cannot find an explanation in the indexed sources.'\n\
+                 Every factual sentence must end with a citation to the excerpt that directly supports it, such as [1]. Never invent citations.\n\
+                 If sources disagree or are incomplete, explicitly say so. Keep the answer concise.\n\n\
+                 QUESTION:\n{query}\n\nRETRIEVED INDEXED EXCERPTS:\n{context}\nANSWER:"
+            )
+        )
+    } else {
+        (
+            "You are a helpful assistant. Answer using your general knowledge and reasoning. Retrieved indexed excerpts, if present, are optional context and must not be treated as complete or authoritative. Cite an excerpt as [n] only when it directly supports a claim; never invent citations. Be clear when you are uncertain.",
+            format!(
+                "Answer the question directly. You may use general knowledge even when the local index has no matching material. If retrieved excerpts are relevant, use them as optional supporting context and cite them accurately.\n\nQUESTION:\n{query}\n\nOPTIONAL LOCAL EXCERPTS:\n{}\nANSWER:",
+                if context.trim().is_empty() { "No matching indexed excerpts were found." } else { context }
+            )
+        )
+    }
+}
+
 pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
     let query = args.query.trim();
-    if query.chars().count() < cfg.settings.answer.min_query_chars || !cfg.db_path.exists() {
+    if query.chars().count() < cfg.settings.answer.min_query_chars || (!cfg.db_path.exists() && !args.no_grounding) {
         let result = json!({"status":"no_context","answer":"","sources":[]});
         if args.stream { println!("{}", json!({"event":"result","result":result})); }
         else { println!("{}", result); }
@@ -643,15 +671,14 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
         }
     }
 
-    if sources.is_empty() {
-        println!(
-            "{}",
-            json!({"status":"no_context","answer":"","sources":[]})
-        );
+    if sources.is_empty() && !args.no_grounding {
+        let result = json!({"status":"no_context","answer":"","sources":[]});
+        if args.stream { println!("{}", json!({"event":"result","result":result})); }
+        else { println!("{}", result); }
         return Ok(());
     }
 
-    // Recent turns help resolve references; retrieved excerpts remain the only factual evidence.
+    // Recent turns help resolve references; grounding mode controls whether retrieved excerpts are required.
     let stored_history: Vec<Value> = if let Some(conversation_id) = args.conversation.as_deref() {
         KnowledgeStore::open(&cfg.db_path)
             .and_then(|knowledge| knowledge.get_messages(conversation_id))
@@ -661,18 +688,10 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
             .collect()
     } else { Vec::new() };
     let history = recent_history_messages(stored_history, query);
-    let prompt = format!(
-        "You are a source-grounded study assistant. The excerpts below are the ONLY permitted evidence.\n\
-         Answer the exact question using only the terminology and meaning supported by the supplied indexed sources.\n\
-         Do not answer from general knowledge or memory. Do not infer a definition from a question that merely mentions the term.\n\
-         If no excerpt actually explains or defines the requested concept, respond exactly: 'I cannot find an explanation in the indexed sources.'\n\
-         Every factual sentence must end with a citation to the excerpt that directly supports it, such as [1]. Never invent citations.\n\
-         If sources disagree or are incomplete, explicitly say so. Keep the answer concise.\n\n\
-         QUESTION:\n{query}\n\nRETRIEVED INDEXED EXCERPTS:\n{context}\nANSWER:"
-    );
+    let (system_prompt, prompt) = build_answer_prompts(query, &context, !args.no_grounding);
     let mut messages = vec![json!({
         "role":"system",
-        "content":"You are a source-grounded study assistant. Conversation history helps resolve references, but only the current retrieved excerpts may support factual claims. Do not treat earlier assistant messages as evidence."
+        "content":system_prompt
     })];
     messages.extend(history);
     messages.push(json!({"role":"user","content":prompt}));
@@ -826,6 +845,22 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
 #[cfg(test)]
 mod html_tests {
     use super::*;
+
+    #[test]
+    fn grounding_mode_changes_the_answer_evidence_policy() {
+        let (grounded_system, grounded_prompt) =
+            build_answer_prompts("Define entropy", "[1] Lecture notes\\nEntropy is a state function.", true);
+        assert!(grounded_system.contains("only the current retrieved excerpts"));
+        assert!(grounded_prompt.contains("ONLY permitted evidence"));
+        assert!(grounded_prompt.contains("[1] Lecture notes"));
+
+        let (general_system, general_prompt) =
+            build_answer_prompts("What is entropy?", "", false);
+        assert!(general_system.contains("general knowledge and reasoning"));
+        assert!(general_prompt.contains("You may use general knowledge"));
+        assert!(general_prompt.contains("No matching indexed excerpts were found."));
+        assert!(!general_prompt.contains("ONLY permitted evidence"));
+    }
 
     #[test]
     fn conversation_history_excludes_the_current_user_turn_and_bounds_context() {

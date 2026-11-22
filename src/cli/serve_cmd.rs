@@ -260,7 +260,7 @@ fn job_snapshot(jobs: &JobStore, id: &str, after: u64) -> Option<Value> {
     Some(snapshot)
 }
 
-fn queue_answer_job(jobs: &JobStore, conversation_id: &str, question: String, model: String, db_path: std::path::PathBuf) -> String {
+fn queue_answer_job(jobs: &JobStore, conversation_id: &str, question: String, model: String, grounding: bool, db_path: std::path::PathBuf) -> String {
     let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos();
     let material = format!("{}:{}:{}", std::process::id(), stamp, conversation_id);
     let job_id = format!("job_{}", &blake3::hash(material.as_bytes()).to_hex()[..24]);
@@ -280,8 +280,10 @@ fn queue_answer_job(jobs: &JobStore, conversation_id: &str, question: String, mo
                 return;
             }
         };
-        let mut child = match Command::new(executable)
-            .args(["answer","--no-save","--stream","--conversation",&worker_conversation,"--model",&model,&question])
+        let mut worker = Command::new(executable);
+        worker.args(["answer","--no-save","--stream","--conversation",&worker_conversation,"--model",&model]);
+        if !grounding { worker.arg("--no-grounding"); }
+        let mut child = match worker.arg(&question)
             .stdout(Stdio::piped()).stderr(Stdio::piped()).spawn() {
             Ok(child) => child,
             Err(error) => {
@@ -686,7 +688,8 @@ fn handle_api(mut request: Request, cfg: &AppConfig, store: &KnowledgeStore, job
                     messages.iter().rev().find(|message| message.role == "user").map(|message| message.content.clone())
                 } else { None };
                 let Some(question) = question else { json(request,409,json!({"error":"there is no latest answer or unanswered user message to regenerate"})); return; };
-                let job_id = queue_answer_job(jobs,conversation_id,question,selected_model,cfg.db_path.clone());
+                let grounding = input.get("grounding").and_then(Value::as_bool).unwrap_or(true);
+                let job_id = queue_answer_job(jobs,conversation_id,question,selected_model,grounding,cfg.db_path.clone());
                 json(request,202,json!({"status":"queued","job_id":job_id,"conversation_id":conversation_id}));
             },
             Err(error) => json(request,500,json!({"error":error.to_string()})),
@@ -729,7 +732,8 @@ fn handle_api(mut request: Request, cfg: &AppConfig, store: &KnowledgeStore, job
         }
         let question = content.to_string();
         let selected_model = input.get("model").and_then(Value::as_str).map(str::trim).filter(|value| !value.is_empty()).unwrap_or(&cfg.settings.answer.model).to_string();
-        let job_id = queue_answer_job(jobs, conversation_id, question, selected_model, cfg.db_path.clone());
+        let grounding = input.get("grounding").and_then(Value::as_bool).unwrap_or(true);
+        let job_id = queue_answer_job(jobs, conversation_id, question, selected_model, grounding, cfg.db_path.clone());
         json(
             request,
             202,
