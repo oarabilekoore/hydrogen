@@ -677,6 +677,7 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
     }
 
     let (response, generation_error) = if args.stream {
+        payload_value["stream"] = json!(true);
         let mut emit = |text: &str| { println!("{}", json!({"event":"delta","text":text})); let _ = std::io::stdout().flush(); };
         let payload = payload_value.to_string();
         match stream_ollama_chat(&answer_cfg.endpoint, &payload, answer_cfg.timeout_seconds, &mut emit) {
@@ -876,6 +877,32 @@ mod html_tests {
         let diagnostic = ollama_empty_diagnostic(&value);
         assert!(diagnostic.contains("thinking_chars=17"));
         assert!(diagnostic.contains("done_reason=length"));
+    }
+
+    #[test]
+    fn detects_thinking_only_when_ollama_advertises_the_capability() {
+        let supported = json!({"capabilities":["completion","tools","thinking"]});
+        let unsupported = json!({"capabilities":["completion","tools"]});
+        assert!(model_supports_thinking(Some(&supported)));
+        assert!(!model_supports_thinking(Some(&unsupported)));
+        assert!(!model_supports_thinking(None));
+    }
+
+    #[test]
+    fn identifies_think_option_compatibility_errors() {
+        assert!(think_option_error("Ollama returned 400: model does not support thinking"));
+        assert!(think_option_error("invalid think parameter"));
+        assert!(!think_option_error("model not found"));
+    }
+
+    #[test]
+    fn thinking_models_receive_a_larger_bounded_output_budget() {
+        let mut payload = json!({"options":{"num_predict":180}});
+        increase_output_tokens(&mut payload, 2);
+        assert_eq!(payload.pointer("/options/num_predict").and_then(Value::as_u64), Some(512));
+        payload["options"]["num_predict"] = json!(1800);
+        increase_output_tokens(&mut payload, 2);
+        assert_eq!(payload.pointer("/options/num_predict").and_then(Value::as_u64), Some(2048));
     }
 
     #[test]
