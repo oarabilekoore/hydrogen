@@ -151,17 +151,123 @@ fn run_cli(args: &[&str]) -> std::io::Result<std::process::Output> {
 
 type JobStore = Arc<Mutex<HashMap<String, Value>>>;
 
-fn set_job(jobs: &JobStore, id: &str, value: Value) {
+const JOB_MAX_CHUNKS: usize = 512;
+const JOB_MAX_RETAINED: usize = 64;
+const JOB_TTL_SECONDS: u64 = 30 * 60;
+
+fn unix_seconds() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
+fn terminal_job(value: &Value) -> bool {
+    matches!(
+        value.get("status").and_then(Value::as_str),
+        Some("ready" | "unavailable" | "failed" | "cancelled")
+    )
+}
+
+fn prune_jobs(jobs: &mut HashMap<String, Value>) {
+    let now = unix_seconds();
+    jobs.retain(|_, job| {
+        !terminal_job(job)
+            || now.saturating_sub(job.get("created_at").and_then(Value::as_u64).unwrap_or(now))
+                < JOB_TTL_SECONDS
+    });
+
+    if jobs.len() > JOB_MAX_RETAINED {
+        let mut completed: Vec<(String, u64)> = jobs
+            .iter()
+            .filter(|(_, job)| terminal_job(job))
+            .map(|(id, job)| (
+                id.clone(),
+                job.get("created_at").and_then(Value::as_u64).unwrap_or(0),
+            ))
+            .collect();
+        completed.sort_by_key(|(_, created_at)| *created_at);
+        let remove_count = jobs.len().saturating_sub(JOB_MAX_RETAINED);
+        for (id, _) in completed.into_iter().take(remove_count) {
+            jobs.remove(&id);
+        }
+    }
+}
+
+fn set_job(jobs: &JobStore, id: &str, mut value: Value) {
     if let Ok(mut jobs) = jobs.lock() {
+        if let Some(previous) = jobs.get(id) {
+            for key in ["answer", "chunks", "seq", "created_at"] {
+                if value.get(key).is_none() {
+                    if let Some(previous_value) = previous.get(key) {
+                        value[key] = previous_value.clone();
+                    }
+                }
+            }
+        }
+        value["updated_at"] = json!(unix_seconds());
         jobs.insert(id.to_string(), value);
     }
+}
+
+fn append_job_delta(jobs: &JobStore, id: &str, delta: &str) {
+    if delta.is_empty() { return; }
+    if let Ok(mut jobs) = jobs.lock() {
+        if let Some(job) = jobs.get_mut(id) {
+            let sequence = job.get("seq").and_then(Value::as_u64).unwrap_or(0) + 1;
+            let mut answer = job.get("answer").and_then(Value::as_str).unwrap_or("").to_string();
+            answer.push_str(delta);
+            job["answer"] = Value::String(answer);
+            job["seq"] = json!(sequence);
+            job["status"] = Value::String("streaming".to_string());
+            job["updated_at"] = json!(unix_seconds());
+            if let Some(chunks) = job["chunks"].as_array_mut() {
+                chunks.push(json!({"seq":sequence,"text":delta}));
+                if chunks.len() > JOB_MAX_CHUNKS {
+                    let excess = chunks.len() - JOB_MAX_CHUNKS;
+                    chunks.drain(0..excess);
+                }
+            }
+        }
+    }
+}
+
+fn job_snapshot(jobs: &JobStore, id: &str, after: u64) -> Option<Value> {
+    let jobs = jobs.lock().ok()?;
+    let stored = jobs.get(id)?;
+    let mut snapshot = stored.clone();
+    let chunks = stored.get("chunks").and_then(Value::as_array).cloned().unwrap_or_default();
+    let sequence = stored.get("seq").and_then(Value::as_u64).unwrap_or(0);
+    let earliest = chunks.first().and_then(|chunk| chunk.get("seq")).and_then(Value::as_u64).unwrap_or(sequence.saturating_add(1));
+    let reset = after.saturating_add(1) < earliest && after < sequence;
+    let delta = if reset {
+        String::new()
+    } else {
+        chunks.iter()
+            .filter(|chunk| chunk.get("seq").and_then(Value::as_u64).unwrap_or(0) > after)
+            .filter_map(|chunk| chunk.get("text").and_then(Value::as_str))
+            .collect::<String>()
+    };
+    if let Some(object) = snapshot.as_object_mut() {
+        object.remove("chunks");
+        object.insert("seq".into(), json!(sequence));
+        object.insert("reset".into(), json!(reset));
+        object.insert("delta".into(), json!(delta));
+        if !reset && !terminal_job(stored) {
+            object.remove("answer");
+        }
+    }
+    Some(snapshot)
 }
 
 fn queue_answer_job(jobs: &JobStore, conversation_id: &str, question: String, model: String, db_path: std::path::PathBuf) -> String {
     let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos();
     let material = format!("{}:{}:{}", std::process::id(), stamp, conversation_id);
     let job_id = format!("job_{}", &blake3::hash(material.as_bytes()).to_hex()[..24]);
-    set_job(jobs, &job_id, json!({"id":job_id,"status":"queued","answer":"","model":model}));
+    if let Ok(mut jobs) = jobs.lock() {
+        prune_jobs(&mut jobs);
+        jobs.insert(job_id.clone(), json!({"id":job_id,"status":"queued","answer":"","chunks":[],"seq":0,"created_at":unix_seconds(),"updated_at":unix_seconds(),"model":model}));
+    }
     let worker_jobs = Arc::clone(jobs);
     let worker_conversation = conversation_id.to_string();
     let worker_id = job_id.clone();
@@ -206,14 +312,7 @@ fn queue_answer_job(jobs: &JobStore, conversation_id: &str, question: String, mo
             match event.get("event").and_then(Value::as_str) {
                 Some("delta") => {
                     if let Some(delta) = event.get("text").and_then(Value::as_str) {
-                        if let Ok(mut jobs) = worker_jobs.lock() {
-                            if let Some(job) = jobs.get_mut(&worker_id) {
-                                let mut answer = job.get("answer").and_then(Value::as_str).unwrap_or("").to_string();
-                                answer.push_str(delta);
-                                job["answer"] = Value::String(answer);
-                                job["status"] = Value::String("streaming".to_string());
-                            }
-                        }
+                        append_job_delta(&worker_jobs, &worker_id, delta);
                     }
                 }
                 Some("result") => { result = event.get("result").cloned(); }
@@ -476,8 +575,10 @@ fn handle_api(mut request: Request, cfg: &AppConfig, store: &KnowledgeStore, job
 
     if parts.len() == 3 && parts[0] == "api" && parts[1] == "jobs" && method == Method::Get {
         let id = parts[2];
-        let value = jobs.lock().ok().and_then(|jobs| jobs.get(id).cloned());
-        match value {
+        let after = query_parameter(&url, "after")
+            .and_then(|value| value.parse::<u64>().ok())
+            .unwrap_or(0);
+        match job_snapshot(jobs, id, after) {
             Some(value) => json(request, 200, value),
             None => json(request, 404, json!({"error":"generation job not found"})),
         }
