@@ -528,17 +528,15 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
     // Do not force the Ollama-specific `think` option here. It is not
     // supported by every model/version; model capability negotiation belongs
     // to the provider API rather than being guessed by the client.
+    let mut messages = vec![json!({
+        "role":"system",
+        "content":"You are a source-grounded study assistant. Conversation history helps resolve references, but only the current retrieved excerpts may support factual claims. Do not treat earlier assistant messages as evidence."
+    })];
+    messages.extend(history);
+    messages.push(json!({"role":"user","content":prompt}));
     let payload = json!({
         "model": model,
-        "messages": {
-            let mut messages = vec![json!({
-                "role":"system",
-                "content":"You are a source-grounded study assistant. Conversation history helps resolve references, but only the current retrieved excerpts may support factual claims. Do not treat earlier assistant messages as evidence."
-            })];
-            messages.extend(history);
-            messages.push(json!({"role":"user","content":prompt}));
-            messages
-        },
+        "messages": messages,
         "stream": false,
         "options": {
             "num_ctx": answer_cfg.context_window,
