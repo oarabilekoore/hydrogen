@@ -638,6 +638,24 @@ pub fn ensure_schema(conn: &Connection) -> rusqlite::Result<()> {
     if !has_sources_column {
         conn.execute("ALTER TABLE messages ADD COLUMN sources_json TEXT", [])?;
     }
+    let has_pinned_column = {
+        let mut statement = conn.prepare("PRAGMA table_info(conversations)")?;
+        let rows = statement.query_map([], |row| row.get::<_, String>(1))?;
+        let mut found = false;
+        for column in rows {
+            if column? == "pinned" {
+                found = true;
+                break;
+            }
+        }
+        found
+    };
+    if !has_pinned_column {
+        conn.execute(
+            "ALTER TABLE conversations ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0",
+            [],
+        )?;
+    }
     Ok(())
 }
 
@@ -651,19 +669,7 @@ fn new_id(prefix: &str) -> String {
     format!(
         "{prefix}_{}",
         &blake3::hash(material.as_bytes()).to_hex()[..24]
-    )?;
-    let has_pinned: bool = conn.query_row(
-        "SELECT EXISTS(SELECT 1 FROM pragma_table_info('conversations') WHERE name='pinned')",
-        [],
-        |row| row.get(0),
-    )?;
-    if !has_pinned {
-        conn.execute(
-            "ALTER TABLE conversations ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0",
-            [],
-        )?;
-    }
-    Ok(())
+    )
 }
 
 #[cfg(test)]
