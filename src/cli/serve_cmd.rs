@@ -507,6 +507,8 @@ fn handle_api(mut request: Request, cfg: &AppConfig, store: &KnowledgeStore, job
 
     if parts.len() == 4 && parts[0] == "api" && parts[1] == "conversations" && parts[3] == "regenerate" && method == Method::Post {
         let conversation_id = parts[2];
+        let input: Value = read_body(&mut request).ok().and_then(|body| serde_json::from_str(&body).ok()).unwrap_or_else(|| json!({}));
+        let selected_model = input.get("model").and_then(Value::as_str).map(str::trim).filter(|value| !value.is_empty()).unwrap_or(&cfg.settings.answer.model).to_string();
         match store.get_messages(conversation_id) {
             Ok(messages) => {
                 let latest_assistant = messages.last().filter(|message| message.role == "assistant");
@@ -517,8 +519,7 @@ fn handle_api(mut request: Request, cfg: &AppConfig, store: &KnowledgeStore, job
                     messages.iter().rev().find(|message| message.role == "user").map(|message| message.content.clone())
                 } else { None };
                 let Some(question) = question else { json(request,409,json!({"error":"there is no latest answer or unanswered user message to regenerate"})); return; };
-                let model = cfg.settings.answer.model.clone();
-                let job_id = queue_answer_job(jobs,conversation_id,question,model,cfg.db_path.clone());
+                let job_id = queue_answer_job(jobs,conversation_id,question,selected_model,cfg.db_path.clone());
                 json(request,202,json!({"status":"queued","job_id":job_id,"conversation_id":conversation_id}));
             },
             Err(error) => json(request,500,json!({"error":error.to_string()})),
