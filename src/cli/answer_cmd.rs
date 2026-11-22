@@ -124,12 +124,12 @@ fn stream_ollama_chat(endpoint: &str, payload: &str, timeout_seconds: u64, mut o
         .stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()
         .map_err(|error| format!("Could not start curl for Ollama request: {error}"))?;
     let stdout = child.stdout.take().ok_or_else(|| "could not read Ollama stream".to_string())?;
-    let mut reader = BufReader::new(stdout);
+    let reader = BufReader::new(stdout);
     let mut raw = String::new();
     let mut emitted = 0usize;
     let mut thinking_chars = 0usize;
     let mut stream_error = None;
-    for line in reader.by_ref().lines() {
+    for line in reader.lines() {
         let line = line.map_err(|error| format!("could not read Ollama stream: {error}"))?;
         if line.trim().is_empty() { continue; }
         let value: Value = serde_json::from_str(&line).map_err(|error| format!("Ollama returned invalid streaming JSON: {error}"))?;
@@ -144,7 +144,6 @@ fn stream_ollama_chat(endpoint: &str, payload: &str, timeout_seconds: u64, mut o
         }
         if value.get("done").and_then(Value::as_bool) == Some(true) { break; }
     }
-    drop(reader);
     let output = child.wait_with_output().map_err(|error| format!("could not finish Ollama stream: {error}"))?;
     if let Some(error) = stream_error { return Err(format!("Ollama request failed: {error}")); }
     if !output.status.success() {
