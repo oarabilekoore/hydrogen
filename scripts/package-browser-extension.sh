@@ -56,10 +56,21 @@ FIREFOX_STAGE="$WORK_DIR/firefox"
 CHROME_STAGE="$WORK_DIR/chrome"
 mkdir -p "$FIREFOX_STAGE" "$CHROME_STAGE"
 
+copy_extension_sources() {
+    local destination="$1"
+    local item
+    shopt -s dotglob nullglob
+    for item in "$SOURCE_DIR"/*; do
+        # Never package previous build output back into the next archive.
+        [[ "$item" == "$SOURCE_DIR/dist" ]] && continue
+        cp -a "$item" "$destination/"
+    done
+}
+
 # Keep the two builds isolated so packaging never edits the working manifest.
-cp -a "$SOURCE_DIR/." "$FIREFOX_STAGE/"
+copy_extension_sources "$FIREFOX_STAGE"
 rm -f "$FIREFOX_STAGE/manifest.chromium.json"
-cp -a "$SOURCE_DIR/." "$CHROME_STAGE/"
+copy_extension_sources "$CHROME_STAGE"
 cp "$SOURCE_DIR/manifest.chromium.json" "$CHROME_STAGE/manifest.json"
 rm -f "$CHROME_STAGE/manifest.chromium.json"
 
