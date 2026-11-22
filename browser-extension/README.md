@@ -9,6 +9,32 @@ A Manifest V3 extension for Chromium and Firefox-compatible WebExtension environ
 
 The extension source files and background implementation are shared. Only the manifest background declaration differs: Firefox uses `background.scripts`, while Chromium Manifest V3 uses `background.service_worker`.
 
+## Build installable packages
+
+From the repository root, run:
+
+```sh
+make extension-package
+# or:
+bash scripts/package-browser-extension.sh
+```
+
+The script validates both Manifest V3 manifests and the files they reference, then writes:
+
+- `browser-extension/dist/hydrogen-capture-firefox.xpi`
+- `browser-extension/dist/hydrogen-capture-chrome.zip`
+
+The source manifests are never modified. The Firefox XPI can be loaded temporarily from
+`about:debugging#/runtime/this-firefox`. Normal Firefox distribution requires Mozilla
+signing. The Chrome ZIP is intended for Chrome Web Store submission; for local testing,
+extract it and choose **Load unpacked** at `chrome://extensions`.
+
+Pass an output directory as the first argument to the script to change the destination:
+
+```sh
+bash scripts/package-browser-extension.sh ~/Downloads/hydrogen-extensions
+```
+
 ## Pairing with Hydrogen
 
 1. Start Hydrogen once so it creates its local API token, or run `hydrogen --print-api-token` to create and print it directly.

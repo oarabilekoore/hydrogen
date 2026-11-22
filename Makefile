@@ -3,7 +3,7 @@ BINDIR ?= $(PREFIX)/bin
 SYSTEMD_USER_DIR ?= $(HOME)/.config/systemd/user
 SERVICE_NAME := quickshell-hydrogen.service
 
-.PHONY: all build release run test check fmt fmt-check lint install models service uninstall clean help
+.PHONY: all build release run test check fmt fmt-check lint install models extension-package service uninstall clean help
 
 all: check test build
 
