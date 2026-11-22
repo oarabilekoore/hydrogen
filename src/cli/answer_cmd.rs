@@ -118,7 +118,7 @@ fn visible_stream_text(raw: &str) -> String {
     output
 }
 
-fn stream_ollama_chat(endpoint: &str, payload: &str, timeout_seconds: u64, mut on_delta: impl FnMut(&str)) -> std::result::Result<String, String> {
+fn stream_ollama_chat(endpoint: &str, payload: &str, timeout_seconds: u64, mut on_delta: impl FnMut(&str), mut on_thinking: impl FnMut(usize)) -> std::result::Result<String, String> {
     let mut child = Command::new("curl")
         .args(["--silent", "--show-error", "--fail-with-body", "--no-buffer", "--connect-timeout", "2", "--max-time", &timeout_seconds.to_string(), &format!("{}/api/chat", endpoint.trim_end_matches('/')), "-H", "Content-Type: application/json", "--data-binary", payload])
         .stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()
@@ -136,6 +136,7 @@ fn stream_ollama_chat(endpoint: &str, payload: &str, timeout_seconds: u64, mut o
         if let Some(error) = value.get("error").and_then(Value::as_str) { stream_error = Some(error.to_string()); break; }
         if let Some(thinking) = value.pointer("/message/thinking").and_then(Value::as_str) {
             thinking_chars = thinking_chars.saturating_add(thinking.chars().count());
+            on_thinking(thinking_chars);
         }
         if let Some(token) = value.pointer("/message/content").and_then(Value::as_str) {
             raw.push_str(token);
@@ -167,10 +168,23 @@ fn ollama_show(endpoint: &str, model: &str, timeout_seconds: u64) -> Option<Valu
     serde_json::from_slice(&output.stdout).ok()
 }
 
-fn model_supports_thinking(show: Option<&Value>) -> bool {
-    show.and_then(|value| value.get("capabilities"))
+fn model_thinking_mode(show: Option<&Value>) -> Option<Value> {
+    let metadata = show?;
+    if let Some(values) = metadata.pointer("/thinking/values").and_then(Value::as_array) {
+        if values.iter().any(|value| value.as_str() == Some("low")) { return Some(json!("low")); }
+        if values.iter().any(|value| value.as_bool() == Some(true)) { return Some(json!(true)); }
+    }
+    let supported = metadata.get("capabilities").and_then(Value::as_array)
+        .map(|values| values.iter().any(|value| value.as_str() == Some("thinking"))).unwrap_or(false);
+    supported.then_some(json!(true))
+}
+
+fn model_supports_thinking(show: Option<&Value>) -> bool { model_thinking_mode(show).is_some() }
+
+fn model_supports_no_thinking(show: Option<&Value>) -> bool {
+    show.and_then(|value| value.pointer("/thinking/values"))
         .and_then(Value::as_array)
-        .map(|capabilities| capabilities.iter().any(|capability| capability.as_str() == Some("thinking")))
+        .map(|values| values.iter().any(|value| value.as_bool() == Some(false)))
         .unwrap_or(false)
 }
 
@@ -698,40 +712,50 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
     // Ollama exposes per-model capabilities through /api/show. Only enable
     // thinking when the selected model explicitly advertises that capability.
     let show = ollama_show(&answer_cfg.endpoint, model, answer_cfg.timeout_seconds.min(5));
-    let thinking_supported = model_supports_thinking(show.as_ref());
+    let thinking_mode = model_thinking_mode(show.as_ref());
+    let thinking_supported = thinking_mode.is_some();
     let mut payload_value = json!({
         "model": model,
         "messages": messages,
         "stream": false,
         "options": {
             "num_ctx": answer_cfg.context_window,
-            "num_predict": if thinking_supported { answer_cfg.max_output_tokens.max(512) } else { answer_cfg.max_output_tokens },
+            "num_predict": if thinking_supported { answer_cfg.max_output_tokens.max(1024) } else { answer_cfg.max_output_tokens },
             "temperature": answer_cfg.temperature,
             "top_p": answer_cfg.top_p,
             "repeat_penalty": answer_cfg.repeat_penalty
         }
     });
-    if thinking_supported {
-        payload_value["think"] = json!(true);
-    }
+    if let Some(mode) = thinking_mode { payload_value["think"] = mode; }
 
     let (response, generation_error) = if args.stream {
         payload_value["stream"] = json!(true);
         let mut emit = |text: &str| { println!("{}", json!({"event":"delta","text":text})); let _ = std::io::stdout().flush(); };
+        let mut emit_thinking = |chars: usize| { println!("{}", json!({"event":"thinking","chars":chars})); let _ = std::io::stdout().flush(); };
         let payload = payload_value.to_string();
-        match stream_ollama_chat(&answer_cfg.endpoint, &payload, answer_cfg.timeout_seconds, &mut emit) {
+        match stream_ollama_chat(&answer_cfg.endpoint, &payload, answer_cfg.timeout_seconds, &mut emit, &mut emit_thinking) {
             Ok(answer) => (Some(answer), None),
             Err(error) if payload_value.get("think").is_some() && think_option_error(&error) => {
                 payload_value.as_object_mut().map(|object| object.remove("think"));
-                match stream_ollama_chat(&answer_cfg.endpoint, &payload_value.to_string(), answer_cfg.timeout_seconds, &mut emit) {
+                match stream_ollama_chat(&answer_cfg.endpoint, &payload_value.to_string(), answer_cfg.timeout_seconds, &mut emit, &mut emit_thinking) {
                     Ok(answer) => (Some(answer), None),
                     Err(retry_error) => (None, Some(format!("{error}; retry without thinking also failed: {retry_error}"))),
                 }
             }
             Err(error) if thinking_supported && thinking_only_stream_error(&error) => {
                 increase_output_tokens(&mut payload_value, 2);
-                match stream_ollama_chat(&answer_cfg.endpoint, &payload_value.to_string(), answer_cfg.timeout_seconds, &mut emit) {
+                match stream_ollama_chat(&answer_cfg.endpoint, &payload_value.to_string(), answer_cfg.timeout_seconds, &mut emit, &mut emit_thinking) {
                     Ok(answer) => (Some(answer), None),
+                    Err(retry_error) if thinking_only_stream_error(&retry_error) && model_supports_no_thinking(show.as_ref()) => {
+                        // Preserve Qwen reasoning on the first attempt. If it consumes
+                        // the entire output budget twice, make one answer-only fallback.
+                        payload_value["think"] = json!(false);
+                        increase_output_tokens(&mut payload_value, 2);
+                        match stream_ollama_chat(&answer_cfg.endpoint, &payload_value.to_string(), answer_cfg.timeout_seconds, &mut emit, &mut emit_thinking) {
+                            Ok(answer) => (Some(answer), None),
+                            Err(final_error) => (None, Some(format!("{error}; larger reasoning budget failed: {retry_error}; answer-only fallback failed: {final_error}"))),
+                        }
+                    }
                     Err(retry_error) => (None, Some(format!("{error}; retry with a larger output budget failed: {retry_error}"))),
                 }
             }
@@ -757,7 +781,22 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
                     match request_ollama_chat(&answer_cfg.endpoint, &payload_value.to_string(), answer_cfg.timeout_seconds) {
                         Ok(retry) => {
                             let retry_answer = extract_ollama_answer(&retry);
-                            if retry_answer.as_deref().unwrap_or("").trim().is_empty() {
+                            if retry_answer.as_deref().unwrap_or("").trim().is_empty()
+                                && model_supports_no_thinking(show.as_ref()) {
+                                // The reasoning attempt remains the default. Fall back
+                                // to answer-only generation only after it exhausts its budget.
+                                payload_value["think"] = json!(false);
+                                increase_output_tokens(&mut payload_value, 2);
+                                match request_ollama_chat(&answer_cfg.endpoint, &payload_value.to_string(), answer_cfg.timeout_seconds) {
+                                    Ok(final_retry) => {
+                                        let final_answer = extract_ollama_answer(&final_retry);
+                                        if final_answer.as_deref().unwrap_or("").trim().is_empty() {
+                                            (None, Some(ollama_empty_diagnostic(&final_retry)))
+                                        } else { (final_answer, None) }
+                                    }
+                                    Err(error) => (None, Some(format!("Qwen reasoning exhausted its output budget; answer-only fallback failed: {error}"))),
+                                }
+                            } else if retry_answer.as_deref().unwrap_or("").trim().is_empty() {
                                 (None, Some(ollama_empty_diagnostic(&retry)))
                             } else { (retry_answer, None) }
                         }
@@ -953,6 +992,24 @@ mod html_tests {
         assert!(model_supports_thinking(Some(&supported)));
         assert!(!model_supports_thinking(Some(&unsupported)));
         assert!(!model_supports_thinking(None));
+    }
+
+    #[test]
+    fn prefers_a_bounded_thinking_level_when_ollama_advertises_one() {
+        let qwen = json!({"thinking":{"values":["low","medium","high"],"default":"medium"}});
+        assert_eq!(model_thinking_mode(Some(&qwen)), Some(json!("low")));
+        let boolean_only = json!({"thinking":{"values":[true,false],"default":true}});
+        assert_eq!(model_thinking_mode(Some(&boolean_only)), Some(json!(true)));
+        let unsupported = json!({"capabilities":["completion","tools"]});
+        assert_eq!(model_thinking_mode(Some(&unsupported)), None);
+    }
+
+    #[test]
+    fn detects_when_a_model_allows_answer_only_fallback() {
+        let supported = json!({"thinking":{"values":[true,false],"default":true}});
+        let required = json!({"thinking":{"values":[true],"default":true}});
+        assert!(model_supports_no_thinking(Some(&supported)));
+        assert!(!model_supports_no_thinking(Some(&required)));
     }
 
     #[test]
