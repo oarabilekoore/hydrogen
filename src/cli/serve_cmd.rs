@@ -212,7 +212,9 @@ fn handle_api(mut request: Request, cfg: &AppConfig, store: &KnowledgeStore, job
     }
 
     if parts.as_slice() == ["api", "conversations"] && method == Method::Get {
-        match store.list_conversations(100) {
+        let limit = query_parameter(&url, "limit")
+            .and_then(|value| value.parse::<usize>().ok()).unwrap_or(100).clamp(1, 500);
+        match store.list_conversations(limit) {
             Ok(items) => json(request, 200, json!({"conversations":items})),
             Err(error) => json(request, 500, json!({"error":error.to_string()})),
         }
@@ -234,6 +236,53 @@ fn handle_api(mut request: Request, cfg: &AppConfig, store: &KnowledgeStore, job
             .unwrap_or("New conversation");
         match store.create_conversation(title) {
             Ok(id) => json(request, 201, json!({"id":id,"title":title})),
+            Err(error) => json(request, 500, json!({"error":error.to_string()})),
+        }
+        return;
+    }
+
+    if parts.len() == 3
+        && parts[0] == "api"
+        && parts[1] == "conversations"
+        && (method == Method::Patch || method == Method::Delete)
+    {
+        let id = parts[2];
+        if method == Method::Delete {
+            match store.delete_conversation(id) {
+                Ok(true) => json(request, 200, json!({"status":"deleted","id":id})),
+                Ok(false) => json(request, 404, json!({"error":"conversation not found"})),
+                Err(error) => json(request, 500, json!({"error":error.to_string()})),
+            }
+            return;
+        }
+
+        let body = match read_body(&mut request) {
+            Ok(body) => body,
+            Err(error) => {
+                json(request, 400, json!({"error":error.to_string()}));
+                return;
+            }
+        };
+        let input: Value = match serde_json::from_str(&body) {
+            Ok(input) => input,
+            Err(error) => {
+                json(request, 400, json!({"error":error.to_string()}));
+                return;
+            }
+        };
+        let title = input.get("title").and_then(Value::as_str);
+        let pinned = input.get("pinned").and_then(Value::as_bool);
+        if title.is_none() && pinned.is_none() {
+            json(request, 400, json!({"error":"provide a title or pinned value"}));
+            return;
+        }
+        if title.map(|value| value.trim().is_empty() || value.chars().count() > 160).unwrap_or(false) {
+            json(request, 400, json!({"error":"title must contain 1 to 160 characters"}));
+            return;
+        }
+        match store.update_conversation(id, title, pinned) {
+            Ok(true) => json(request, 200, json!({"status":"updated","id":id})),
+            Ok(false) => json(request, 404, json!({"error":"conversation not found"})),
             Err(error) => json(request, 500, json!({"error":error.to_string()})),
         }
         return;
