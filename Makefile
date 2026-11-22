@@ -7,15 +7,12 @@ SERVICE_NAME := quickshell-hydrogen.service
 
 all: check test build
 
-# Development build
 build:
 	cargo build
 
-# Optimised release build
 release:
 	cargo build --release
 
-# Run the Hydrogen daemon
 run:
 	cargo run -- daemon
 
@@ -40,9 +37,13 @@ install: release
 models:
 	bash scripts/install-models.sh
 
+# Build Firefox XPI and Chrome-compatible ZIP without modifying source manifests.
+extension-package:
+	bash scripts/package-browser-extension.sh
+
 service: install
 	mkdir -p $(SYSTEMD_USER_DIR)
-	printf '%s\n' '[Unit]' 'Description=Hydrogen Rust Indexer and Local OCR Backend for Quickshell' 'After=graphical-session.target' '' '[Service]' 'Type=simple' 'ExecStart=$(BINDIR)/hydrogen daemon' 'Restart=on-failure' 'RestartSec=2' 'Nice=15' '' '[Install]' 'WantedBy=default.target' > $(SYSTEMD_USER_DIR)/$(SERVICE_NAME)
+	printf '%s\n' '[Unit]' 'Description=Hydrogen local knowledge service' 'After=graphical-session.target' '' '[Service]' 'Type=simple' 'ExecStart=$(BINDIR)/hydrogen daemon' 'Restart=on-failure' 'RestartSec=2' 'Nice=15' '' '[Install]' 'WantedBy=default.target' > $(SYSTEMD_USER_DIR)/$(SERVICE_NAME)
 	systemctl --user daemon-reload
 	systemctl --user enable --now $(SERVICE_NAME)
 
@@ -67,6 +68,7 @@ help:
 	@echo "  make lint        Run Clippy"
 	@echo "  make install     Install release binary"
 	@echo "  make models      Install OCR models"
+	@echo "  make extension-package  Build Firefox XPI and Chrome ZIP"
 	@echo "  make service     Install and start user service"
 	@echo "  make uninstall   Stop service and remove installed binary"
 	@echo "  make clean       Clean build artefacts"
