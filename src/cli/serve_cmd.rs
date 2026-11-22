@@ -1227,6 +1227,20 @@ mod query_tests {
     }
 
     #[test]
+    fn job_thinking_progress_is_visible_without_storing_reasoning_text() {
+        let jobs: super::JobStore = std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
+        super::set_job(&jobs, "job_think", serde_json::json!({
+            "id":"job_think","status":"generating","answer":"","chunks":[],"seq":0,
+            "thinking_chars":0,"created_at":super::unix_seconds()
+        }));
+        super::append_job_thinking(&jobs, "job_think", 128);
+        let snapshot = super::job_snapshot(&jobs, "job_think", 0).unwrap();
+        assert_eq!(snapshot["status"], "thinking");
+        assert_eq!(snapshot["thinking_chars"], 128);
+        assert!(snapshot.get("thinking").is_none());
+    }
+
+    #[test]
     fn job_polling_returns_only_new_deltas() {
         let jobs: super::JobStore = std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
         super::set_job(&jobs, "job_test", serde_json::json!({
