@@ -2,7 +2,7 @@
 name = "hydrogen"
 version = "0.2.0"
 edition = "2021"
-description = "Local-first Rust indexer, multimodal search and OCR backend for Quickshell"
+description = "Local-first Rust knowledge engine with indexing, hybrid search, OCR and a local API"
 license = "AGPL-3.0-only"
 
 [dependencies]

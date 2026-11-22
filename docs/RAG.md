@@ -1,76 +1,66 @@
-# Local RAG answers
+# Local retrieval-augmented generation (RAG)
 
-Hydrogen can answer a question from passages already present in its local
-document index. Retrieval uses Hydrogen's existing FTS5/lexical search and,
-when explicitly requested, the already-enabled MiniLM/CLIP semantic channels.
-The retrieved passages are sent to a local Ollama server; no cloud model or
-external API is used.
+Hydrogen can answer questions using passages in its local knowledge index. Retrieval uses local FTS5/lexical search and, when enabled, MiniLM/CLIP semantic channels. Retrieved context is sent to a local Ollama server. The default workflow does not require a cloud model provider.
 
 ## Requirements
 
-- Ollama running locally at `http://127.0.0.1:11434`.
-- The model tag installed in Ollama. The default is `qwen3.5:2b-q4_K_M`.
-- An existing Hydrogen index containing extracted document text.
+- Ollama running at `http://127.0.0.1:11434`, or the endpoint configured in `[answer].endpoint`.
+- The selected model installed in Ollama.
+- An existing Hydrogen index containing extracted document or captured web content.
 
-Check the model with:
-
-```sh
+~~~sh
 ollama list
-ollama run qwen3.5:2b-q4_K_M
-```
+ollama pull qwen3.5:2b-q4_K_M
+~~~
+
+The default model is configurable. Choose a model that fits available memory and context requirements.
 
 ## Ask a question
 
-```sh
-hydrogen answer "what is a throttling device" --model qwen3.5:2b-q4_K_M
+~~~sh
+hydrogen answer "What is a throttling device?"
+hydrogen answer --model qwen3.5:2b-q4_K_M "Explain the throttling process"
+hydrogen answer --browser "What is a throttling device?"
+~~~
 
-# Also write a browser-ready local HTML answer page
-hydrogen answer --browser "what is a throttling device"
-```
+The command returns a structured result containing status, answer and source references. Sources identify the indexed item and, when available, a PDF page or text location. The model is instructed to use retrieved excerpts and identify when the supplied context is insufficient.
 
-Optional flags:
+The frontend uses the same answer pipeline and stores messages in the selected conversation. It supports multi-turn context, incremental output, regeneration and retrying failed answers. Search remains independent of generation: ordinary search does not start Ollama.
 
-```sh
-hydrogen answer "explain the throttling process" --limit 8 --model qwen3.5:2b-q4_K_M
-hydrogen answer "explain the throttling process"
-```
+## Retrieval modes and semantic indexing
 
-The command prints one JSON object containing `status`, `answer`, and
-`sources`. Each source includes its indexed path and PDF page or text line
-when available. The model is instructed to answer only from retrieved
-excerpts, cite claims as `[1]`, `[2]`, and say when the indexed material
-does not contain enough information.
+The default retrieval path is lexical/FTS5 and does not download embedding models. Semantic retrieval uses local vectors after semantic indexing has been enabled and the index populated:
 
-The default retrieval path is deliberately lexical/FTS5 and does not download
-embedding models. `--semantic` uses the optional local vectors only if they
-have already been enabled and indexed. RAG answers use the stored search
-snippets, so answer quality depends on the completeness of indexed text and
-the quality of the retrieved passages.
+~~~sh
+hydrogen config set indexing.embeddings_enabled true
+hydrogen index embed
+hydrogen query "heat exchanger" --semantic
+~~~
 
-If Ollama is unavailable or the requested model cannot be used, the command
-returns `status: "unavailable"`; if no indexed passages match, it returns
-`status: "no_context"`. Normal file search remains independent of answer
-generation.
+Future syncs maintain vectors while semantic indexing remains enabled. First use downloads selected model files; inference then runs locally. See [Model setup](MODELS.md).
 
+RAG quality depends on indexed content completeness and the relevance of retrieved passages. Semantic search can improve retrieval for some queries but does not guarantee that the right evidence will be found.
 
-## Passage-level retrieval
+## Source grounding
 
-The RAG command searches the PDF page FTS index directly, so multiple relevant pages from the same PDF can be retrieved. It expands a question into a small set of keyword queries, combines repeated page hits, and supplements them with indexed non-PDF text. Image files and screenshot OCR are excluded from answer context by default. This is intentionally separate from the launcher’s broad content-and-vision search ranking.
+The chat interface exposes a per-message source-grounding control. When enabled, Hydrogen asks the model to answer from retrieved context and attach source references. When disabled, the model can answer without the same source-grounding constraint. This is a mode switch, not a truth detector: answers can still be incomplete, misread evidence or contain errors.
 
-The default generator is `qwen3.5:2b-q4_K_M` (about 1.9 GB in the Ollama library). On an 8 GB machine, keep the context bounded; larger models may compete with the desktop and browser for memory. A model change does not guarantee zero hallucinations: the retrieval layer and citation checks remain essential.
+Citations point to locally indexed sources. They do not independently prove that a generated claim is correct; inspect the referenced passage when accuracy matters.
 
+## Thinking models and streaming
+
+Hydrogen checks Ollama model metadata for thinking capability before sending thinking-specific request options. If the model does not advertise that capability, the request avoids the option. If Ollama rejects the option, Hydrogen retries without it.
+
+Thinking content is kept separate from user-facing answer text. If a model emits only thinking content without an answer, Hydrogen can retry with a larger output budget within configured safety bounds.
+
+When streaming is enabled, Ollama's incremental response is forwarded through Hydrogen's answer job API and displayed progressively in the frontend. The job API uses sequence cursors so clients can request only new output and recover with a snapshot if an older cursor falls outside the retained delta window. A failed job may retain and display partial generated text.
+
+## Failure states and resource considerations
+
+If Ollama is unavailable or rejects a request, Hydrogen reports the underlying connection/API error. If no indexed passages match, the result reports that no context was found. Normal file and knowledge search remains usable when answer generation is unavailable.
+
+Small local models reduce memory pressure but can produce weaker answers. Larger models and longer context windows use more RAM and CPU. Keep context and output limits bounded on machines with limited memory. Model selection does not remove the need to inspect source material or verify important claims.
 
 ## Browser-ready answers
 
-The `hydrogen answer` command remains opt-in. Use `--html` to write a
-self-contained, locally stored HTML page under
-`$HYDROGEN_STATE_DIR/answers` (or the configured Hydrogen state directory).
-The JSON response includes `html_path` when the page is written. Source entries
-link to their original local files and include PDF page fragments where available.
-The Quickshell launcher adds an explicit **Ask AI about this search** result;
-searching alone never invokes Ollama. Selecting that result runs RAG and opens
-the generated page with `xdg-open`.
-
-If Ollama is unavailable or rejects the requested model, Hydrogen now returns
-the underlying connection/API error rather than collapsing every failure into
-a generic unavailable message.
+The `hydrogen answer --browser` workflow writes a local HTML answer page and opens it in the default browser. The page contains the answer and source links. This workflow is separate from the interactive frontend, which stores the answer in a conversation.
