@@ -44,7 +44,11 @@ fn api_token(cfg: &AppConfig) -> std::io::Result<String> {
     fs::create_dir_all(&cfg.state_dir)?;
     let path = cfg.state_dir.join("hydrogen-api-token");
     if path.exists() {
-        return Ok(fs::read_to_string(path)?.trim().to_string());
+        let token = fs::read_to_string(path)?.trim().to_string();
+        if token.len() != 64 || !token.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "stored API token is invalid; remove hydrogen-api-token and restart Hydrogen"));
+        }
+        return Ok(token);
     }
     let mut bytes = [0u8; 32];
     OpenOptions::new().read(true).open("/dev/urandom")?.read_exact(&mut bytes)?;
@@ -969,5 +973,12 @@ mod query_tests {
     #[test]
     fn missing_query_parameter_is_none() {
         assert_eq!(query_parameter("/api/search?limit=10", "q"), None);
+    }
+
+    #[test]
+    fn api_token_comparison_requires_exact_secret_match() {
+        assert!(super::constant_time_eq("0123456789abcdef", "0123456789abcdef"));
+        assert!(!super::constant_time_eq("0123456789abcdef", "0123456789abcdeg"));
+        assert!(!super::constant_time_eq("", "0123456789abcdef"));
     }
 }
