@@ -181,6 +181,13 @@ fn model_thinking_mode(show: Option<&Value>) -> Option<Value> {
 
 fn model_supports_thinking(show: Option<&Value>) -> bool { model_thinking_mode(show).is_some() }
 
+fn model_supports_no_thinking(show: Option<&Value>) -> bool {
+    show.and_then(|value| value.pointer("/thinking/values"))
+        .and_then(Value::as_array)
+        .map(|values| values.iter().any(|value| value.as_bool() == Some(false)))
+        .unwrap_or(false)
+}
+
 fn think_option_error(error: &str) -> bool {
     let lower = error.to_ascii_lowercase();
     (lower.contains("think") || lower.contains("thinking"))
@@ -739,6 +746,16 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
                 increase_output_tokens(&mut payload_value, 2);
                 match stream_ollama_chat(&answer_cfg.endpoint, &payload_value.to_string(), answer_cfg.timeout_seconds, &mut emit, &mut emit_thinking) {
                     Ok(answer) => (Some(answer), None),
+                    Err(retry_error) if thinking_only_stream_error(&retry_error) && model_supports_no_thinking(show.as_ref()) => {
+                        // Preserve Qwen reasoning on the first attempt. If it consumes
+                        // the entire output budget twice, make one answer-only fallback.
+                        payload_value["think"] = json!(false);
+                        increase_output_tokens(&mut payload_value, 2);
+                        match stream_ollama_chat(&answer_cfg.endpoint, &payload_value.to_string(), answer_cfg.timeout_seconds, &mut emit, &mut emit_thinking) {
+                            Ok(answer) => (Some(answer), None),
+                            Err(final_error) => (None, Some(format!("{error}; larger reasoning budget failed: {retry_error}; answer-only fallback failed: {final_error}"))),
+                        }
+                    }
                     Err(retry_error) => (None, Some(format!("{error}; retry with a larger output budget failed: {retry_error}"))),
                 }
             }
@@ -764,7 +781,22 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
                     match request_ollama_chat(&answer_cfg.endpoint, &payload_value.to_string(), answer_cfg.timeout_seconds) {
                         Ok(retry) => {
                             let retry_answer = extract_ollama_answer(&retry);
-                            if retry_answer.as_deref().unwrap_or("").trim().is_empty() {
+                            if retry_answer.as_deref().unwrap_or("").trim().is_empty()
+                                && model_supports_no_thinking(show.as_ref()) {
+                                // The reasoning attempt remains the default. Fall back
+                                // to answer-only generation only after it exhausts its budget.
+                                payload_value["think"] = json!(false);
+                                increase_output_tokens(&mut payload_value, 2);
+                                match request_ollama_chat(&answer_cfg.endpoint, &payload_value.to_string(), answer_cfg.timeout_seconds) {
+                                    Ok(final_retry) => {
+                                        let final_answer = extract_ollama_answer(&final_retry);
+                                        if final_answer.as_deref().unwrap_or("").trim().is_empty() {
+                                            (None, Some(ollama_empty_diagnostic(&final_retry)))
+                                        } else { (final_answer, None) }
+                                    }
+                                    Err(error) => (None, Some(format!("Qwen reasoning exhausted its output budget; answer-only fallback failed: {error}"))),
+                                }
+                            } else if retry_answer.as_deref().unwrap_or("").trim().is_empty() {
                                 (None, Some(ollama_empty_diagnostic(&retry)))
                             } else { (retry_answer, None) }
                         }
@@ -970,6 +1002,14 @@ mod html_tests {
         assert_eq!(model_thinking_mode(Some(&boolean_only)), Some(json!(true)));
         let unsupported = json!({"capabilities":["completion","tools"]});
         assert_eq!(model_thinking_mode(Some(&unsupported)), None);
+    }
+
+    #[test]
+    fn detects_when_a_model_allows_answer_only_fallback() {
+        let supported = json!({"thinking":{"values":[true,false],"default":true}});
+        let required = json!({"thinking":{"values":[true],"default":true}});
+        assert!(model_supports_no_thinking(Some(&supported)));
+        assert!(!model_supports_no_thinking(Some(&required)));
     }
 
     #[test]
