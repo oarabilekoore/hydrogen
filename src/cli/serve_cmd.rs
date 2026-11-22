@@ -1143,6 +1143,67 @@ mod query_tests {
     }
 
     #[test]
+    fn job_polling_returns_only_new_deltas() {
+        let jobs: super::JobStore = std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
+        super::set_job(&jobs, "job_test", serde_json::json!({
+            "id":"job_test","status":"generating","answer":"","chunks":[],"seq":0,
+            "created_at":super::unix_seconds()
+        }));
+        super::append_job_delta(&jobs, "job_test", "hello ");
+        super::append_job_delta(&jobs, "job_test", "world");
+        let first = super::job_snapshot(&jobs, "job_test", 0).unwrap();
+        assert_eq!(first["delta"], "hello world");
+        assert_eq!(first["seq"], 2);
+        assert!(first.get("answer").is_none());
+        let next = super::job_snapshot(&jobs, "job_test", 2).unwrap();
+        assert_eq!(next["delta"], "");
+        assert_eq!(next["seq"], 2);
+    }
+
+    #[test]
+    fn job_polling_resets_when_the_client_cursor_is_too_old() {
+        let jobs: super::JobStore = std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
+        super::set_job(&jobs, "job_test", serde_json::json!({
+            "id":"job_test","status":"generating","answer":"","chunks":[],"seq":0,
+            "created_at":super::unix_seconds()
+        }));
+        for index in 0..=super::JOB_MAX_CHUNKS {
+            super::append_job_delta(&jobs, "job_test", &format!("{index},"));
+        }
+        let snapshot = super::job_snapshot(&jobs, "job_test", 0).unwrap();
+        assert_eq!(snapshot["reset"], true);
+        assert_eq!(snapshot["answer"].as_str().unwrap().split(',').count(), super::JOB_MAX_CHUNKS + 2);
+        assert_eq!(snapshot["seq"], (super::JOB_MAX_CHUNKS + 1) as u64);
+    }
+
+    #[test]
+    fn failed_jobs_keep_partial_answers_and_expired_jobs_are_pruned() {
+        let jobs: super::JobStore = std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
+        super::set_job(&jobs, "job_test", serde_json::json!({
+            "id":"job_test","status":"streaming","answer":"","chunks":[],"seq":0,
+            "created_at":super::unix_seconds()
+        }));
+        super::append_job_delta(&jobs, "job_test", "partial output");
+        super::set_job(&jobs, "job_test", serde_json::json!({
+            "id":"job_test","status":"failed","error":"worker stopped"
+        }));
+        let snapshot = super::job_snapshot(&jobs, "job_test", 1).unwrap();
+        assert_eq!(snapshot["answer"], "partial output");
+        assert_eq!(snapshot["status"], "failed");
+
+        let mut stored = std::collections::HashMap::new();
+        stored.insert("expired".to_string(), serde_json::json!({
+            "status":"failed","created_at":super::unix_seconds().saturating_sub(super::JOB_TTL_SECONDS + 1)
+        }));
+        stored.insert("active".to_string(), serde_json::json!({
+            "status":"streaming","created_at":super::unix_seconds().saturating_sub(super::JOB_TTL_SECONDS + 1)
+        }));
+        super::prune_jobs(&mut stored);
+        assert!(!stored.contains_key("expired"));
+        assert!(stored.contains_key("active"));
+    }
+
+    #[test]
     fn api_token_comparison_requires_exact_secret_match() {
         assert!(super::constant_time_eq("0123456789abcdef", "0123456789abcdef"));
         assert!(!super::constant_time_eq("0123456789abcdef", "0123456789abcdeg"));
