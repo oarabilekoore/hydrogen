@@ -678,7 +678,7 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
         return Ok(());
     }
 
-    // Recent turns help resolve references; retrieved excerpts remain the only factual evidence.
+    // Recent turns help resolve references; grounding mode controls whether retrieved excerpts are required.
     let stored_history: Vec<Value> = if let Some(conversation_id) = args.conversation.as_deref() {
         KnowledgeStore::open(&cfg.db_path)
             .and_then(|knowledge| knowledge.get_messages(conversation_id))
