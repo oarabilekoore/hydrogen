@@ -23,6 +23,9 @@ pub struct Cli {
     /// Open the bundled Hydrogen web application in your browser
     #[arg(long)]
     pub frontend: bool,
+    /// Print the local API token used to pair browser extensions
+    #[arg(long)]
+    pub print_api_token: bool,
     /// Start a saved AI conversation with this question after opening the frontend
     #[arg(long, requires = "frontend", conflicts_with_all = ["conversation", "page"])]
     pub ask: Option<String>,
@@ -61,6 +64,9 @@ pub enum Commands {
 }
 
 pub fn dispatch(cli: Cli, cfg: &AppConfig) -> Result<()> {
+    if cli.print_api_token {
+        return serve_cmd::print_api_token(cfg);
+    }
     if cli.frontend {
         return serve_cmd::open_frontend(
             cfg,
