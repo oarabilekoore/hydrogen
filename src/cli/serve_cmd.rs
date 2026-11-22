@@ -462,7 +462,10 @@ fn url_matches_patterns(url: &str, patterns: &[String]) -> bool {
         // URL patterns are matched by component. In particular, a path wildcard
         // must not consume a slash into a different path segment, while query
         // strings must not make an otherwise matching path fail.
-        let (scheme_pattern, remainder) = pattern.split_once("://")?;
+        let (scheme_pattern, remainder) = match pattern.split_once("://") {
+            Some(parts) => parts,
+            None => return Some(matches(url, pattern)),
+        };
         let (authority_pattern, path_pattern) = remainder
             .split_once('/')
             .map(|(authority, path)| (authority, Some(format!("/{path}"))))
