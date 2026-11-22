@@ -437,7 +437,7 @@ fn url_domain_matches(url: &str, domain: &str) -> bool {
     }
 }
 fn url_matches_patterns(url: &str, patterns: &[String]) -> bool {
-    let options = MatchOptions { case_sensitive: false, require_literal_leading_dot: false, require_literal_separator: false };
+    let options = MatchOptions { case_sensitive: false, require_literal_leading_dot: false, require_literal_separator: true };
     patterns.iter().filter(|pattern| !pattern.trim().is_empty()).any(|pattern| {
         Pattern::new(pattern.trim()).map(|compiled| compiled.matches_with(url, options)).unwrap_or(false)
     })
