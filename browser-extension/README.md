@@ -9,6 +9,15 @@ A Manifest V3 extension for Chromium and Firefox-compatible WebExtension environ
 
 The extension source files and background implementation are shared. Only the manifest background declaration differs: Firefox uses `background.scripts`, while Chromium Manifest V3 uses `background.service_worker`.
 
+## Pairing with Hydrogen
+
+1. Start Hydrogen once so it creates its local API token, or run `hydrogen --print-api-token` to create and print it directly.
+2. Copy the token printed by the command. The token is stored in Hydrogen's state directory in a file with owner-only permissions.
+3. Open the extension popup, paste the token into **API token**, and select **Pair with Hydrogen**. The extension validates the token against the configured service URL before saving it in extension-local storage.
+4. Keep the token private. Anyone who has it can access the local Hydrogen API. To revoke access, stop Hydrogen, delete `hydrogen-api-token` from its state directory, then start Hydrogen to generate a replacement and pair the extension again.
+
+The bundled Hydrogen web frontend receives its token from the local server at page-render time. API routes require bearer authentication; `/api/health` remains available without authentication for basic service checks.
+
 ## Behaviour
 
 - Uses the bundled Mozilla Readability library to extract article text, metadata and paragraph structure, with a structural DOM fallback.
