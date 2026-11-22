@@ -235,7 +235,8 @@ fn append_job_delta(jobs: &JobStore, id: &str, delta: &str) {
 fn append_job_thinking(jobs: &JobStore, id: &str, chars: usize) {
     if let Ok(mut jobs) = jobs.lock() {
         if let Some(job) = jobs.get_mut(id) {
-            job["thinking_chars"] = json!(chars);
+            let previous = job.get("thinking_chars").and_then(Value::as_u64).unwrap_or(0) as usize;
+            job["thinking_chars"] = json!(previous.max(chars));
             if job.get("status").and_then(Value::as_str) == Some("generating") {
                 job["status"] = Value::String("thinking".into());
             }
