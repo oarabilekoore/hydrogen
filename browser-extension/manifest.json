@@ -19,7 +19,20 @@
       "background.js"
     ]
   },
-  "action": {
+  "browser_specific_settings": {
+  "gecko": {
+    "id": "hydrogen-capture@oarabilekoore.github.io",
+    "strict_min_version": "140.0",
+    "data_collection_permissions": {
+      "required": [
+        "websiteContent",
+        "personalCommunications",
+        "browsingActivity"
+      ]
+    }
+  }
+},
+    "action": {
     "default_popup": "popup.html",
     "default_title": "Hydrogen Capture"
   },
