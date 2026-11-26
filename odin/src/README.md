@@ -5,7 +5,18 @@ This directory mirrors the high-level shape of the Rust `src/` tree. Odin treats
 ## Entry point
 
 - `main.odin`: process startup, command dispatch, initialization, shutdown, and top-level error reporting.
+- `version.odin`: the Odin rewrite's version constant. Keep it aligned with the root `Cargo.toml` until versioning is deliberately separated.
 - `config.odin`: configuration loading and validation, corresponding to the Rust root-level configuration module.
+
+## Current CLI slice
+
+The first executable behaviour is intentionally tiny:
+
+- `hydrogen version`
+- `hydrogen --version` or `hydrogen -V`
+- `hydrogen --help` or `hydrogen -h`
+
+Build from the repository root with `odin build odin/src -out:hydrogen`, then run `./hydrogen version`. The dispatcher is deliberately hand-written for now. With one command, introducing a CLI dependency would be architecture cosplay. When commands grow, keep dispatch separate from option parsing and consider the standard `core:flags` package for command-specific flags.
 
 ## Subsystems
 
@@ -22,4 +33,4 @@ Each directory is a separate package. Files in the same directory share one pack
 
 Trace one command from `main.rs` in Rust through configuration, application service, adapter, and output. Draw the call graph and data flow before implementing it in Odin. This is a useful way to learn package imports and procedure contracts without translating blindly.
 
-Resources: [Odin overview](https://odin-lang.org/docs/overview/), [package reference](https://pkg.odin-lang.org/), [core library](https://pkg.odin-lang.org/core/).
+Resources: [Odin overview](https://odin-lang.org/docs/overview/), [package reference](https://pkg.odin-lang.org/), [core library](https://pkg.odin-lang.org/core/), [core:flags](https://pkg.odin-lang.org/core/flags/).
