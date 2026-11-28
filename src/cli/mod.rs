@@ -15,12 +15,12 @@ use clap::{Parser, Subcommand};
 
 #[derive(Parser, Debug)]
 #[command(
-    name = "hydrogen",
+    name = "gsearch",
     version,
     about = "Native indexer, file watcher, OCR, and calendar backend for Quickshell"
 )]
 pub struct Cli {
-    /// Open the bundled Hydrogen web application in your browser
+    /// Open the bundled Good Search web application in your browser
     #[arg(long)]
     pub frontend: bool,
     /// Print the local API token used to pair browser extensions
@@ -41,7 +41,7 @@ pub struct Cli {
 
 #[derive(Subcommand, Debug)]
 pub enum Commands {
-    /// Inspect and initialise Hydrogen configuration
+    /// Inspect and initialise Good Search configuration
     Config(config_cmd::ConfigArgs),
     /// Answer a question from indexed documents using a local Ollama model
     Answer(answer_cmd::AnswerArgs),
@@ -57,7 +57,7 @@ pub enum Commands {
     Doctor,
     /// List, create, or launch desktop calendar events
     Calendar(calendar_cmd::CalendarArgs),
-    /// Run the local Hydrogen web application service
+    /// Run the local Good Search web application service
     Serve,
     /// Search files, saved web pages, conversations and generated answers
     Search(search_cmd::SearchArgs),
@@ -86,7 +86,7 @@ pub fn dispatch(cli: Cli, cfg: &AppConfig) -> Result<()> {
         Some(Commands::Calendar(args)) => calendar_cmd::run(args, cfg),
         Some(Commands::Serve) => serve_cmd::run(cfg),
         Some(Commands::Search(args)) => search_cmd::run(args, cfg),
-        None => Err(crate::error::HydrogenError::InvalidInput(
+        None => Err(crate::error::GoodSearchError::InvalidInput(
             "choose a command or use --frontend".into(),
         )),
     }
