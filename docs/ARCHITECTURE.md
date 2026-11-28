@@ -1,6 +1,6 @@
-# Hydrogen architecture
+# Good Search architecture
 
-Hydrogen is a local-first knowledge engine implemented as a Rust application. It works independently of any desktop shell or browser. The CLI, local HTTP API, bundled web frontend, browser extension and optional desktop integrations are different entry points into the same local data and retrieval system.
+Good Search is a local-first knowledge engine implemented as a Rust application. It works independently of any desktop shell or browser. The CLI, local HTTP API, bundled web frontend, browser extension and optional desktop integrations are different entry points into the same local data and retrieval system.
 
 ## System overview
 
@@ -24,7 +24,7 @@ Hydrogen is a local-first knowledge engine implemented as a Rust application. It
               Local Ollama endpoint
 ~~~
 
-The diagram is conceptual. The CLI, server and background workers run in Hydrogen or child processes depending on the command. The browser extension is a separate client that communicates with the local API.
+The diagram is conceptual. The CLI, server and background workers run in Good Search or child processes depending on the command. The browser extension is a separate client that communicates with the local API.
 
 ## Main components
 
@@ -40,9 +40,9 @@ The diagram is conceptual. The CLI, server and background workers run in Hydroge
 
 ## Local-first data flow
 
-Filesystem content is indexed on the machine where Hydrogen runs. Browser content is captured by the extension when the user enables capture or requests a manual capture. The extension posts content to the configured local Hydrogen endpoint.
+Filesystem content is indexed on the machine where Good Search runs. Browser content is captured by the extension when the user enables capture or requests a manual capture. The extension posts content to the configured local Good Search endpoint.
 
-Hydrogen stores its index in SQLite and keeps model files below `HYDROGEN_MODELS_DIR` (default `~/.local/share/hydrogen/models`). Ollama is a separate local service. The default workflow does not require a hosted Hydrogen account or cloud inference endpoint.
+Good Search stores its index in SQLite and keeps model files below `GSEARCH_MODELS_DIR` (default `~/.local/share/gsearch/models`). Ollama is a separate local service. The default workflow does not require a hosted Good Search account or cloud inference endpoint.
 
 The HTTP service binds to loopback by default. API write routes require authentication, and browser extension pairing uses a local API token. Treat that token as a credential: anyone who obtains it can call protected API routes.
 
@@ -50,13 +50,13 @@ The HTTP service binds to loopback by default. API write routes require authenti
 
 The default CPU inference budget is two threads and one small image batch at a time. Image indexing runs at low process priority. PDF extraction is bounded by the configured page limit, and previews are rendered only for scanned-page OCR or final visible PDF search results. Worker duration and resident memory are recorded for diagnostics.
 
-Model objects remain resident until their process exits. One-shot commands such as `hydrogen index embed` naturally release them on exit. A long-running daemon retains models it has loaded. Semantic indexing is opt-in because it adds model downloads, CPU work and memory pressure.
+Model objects remain resident until their process exits. One-shot commands such as `gsearch index embed` naturally release them on exit. A long-running daemon retains models it has loaded. Semantic indexing is opt-in because it adds model downloads, CPU work and memory pressure.
 
 ## Modalities
 
 - **Printed text:** PP-OCR detector and recognizer through the Rust `pure-onnx-ocr` pipeline.
 - **Equations:** Texo OCR, a Rust-native formula recognizer that accepts formula crops and emits LaTeX. It is not a page-layout OCR engine.
-- **Handwriting:** mathematical expressions are supported by Texo, but Hydrogen does not claim a dedicated handwritten-prose recognizer.
+- **Handwriting:** mathematical expressions are supported by Texo, but Good Search does not claim a dedicated handwritten-prose recognizer.
 - **PDFs:** extract embedded text first. Image-only pages are rendered and sent through OCR. Page number, text and preview metadata are stored separately from the parent file.
 - **Images:** OCR, optional captions and visual embeddings are separate channels.
 - **Text vectors:** quantized MiniLM embeddings for document passages.
@@ -64,10 +64,10 @@ Model objects remain resident until their process exits. One-shot commands such 
 
 ## Index integrity
 
-Hydrogen uses BLAKE3 content hashes rather than relying only on file size and modification time. Filesystem events trigger incremental jobs; periodic root reconciliation repairs dropped events. Deletes remove related page, embedding, FTS and cache rows transactionally. New files can become lexically searchable before expensive OCR or embedding work finishes.
+Good Search uses BLAKE3 content hashes rather than relying only on file size and modification time. Filesystem events trigger incremental jobs; periodic root reconciliation repairs dropped events. Deletes remove related page, embedding, FTS and cache rows transactionally. New files can become lexically searchable before expensive OCR or embedding work finishes.
 
 ## Compatibility and integration boundary
 
-SQLite schema changes are additive migrations. Existing document rows remain valid as page, vector, web and conversation tables are introduced. Rebuild vector data with `hydrogen index embed`; lexical search remains available while optional model files are missing or inference fails.
+SQLite schema changes are additive migrations. Existing document rows remain valid as page, vector, web and conversation tables are introduced. Rebuild vector data with `gsearch index embed`; lexical search remains available while optional model files are missing or inference fails.
 
-Hydrogen does not require Quickshell, Hyprland, Wayland or a particular browser. A client can use the CLI for one-shot operations or the local HTTP API for interactive workflows. Desktop-specific behaviours belong in the integration layer, not in the core indexing and retrieval engine.
+Good Search does not require Quickshell, Hyprland, Wayland or a particular browser. A client can use the CLI for one-shot operations or the local HTTP API for interactive workflows. Desktop-specific behaviours belong in the integration layer, not in the core indexing and retrieval engine.
