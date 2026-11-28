@@ -1,5 +1,5 @@
-use crate::config::{AppConfig, HydrogenSettings};
-use crate::error::{HydrogenError, Result};
+use crate::config::{AppConfig, GoodSearchSettings};
+use crate::error::{GoodSearchError, Result};
 use clap::{Args, Subcommand};
 use serde_json::json;
 use std::path::PathBuf;
@@ -26,7 +26,7 @@ fn parse_bool(value: &str) -> Result<bool> {
     match value.to_ascii_lowercase().as_str() {
         "true" | "1" | "yes" | "on" => Ok(true),
         "false" | "0" | "no" | "off" => Ok(false),
-        _ => Err(HydrogenError::InvalidInput(format!(
+        _ => Err(GoodSearchError::InvalidInput(format!(
             "expected boolean, got '{value}'"
         ))),
     }
@@ -44,11 +44,11 @@ fn parse_list(value: &str) -> Result<Vec<String>> {
         .collect())
 }
 
-fn set_value(settings: &mut HydrogenSettings, key: &str, value: &str) -> Result<()> {
+fn set_value(settings: &mut GoodSearchSettings, key: &str, value: &str) -> Result<()> {
     macro_rules! number {
         ($ty:ty) => {
             value.parse::<$ty>().map_err(|_| {
-                HydrogenError::InvalidInput(format!("invalid value for {key}: {value}"))
+                GoodSearchError::InvalidInput(format!("invalid value for {key}: {value}"))
             })?
         };
     }
@@ -140,7 +140,7 @@ fn set_value(settings: &mut HydrogenSettings, key: &str, value: &str) -> Result<
             settings.conversations.capture_ai_chats = parse_bool(value)?
         }
         _ => {
-            return Err(HydrogenError::InvalidInput(format!(
+            return Err(GoodSearchError::InvalidInput(format!(
                 "unknown or non-writable config key: {key}"
             )))
         }
@@ -167,7 +167,7 @@ pub fn run(args: ConfigArgs, cfg: &AppConfig) -> Result<()> {
         ConfigAction::Path => println!("{}", cfg.config_path.display()),
         ConfigAction::Init => {
             if cfg.config_path.exists() {
-                return Err(HydrogenError::Config(format!(
+                return Err(GoodSearchError::Config(format!(
                     "{} already exists; edit it instead of overwriting it",
                     cfg.config_path.display()
                 )));
@@ -175,7 +175,7 @@ pub fn run(args: ConfigArgs, cfg: &AppConfig) -> Result<()> {
             if let Some(parent) = cfg.config_path.parent() {
                 std::fs::create_dir_all(parent)?;
             }
-            let contents = AppConfig::default_toml().map_err(HydrogenError::Config)?;
+            let contents = AppConfig::default_toml().map_err(GoodSearchError::Config)?;
             std::fs::write(&cfg.config_path, contents)?;
             println!(
                 "{}",
@@ -187,15 +187,15 @@ pub fn run(args: ConfigArgs, cfg: &AppConfig) -> Result<()> {
             // This prevents temporary service overrides from being written back to disk.
             let mut settings = if cfg.config_path.is_file() {
                 let raw = std::fs::read_to_string(&cfg.config_path)?;
-                toml::from_str::<HydrogenSettings>(&raw).map_err(|error| {
-                    HydrogenError::Config(format!("invalid {}: {error}", cfg.config_path.display()))
+                toml::from_str::<GoodSearchSettings>(&raw).map_err(|error| {
+                    GoodSearchError::Config(format!("invalid {}: {error}", cfg.config_path.display()))
                 })?
             } else {
-                HydrogenSettings::default()
+                GoodSearchSettings::default()
             };
             set_value(&mut settings, &key, &value)?;
             cfg.write_settings(&settings)
-                .map_err(HydrogenError::Config)?;
+                .map_err(GoodSearchError::Config)?;
             println!(
                 "{}",
                 json!({
@@ -216,7 +216,7 @@ mod tests {
 
     #[test]
     fn setter_updates_nested_model_and_indexing_values() {
-        let mut settings = HydrogenSettings::default();
+        let mut settings = GoodSearchSettings::default();
         set_value(&mut settings, "answer.model", "qwen3.5:2b-q4_K_M").unwrap();
         set_value(&mut settings, "indexing.pdf.ocr_scanned_pages", "false").unwrap();
         set_value(
@@ -233,7 +233,7 @@ mod tests {
 
     #[test]
     fn setter_rejects_unknown_keys_and_invalid_booleans() {
-        let mut settings = HydrogenSettings::default();
+        let mut settings = GoodSearchSettings::default();
         assert!(set_value(&mut settings, "answer.unknown", "value").is_err());
         assert!(set_value(&mut settings, "indexing.pdf.enabled", "sometimes").is_err());
     }
