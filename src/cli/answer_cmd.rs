@@ -462,7 +462,7 @@ fn write_answer_html(
     let html = format!(
         r#"<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{} · Hydrogen Answer</title>
+<title>{} · Good Search Answer</title>
 <style>
 :root {{ color-scheme:dark; --bg:#101113; --panel:#191b1f; --text:#e8e8e8; --muted:#a0a5ad; --accent:#a8c7fa; --line:#30343b; }}
 * {{ box-sizing:border-box; }} body {{ margin:0; background:var(--bg); color:var(--text); font:16px/1.72 Inter,system-ui,sans-serif; }}
@@ -478,7 +478,7 @@ h1 {{ font-size:clamp(25px,4vw,38px); line-height:1.2; margin:10px 0; }} .meta {
 .source pre {{ white-space:pre-wrap; overflow-wrap:anywhere; font:13px/1.6 ui-monospace,monospace; }}
 footer {{ color:var(--muted); font-size:12px; margin-top:32px; }}
 </style></head><body><main>
-<header><div class="eyebrow">Hydrogen · Local RAG</div><h1>{}</h1><div class="meta">Generated locally with {} · Based on {} retrieved source passages</div></header>
+<header><div class="eyebrow">Good Search · Local RAG</div><h1>{}</h1><div class="meta">Generated locally with {} · Based on {} retrieved source passages</div></header>
 <section class="answer">{}</section><section class="sources"><h2>Sources</h2>{}</section>
 <footer>This answer was generated from the indexed local passages listed above. Verify important details against the original documents.</footer>
 </main></body></html>"#,
@@ -542,7 +542,7 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
         .clamp(1, 16);
     let answer_cfg = &cfg.settings.answer;
     if !answer_cfg.provider.eq_ignore_ascii_case("ollama") {
-        return Err(crate::error::HydrogenError::Config(format!(
+        return Err(crate::error::GoodSearchError::Config(format!(
             "unsupported answer provider: {}",
             answer_cfg.provider
         )));
@@ -649,7 +649,7 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
     // configured retrieval budget. Captured pages remain offline and searchable.
     if sources.len() < limit {
         let knowledge = KnowledgeStore::open(&cfg.db_path).map_err(|error| {
-            crate::error::HydrogenError::Config(format!("could not open saved knowledge: {error}"))
+            crate::error::GoodSearchError::Config(format!("could not open saved knowledge: {error}"))
         })?;
         let remaining = limit.saturating_sub(sources.len());
         for page in knowledge.search_web_pages(query, remaining)? {
@@ -818,7 +818,7 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
             let html_path = if args.html || args.browser {
                 Some(
                     write_answer_html(cfg, query, answer, model, &sources).map_err(|error| {
-                        crate::error::HydrogenError::Config(format!(
+                        crate::error::GoodSearchError::Config(format!(
                             "could not write local answer page: {error}"
                         ))
                     })?,
@@ -830,7 +830,7 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
                 None
             } else {
                 let knowledge = KnowledgeStore::open(&cfg.db_path).map_err(|error| {
-                    crate::error::HydrogenError::Config(format!("could not save answer: {error}"))
+                    crate::error::GoodSearchError::Config(format!("could not save answer: {error}"))
                 })?;
                 let id = knowledge.create_conversation(query)?;
                 knowledge.append_message(&id, "user", query, None)?;
@@ -848,7 +848,7 @@ pub fn run(args: AnswerArgs, cfg: &AppConfig) -> Result<()> {
                     match Command::new("xdg-open").arg(path).spawn() {
                         Ok(_) => true,
                         Err(error) => {
-                            eprintln!("Hydrogen could not open the answer in a browser: {error}");
+                            eprintln!("Good Search could not open the answer in a browser: {error}");
                             false
                         }
                     }

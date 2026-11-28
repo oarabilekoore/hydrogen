@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Hydrogen Capture",
+  "name": "Good Search Capture",
   "version": "0.3.0",
-  "description": "Save readable articles and supported AI conversations to your local Hydrogen knowledge base.",
+  "description": "Save readable articles and supported AI conversations to your local Good Search knowledge base.",
   "permissions": [
     "storage",
     "activeTab",
@@ -19,7 +19,7 @@
   },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Hydrogen Capture"
+    "default_title": "Good Search Capture"
   },
   "content_scripts": [
     {

@@ -1,5 +1,5 @@
 use crate::domain::ocr::layout::format_markdown;
-use crate::error::{HydrogenError, Result};
+use crate::error::{GoodSearchError, Result};
 use crate::ports::desktop::DesktopEnvironment;
 use crate::ports::extractor::OcrProvider;
 use std::env;
@@ -32,7 +32,7 @@ impl<'a> OcrService<'a> {
         if clip_id.trim().is_empty() {
             self.desktop
                 .notify("OCR Failed", "No clipboard ID provided.", "critical");
-            return Err(HydrogenError::InvalidInput("empty clip_id".into()));
+            return Err(GoodSearchError::InvalidInput("empty clip_id".into()));
         }
         let runtime_dir = env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".into());
         let ms = SystemTime::now()
@@ -69,7 +69,7 @@ impl<'a> OcrService<'a> {
         if !path.is_file() {
             let msg = format!("File not found: {}", path.display());
             self.desktop.notify("OCR Failed", &msg, "critical");
-            return Err(HydrogenError::InvalidInput(msg));
+            return Err(GoodSearchError::InvalidInput(msg));
         }
         let res = process(path);
         if let Err(ref e) = res {

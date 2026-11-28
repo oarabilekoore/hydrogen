@@ -1,7 +1,7 @@
 use crate::domain::calendar::ics_builder::build_single_event_ics;
 use crate::domain::calendar::model::CalendarEvent;
 use crate::domain::calendar::rrule::expand_occurrences;
-use crate::error::{HydrogenError, Result};
+use crate::error::{GoodSearchError, Result};
 use crate::ports::calendar_store::CalendarStore;
 use crate::ports::desktop::DesktopEnvironment;
 use chrono::{Duration, Local, NaiveDate, NaiveDateTime};
@@ -32,7 +32,7 @@ impl<'a> CalendarService<'a> {
         let start_day: NaiveDateTime = match from_date {
             Some(s) => NaiveDate::parse_from_str(s, "%Y-%m-%d")
                 .map_err(|e| {
-                    HydrogenError::InvalidInput(format!("Invalid --from date '{s}': {e}"))
+                    GoodSearchError::InvalidInput(format!("Invalid --from date '{s}': {e}"))
                 })?
                 .and_hms_opt(0, 0, 0)
                 .unwrap(),

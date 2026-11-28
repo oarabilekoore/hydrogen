@@ -1,4 +1,4 @@
-use crate::error::{HydrogenError, Result};
+use crate::error::{GoodSearchError, Result};
 use chrono::{Duration, NaiveDate, NaiveDateTime, Utc};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -23,7 +23,7 @@ pub fn build_single_event_ics(
 
     let (dtstart, dtend) = if time_str.is_empty() || time_str.eq_ignore_ascii_case("allday") {
         let d = NaiveDate::parse_from_str(date_str, "%Y-%m-%d")
-            .map_err(|e| HydrogenError::InvalidInput(format!("Invalid date '{date_str}': {e}")))?;
+            .map_err(|e| GoodSearchError::InvalidInput(format!("Invalid date '{date_str}': {e}")))?;
         let next_d = d + Duration::days(1);
         (
             format!("DTSTART;VALUE=DATE:{}", d.format("%Y%m%d")),
@@ -32,7 +32,7 @@ pub fn build_single_event_ics(
     } else {
         let combined = format!("{date_str} {time_str}");
         let s = NaiveDateTime::parse_from_str(&combined, "%Y-%m-%d %H:%M").map_err(|e| {
-            HydrogenError::InvalidInput(format!("Invalid datetime '{combined}': {e}"))
+            GoodSearchError::InvalidInput(format!("Invalid datetime '{combined}': {e}"))
         })?;
         let e = s + Duration::minutes(duration_mins);
         (
@@ -52,7 +52,7 @@ pub fn build_single_event_ics(
     let ics = [
         "BEGIN:VCALENDAR".to_string(),
         "VERSION:2.0".to_string(),
-        "PRODID:-//quickshell//hydrogen//EN".to_string(),
+        "PRODID:-//quickshell//gsearch//EN".to_string(),
         "BEGIN:VEVENT".to_string(),
         format!("UID:{uid}@quickshell"),
         format!("DTSTAMP:{stamp}"),

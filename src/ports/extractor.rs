@@ -1,6 +1,6 @@
 use crate::domain::document::FileEntry;
 use crate::domain::ocr::layout::OcrBox;
-use crate::error::{HydrogenError, Result};
+use crate::error::{GoodSearchError, Result};
 use std::collections::HashMap;
 use std::path::Path;
 
@@ -17,7 +17,7 @@ pub trait OcrProvider {
     fn batch_ocr_text(&self, paths: &[String]) -> HashMap<String, String>;
     fn ocr_boxes(&self, image_path: &Path) -> Result<Vec<OcrBox>>;
     fn ocr_math_latex(&self, _image_path: &Path) -> Result<String> {
-        Err(HydrogenError::ExternalTool(
+        Err(GoodSearchError::ExternalTool(
             "Mathematical OCR model is not configured".into(),
         ))
     }

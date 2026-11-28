@@ -1,4 +1,4 @@
-use crate::error::{HydrogenError, Result};
+use crate::error::{GoodSearchError, Result};
 use crate::ports::desktop::DesktopEnvironment;
 use std::fs::File;
 use std::io::Write;
@@ -18,7 +18,7 @@ impl DesktopEnvironment for HyprlandDesktop {
             .stdout(Stdio::from(out_file))
             .status()?;
         if !status.success() {
-            return Err(HydrogenError::ExternalTool("cliphist decode failed".into()));
+            return Err(GoodSearchError::ExternalTool("cliphist decode failed".into()));
         }
         Ok(())
     }
@@ -33,7 +33,7 @@ impl DesktopEnvironment for HyprlandDesktop {
         }
         let status = child.wait()?;
         if !status.success() {
-            return Err(HydrogenError::ExternalTool("wl-copy failed".into()));
+            return Err(GoodSearchError::ExternalTool("wl-copy failed".into()));
         }
         Ok(())
     }
@@ -115,7 +115,7 @@ impl DesktopEnvironment for HyprlandDesktop {
             return Ok(());
         }
 
-        Err(HydrogenError::ExternalTool(
+        Err(GoodSearchError::ExternalTool(
             "No default calendar application found (xdg-mime query default text/calendar is empty)"
                 .into(),
         ))

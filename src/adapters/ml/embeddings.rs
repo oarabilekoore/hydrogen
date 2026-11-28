@@ -3,7 +3,7 @@
 //! Document retrieval uses quantized MiniLM. Cross-modal image retrieval uses
 //! the matching CLIP ViT-B/32 text and vision towers, which share one vector
 //! space. No model is loaded until an embedding operation is requested.
-use crate::error::{HydrogenError, Result};
+use crate::error::{GoodSearchError, Result};
 use crate::ports::extractor::EmbeddingProvider;
 use fastembed::{
     EmbeddingModel, ImageEmbedding, ImageEmbeddingModel, ImageInitOptions, TextEmbedding,
@@ -49,7 +49,7 @@ impl FastEmbedProvider {
                 .map_err(|e| e.to_string())
             })
             .as_ref()
-            .map_err(|e| HydrogenError::ExternalTool(format!("MiniLM embedding model: {e}")))
+            .map_err(|e| GoodSearchError::ExternalTool(format!("MiniLM embedding model: {e}")))
     }
 
     fn clip_text_model(&self) -> Result<&Mutex<TextEmbedding>> {
@@ -65,7 +65,7 @@ impl FastEmbedProvider {
                 .map_err(|e| e.to_string())
             })
             .as_ref()
-            .map_err(|e| HydrogenError::ExternalTool(format!("CLIP text model: {e}")))
+            .map_err(|e| GoodSearchError::ExternalTool(format!("CLIP text model: {e}")))
     }
 
     fn clip_image_model(&self) -> Result<&Mutex<ImageEmbedding>> {
@@ -81,17 +81,17 @@ impl FastEmbedProvider {
                 .map_err(|e| e.to_string())
             })
             .as_ref()
-            .map_err(|e| HydrogenError::ExternalTool(format!("CLIP vision model: {e}")))
+            .map_err(|e| GoodSearchError::ExternalTool(format!("CLIP vision model: {e}")))
     }
 }
 
 fn normalise_mean(vectors: Vec<Vec<f32>>) -> Result<Vec<f32>> {
     let first = vectors
         .first()
-        .ok_or_else(|| HydrogenError::ExternalTool("embedding model returned no vectors".into()))?;
+        .ok_or_else(|| GoodSearchError::ExternalTool("embedding model returned no vectors".into()))?;
     let dimensions = first.len();
     if dimensions == 0 || vectors.iter().any(|v| v.len() != dimensions) {
-        return Err(HydrogenError::ExternalTool(
+        return Err(GoodSearchError::ExternalTool(
             "embedding model returned inconsistent vector dimensions".into(),
         ));
     }
@@ -140,7 +140,7 @@ impl EmbeddingProvider for FastEmbedProvider {
     fn embed_document(&self, text: &str) -> Result<Vec<f32>> {
         let text = text.trim();
         if text.is_empty() {
-            return Err(HydrogenError::InvalidInput(
+            return Err(GoodSearchError::InvalidInput(
                 "cannot embed an empty document".into(),
             ));
         }
@@ -148,17 +148,17 @@ impl EmbeddingProvider for FastEmbedProvider {
         let mut model = self
             .text_model()?
             .lock()
-            .map_err(|_| HydrogenError::ExternalTool("MiniLM model lock poisoned".into()))?;
+            .map_err(|_| GoodSearchError::ExternalTool("MiniLM model lock poisoned".into()))?;
         let vectors = model
             .embed(inputs, None)
-            .map_err(|e| HydrogenError::ExternalTool(e.to_string()))?;
+            .map_err(|e| GoodSearchError::ExternalTool(e.to_string()))?;
         normalise_mean(vectors)
     }
 
     fn embed_clip_text(&self, text: &str) -> Result<Vec<f32>> {
         let text = text.trim();
         if text.is_empty() {
-            return Err(HydrogenError::InvalidInput(
+            return Err(GoodSearchError::InvalidInput(
                 "cannot embed an empty CLIP query".into(),
             ));
         }
@@ -166,16 +166,16 @@ impl EmbeddingProvider for FastEmbedProvider {
         let mut model = self
             .clip_text_model()?
             .lock()
-            .map_err(|_| HydrogenError::ExternalTool("CLIP text model lock poisoned".into()))?;
+            .map_err(|_| GoodSearchError::ExternalTool("CLIP text model lock poisoned".into()))?;
         let vectors = model
             .embed(vec![input], Some(1))
-            .map_err(|e| HydrogenError::ExternalTool(e.to_string()))?;
+            .map_err(|e| GoodSearchError::ExternalTool(e.to_string()))?;
         normalise_mean(vectors)
     }
 
     fn embed_image(&self, path: &Path) -> Result<Vec<f32>> {
         if !path.is_file() {
-            return Err(HydrogenError::InvalidInput(format!(
+            return Err(GoodSearchError::InvalidInput(format!(
                 "image does not exist: {}",
                 path.display()
             )));
@@ -183,10 +183,10 @@ impl EmbeddingProvider for FastEmbedProvider {
         let mut model = self
             .clip_image_model()?
             .lock()
-            .map_err(|_| HydrogenError::ExternalTool("CLIP vision model lock poisoned".into()))?;
+            .map_err(|_| GoodSearchError::ExternalTool("CLIP vision model lock poisoned".into()))?;
         let vectors = model
             .embed(vec![path.to_path_buf()], Some(1))
-            .map_err(|e| HydrogenError::ExternalTool(e.to_string()))?;
+            .map_err(|e| GoodSearchError::ExternalTool(e.to_string()))?;
         normalise_mean(vectors)
     }
 }
@@ -197,7 +197,7 @@ mod tests {
 
     #[test]
     fn provider_is_lazy() {
-        let provider = FastEmbedProvider::new(PathBuf::from("/tmp/hydrogen-models"), 2);
+        let provider = FastEmbedProvider::new(PathBuf::from("/tmp/gsearch-models"), 2);
         assert!(provider.text.get().is_none());
         assert!(provider.clip_text.get().is_none());
         assert!(provider.clip_image.get().is_none());

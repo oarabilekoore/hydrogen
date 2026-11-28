@@ -143,7 +143,7 @@ impl<'a> SyncService<'a> {
                         && !self.repo.has_embedding(&p_str, TEXT_MODEL_ID, "text")?;
                     clip_missing || text_missing
                 } else if is_pdf {
-                    // Existing PDF text is backfilled by hydrogen index embed.
+                    // Existing PDF text is backfilled by gsearch index embed.
                     // Do not mistake a missing vector for a reason to rerun Poppler/OCR.
                     false
                 } else {
@@ -201,7 +201,7 @@ impl<'a> SyncService<'a> {
                                         }
                                     }
                                     Err(error) => eprintln!(
-                                        "hydrogen: image text embedding failed for {p_str}: {error}"
+                                        "gsearch: image text embedding failed for {p_str}: {error}"
                                     ),
                                 }
                             }
@@ -218,7 +218,7 @@ impl<'a> SyncService<'a> {
                                     }
                                 }
                                 Err(error) => eprintln!(
-                                    "hydrogen: image embedding failed for {p_str}: {error}"
+                                    "gsearch: image embedding failed for {p_str}: {error}"
                                 ),
                             }
                         }
@@ -288,7 +288,7 @@ impl<'a> SyncService<'a> {
                                 }
                                 Err(error) => {
                                     eprintln!(
-                                        "hydrogen: PDF page OCR failed for {p_str} page {page_no}: {error}"
+                                        "gsearch: PDF page OCR failed for {p_str} page {page_no}: {error}"
                                     );
                                     extraction_failed = true;
                                 }
@@ -349,7 +349,7 @@ impl<'a> SyncService<'a> {
                             }
                         }
                         Err(error) => {
-                            eprintln!("hydrogen: document embedding failed for {p_str}: {error}")
+                            eprintln!("gsearch: document embedding failed for {p_str}: {error}")
                         }
                     }
                 }
@@ -502,7 +502,7 @@ impl<'a> SyncService<'a> {
                     // and successful caption so one failed model cannot block retrieval.
                     let ocr_failed = *need_ocr && !ocr_map.contains_key(&p_str);
                     if ocr_failed {
-                        eprintln!("hydrogen: image OCR failed; leaving {} pending", p_str);
+                        eprintln!("gsearch: image OCR failed; leaving {} pending", p_str);
                     }
                     let ocr_txt = if *need_ocr && !ocr_failed {
                         ocr_map.get(&p_str).cloned().unwrap_or_default()
@@ -545,7 +545,7 @@ impl<'a> SyncService<'a> {
                                     &hash,
                                 )?,
                                 Err(error) => eprintln!(
-                                    "hydrogen: image text embedding failed for {p_str}: {error}"
+                                    "gsearch: image text embedding failed for {p_str}: {error}"
                                 ),
                             }
                         }
@@ -558,7 +558,7 @@ impl<'a> SyncService<'a> {
                                 &hash,
                             )?,
                             Err(error) => {
-                                eprintln!("hydrogen: image embedding failed for {p_str}: {error}")
+                                eprintln!("gsearch: image embedding failed for {p_str}: {error}")
                             }
                         }
                     }
@@ -751,7 +751,7 @@ mod integration_tests {
     impl EmbeddingProvider for FixtureModels {
         fn embed_document(&self, text: &str) -> Result<Vec<f32>> {
             if text.trim().is_empty() {
-                return Err(crate::error::HydrogenError::InvalidInput("empty".into()));
+                return Err(crate::error::GoodSearchError::InvalidInput("empty".into()));
             }
             Ok(vec![1.0, 0.0, 0.0])
         }
@@ -766,17 +766,17 @@ mod integration_tests {
     struct UnavailableEmbeddings;
     impl EmbeddingProvider for UnavailableEmbeddings {
         fn embed_document(&self, _text: &str) -> Result<Vec<f32>> {
-            Err(crate::error::HydrogenError::ExternalTool(
+            Err(crate::error::GoodSearchError::ExternalTool(
                 "embedding model unavailable".into(),
             ))
         }
         fn embed_clip_text(&self, _text: &str) -> Result<Vec<f32>> {
-            Err(crate::error::HydrogenError::ExternalTool(
+            Err(crate::error::GoodSearchError::ExternalTool(
                 "CLIP model unavailable".into(),
             ))
         }
         fn embed_image(&self, _path: &Path) -> Result<Vec<f32>> {
-            Err(crate::error::HydrogenError::ExternalTool(
+            Err(crate::error::GoodSearchError::ExternalTool(
                 "image model unavailable".into(),
             ))
         }
@@ -806,7 +806,7 @@ mod integration_tests {
             .unwrap()
             .as_nanos();
         let root =
-            std::env::temp_dir().join(format!("hydrogen-e2e-{}-{nonce}", std::process::id()));
+            std::env::temp_dir().join(format!("gsearch-e2e-{}-{nonce}", std::process::id()));
         let state = root.join("state");
         std::fs::create_dir_all(&root).unwrap();
         std::fs::write(
@@ -841,7 +841,7 @@ mod integration_tests {
             inference_threads: 2,
             image_batch_size: 2,
             pdf_page_limit: 50,
-            settings: crate::config::HydrogenSettings::default(),
+            settings: crate::config::GoodSearchSettings::default(),
         };
         let repo = SqliteIndexRepository::open(&cfg.db_path).unwrap();
         let service =

@@ -1,6 +1,6 @@
 use crate::adapters::sqlite::knowledge::KnowledgeStore;
 use crate::config::AppConfig;
-use crate::error::{HydrogenError, Result};
+use crate::error::{GoodSearchError, Result};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read};
@@ -44,11 +44,11 @@ fn respond(request: Request, status: u16, content_type: &str, body: String) {
 
 fn api_token(cfg: &AppConfig) -> std::io::Result<String> {
     fs::create_dir_all(&cfg.state_dir)?;
-    let path = cfg.state_dir.join("hydrogen-api-token");
+    let path = cfg.state_dir.join("gsearch-api-token");
     if path.exists() {
         let token = fs::read_to_string(path)?.trim().to_string();
         if token.len() != 64 || !token.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-            return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "stored API token is invalid; remove hydrogen-api-token and restart Hydrogen"));
+            return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "stored API token is invalid; remove gsearch-api-token and restart Good Search"));
         }
         return Ok(token);
     }
@@ -67,7 +67,7 @@ fn api_token(cfg: &AppConfig) -> std::io::Result<String> {
 }
 
 pub fn print_api_token(cfg: &AppConfig) -> Result<()> {
-    let token = api_token(cfg).map_err(|error| HydrogenError::Config(format!("could not initialise API token: {error}")))?;
+    let token = api_token(cfg).map_err(|error| GoodSearchError::Config(format!("could not initialise API token: {error}")))?;
     println!("{token}");
     Ok(())
 }
@@ -289,7 +289,7 @@ fn queue_answer_job(jobs: &JobStore, conversation_id: &str, question: String, mo
         let executable = match std::env::current_exe() {
             Ok(path) => path,
             Err(error) => {
-                set_job(&worker_jobs,&worker_id,json!({"id":worker_id,"status":"failed","error":format!("could not locate Hydrogen executable: {error}")}));
+                set_job(&worker_jobs,&worker_id,json!({"id":worker_id,"status":"failed","error":format!("could not locate Good Search executable: {error}")}));
                 return;
             }
         };
@@ -300,7 +300,7 @@ fn queue_answer_job(jobs: &JobStore, conversation_id: &str, question: String, mo
             .stdout(Stdio::piped()).stderr(Stdio::piped()).spawn() {
             Ok(child) => child,
             Err(error) => {
-                set_job(&worker_jobs,&worker_id,json!({"id":worker_id,"status":"failed","error":format!("could not start Hydrogen answer worker: {error}")}));
+                set_job(&worker_jobs,&worker_id,json!({"id":worker_id,"status":"failed","error":format!("could not start Good Search answer worker: {error}")}));
                 return;
             }
         };
@@ -860,7 +860,7 @@ fn handle_api(mut request: Request, cfg: &AppConfig, store: &KnowledgeStore, job
         let content = input.get("content").and_then(Value::as_str).unwrap_or("");
         let canonical_raw = input.get("canonical_url").and_then(Value::as_str).filter(|v| !v.trim().is_empty()).unwrap_or(url);
         let manual = input.get("manual").and_then(Value::as_bool).unwrap_or(false);
-        if !cfg.settings.web.enabled || (!cfg.settings.web.auto_index && !manual) { json(request,403,json!({"error":"web indexing is disabled in Hydrogen configuration"})); return; }
+        if !cfg.settings.web.enabled || (!cfg.settings.web.auto_index && !manual) { json(request,403,json!({"error":"web indexing is disabled in Good Search configuration"})); return; }
         if url.is_empty() || title.trim().is_empty() || content.trim().is_empty() { json(request,400,json!({"error":"url, title and readable content are required"})); return; }
         let normalized_url = match normalize_http_url(url) { Ok(v) => v, Err(e) => { json(request,400,json!({"error":e})); return; } };
         let canonical = match normalize_http_url(canonical_raw) { Ok(v) => v, Err(e) => { json(request,400,json!({"error":format!("invalid canonical URL: {e}")})); return; } };
@@ -883,7 +883,7 @@ fn handle_api(mut request: Request, cfg: &AppConfig, store: &KnowledgeStore, job
             json(
                 request,
                 422,
-                json!({"error":"page did not meet Hydrogen's readable-content qualification limits","text_length":text_length,"paragraphs":paragraphs}),
+                json!({"error":"page did not meet Good Search's readable-content qualification limits","text_length":text_length,"paragraphs":paragraphs}),
             );
             return;
         }
@@ -956,7 +956,7 @@ fn handle_api(mut request: Request, cfg: &AppConfig, store: &KnowledgeStore, job
             json(
                 request,
                 403,
-                json!({"error":"AI conversation capture is disabled in Hydrogen configuration"}),
+                json!({"error":"AI conversation capture is disabled in Good Search configuration"}),
             );
             return;
         }
@@ -978,7 +978,7 @@ fn handle_api(mut request: Request, cfg: &AppConfig, store: &KnowledgeStore, job
             json(
                 request,
                 403,
-                json!({"error":"this domain is excluded by Hydrogen configuration"}),
+                json!({"error":"this domain is excluded by Good Search configuration"}),
             );
             return;
         }
@@ -1084,18 +1084,18 @@ fn handle_api(mut request: Request, cfg: &AppConfig, store: &KnowledgeStore, job
 }
 
 pub fn run(cfg: &AppConfig) -> Result<()> {
-    let token = api_token(cfg).map_err(|error| HydrogenError::Config(format!("could not initialise API token: {error}")))?;
+    let token = api_token(cfg).map_err(|error| GoodSearchError::Config(format!("could not initialise API token: {error}")))?;
     let address = cfg.settings.frontend.bind_address.as_str();
     let server = Server::http(address).map_err(|error| {
-        HydrogenError::Config(format!(
-            "could not bind Hydrogen frontend at {address}: {error}"
+        GoodSearchError::Config(format!(
+            "could not bind Good Search frontend at {address}: {error}"
         ))
     })?;
     let store = Arc::new(KnowledgeStore::open(&cfg.db_path).map_err(|error| {
-        HydrogenError::Config(format!("could not open Hydrogen knowledge store: {error}"))
+        GoodSearchError::Config(format!("could not open Good Search knowledge store: {error}"))
     })?);
     let jobs: JobStore = Arc::new(Mutex::new(HashMap::new()));
-    eprintln!("Hydrogen frontend API listening at http://{address}");
+    eprintln!("Good Search frontend API listening at http://{address}");
     for request in server.incoming_requests() {
         let url = request.url().to_string();
         if let Some((status, message)) = request_security_error(&request, address, &token) {
@@ -1111,7 +1111,7 @@ pub fn run(cfg: &AppConfig) -> Result<()> {
                 request,
                 200,
                 "text/html; charset=utf-8",
-                FRONTEND.replace("__HYDROGEN_API_TOKEN__", &token),
+                FRONTEND.replace("__GSEARCH_API_TOKEN__", &token),
             );
         } else if url.starts_with("/api/") {
             // Each request gets its own worker thread. Long-running RAG inference
@@ -1152,12 +1152,12 @@ pub fn open_frontend(
     conversation: Option<&str>,
     page: Option<&str>,
 ) -> Result<()> {
-    let _token = api_token(cfg).map_err(|error| HydrogenError::Config(format!("could not initialise API token: {error}")))?;
+    let _token = api_token(cfg).map_err(|error| GoodSearchError::Config(format!("could not initialise API token: {error}")))?;
     let address = cfg.settings.frontend.bind_address.as_str();
     if TcpStream::connect(address).is_err() {
         if !cfg.settings.frontend.auto_start {
-            return Err(HydrogenError::Config(format!(
-                "Hydrogen frontend is not running at {address} and frontend.auto_start is disabled"
+            return Err(GoodSearchError::Config(format!(
+                "Good Search frontend is not running at {address} and frontend.auto_start is disabled"
             )));
         }
         let executable = std::env::current_exe()?;
@@ -1168,8 +1168,8 @@ pub fn open_frontend(
             .stderr(std::process::Stdio::null())
             .spawn()
             .map_err(|error| {
-                HydrogenError::Config(format!(
-                    "could not start Hydrogen frontend service: {error}"
+                GoodSearchError::Config(format!(
+                    "could not start Good Search frontend service: {error}"
                 ))
             })?;
         let mut ready = false;
@@ -1181,8 +1181,8 @@ pub fn open_frontend(
             }
         }
         if !ready {
-            return Err(HydrogenError::Config(format!(
-                "Hydrogen frontend service did not become ready at {address}"
+            return Err(GoodSearchError::Config(format!(
+                "Good Search frontend service did not become ready at {address}"
             )));
         }
     }
@@ -1197,7 +1197,7 @@ pub fn open_frontend(
         base
     };
     Command::new("xdg-open").arg(url).spawn().map_err(|error| {
-        HydrogenError::Config(format!("could not open Hydrogen in the browser: {error}"))
+        GoodSearchError::Config(format!("could not open Good Search in the browser: {error}"))
     })?;
     Ok(())
 }

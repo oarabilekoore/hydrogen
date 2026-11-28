@@ -1,7 +1,7 @@
 use thiserror::Error;
 
 #[derive(Debug, Error)]
-pub enum HydrogenError {
+pub enum GoodSearchError {
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
 
@@ -21,4 +21,4 @@ pub enum HydrogenError {
     ExternalTool(String),
 }
 
-pub type Result<T> = std::result::Result<T, HydrogenError>;
+pub type Result<T> = std::result::Result<T, GoodSearchError>;

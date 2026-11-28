@@ -683,7 +683,7 @@ mod tests {
 
     fn test_store(name: &str) -> KnowledgeStore {
         let path = std::env::temp_dir().join(format!(
-            "hydrogen-knowledge-{name}-{}-{}.sqlite",
+            "gsearch-knowledge-{name}-{}-{}.sqlite",
             std::process::id(),
             NEXT_ID.fetch_add(1, Ordering::Relaxed)
         ));

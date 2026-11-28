@@ -158,7 +158,7 @@ pub fn best_pdf_page(
     best.map(|(_, i)| i)
 }
 
-/// Score filename/path relevance so `hydrogen query` serves both direct file search and content search.
+/// Score filename/path relevance so `gsearch query` serves both direct file search and content search.
 pub fn score_filename_match(path: &str, name: &str, q_lower: &str, q_tokens: &[String]) -> f64 {
     let name_lower = name.to_ascii_lowercase();
     let path_lower = path.to_ascii_lowercase();
