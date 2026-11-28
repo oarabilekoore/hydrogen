@@ -1,6 +1,6 @@
 (() => {
-  if (window.__hydrogenCaptureInstalled) return;
-  window.__hydrogenCaptureInstalled = true;
+  if (window.__gsearchCaptureInstalled) return;
+  window.__gsearchCaptureInstalled = true;
 
   const excludedPath = /\/(login|signin|sign-in|checkout|payment|account|settings|admin)(\/|$)/i;
   const excludedHost = /(^|\.)(bank|banking|paypal|stripe)\./i;
@@ -35,7 +35,7 @@
           };
         }
       } catch (error) {
-        console.debug("Hydrogen Readability extraction failed; using structural fallback.", error);
+        console.debug("Good Search Readability extraction failed; using structural fallback.", error);
       }
     }
 
