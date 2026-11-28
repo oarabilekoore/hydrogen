@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-MODELS_DIR="${HYDROGEN_MODELS_DIR:-$HOME/.local/share/hydrogen/models}"
+MODELS_DIR="${GSEARCH_MODELS_DIR:-$HOME/.local/share/gsearch/models}"
 BASE="https://huggingface.co"
 mkdir -p "$MODELS_DIR/ppocr/det" "$MODELS_DIR/ppocr/rec"
 
