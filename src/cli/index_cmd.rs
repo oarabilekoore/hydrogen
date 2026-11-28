@@ -141,7 +141,7 @@ fn embed_existing(
                     documents += 1;
                 }
                 Err(error) => {
-                    eprintln!("hydrogen: text embedding failed for {path}: {error}");
+                    eprintln!("gsearch: text embedding failed for {path}: {error}");
                     failed += 1;
                 }
             }
@@ -178,7 +178,7 @@ fn embed_existing(
                     images += 1;
                 }
                 Err(error) => {
-                    eprintln!("hydrogen: image embedding failed for {path}: {error}");
+                    eprintln!("gsearch: image embedding failed for {path}: {error}");
                     failed += 1;
                 }
             }
