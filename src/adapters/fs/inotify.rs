@@ -1,4 +1,4 @@
-use crate::error::{HydrogenError, Result};
+use crate::error::{GoodSearchError, Result};
 use std::collections::{HashMap, HashSet};
 use std::ffi::{CStr, CString};
 use std::os::unix::ffi::OsStrExt;
@@ -53,7 +53,7 @@ impl LinuxInotifyWatcher {
     ) -> Result<Self> {
         let fd = unsafe { libc::inotify_init1(libc::IN_NONBLOCK | libc::IN_CLOEXEC) };
         if fd < 0 {
-            return Err(HydrogenError::Io(std::io::Error::last_os_error()));
+            return Err(GoodSearchError::Io(std::io::Error::last_os_error()));
         }
 
         let mut watcher = Self {
@@ -199,7 +199,7 @@ impl LinuxInotifyWatcher {
         if poll_rc < 0 {
             let err = std::io::Error::last_os_error();
             if err.kind() != std::io::ErrorKind::Interrupted {
-                return Err(HydrogenError::Io(err));
+                return Err(GoodSearchError::Io(err));
             }
         }
 
