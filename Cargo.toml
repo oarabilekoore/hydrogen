@@ -1,5 +1,5 @@
 [package]
-name = "hydrogen"
+name = "gsearch"
 version = "0.2.0"
 edition = "2021"
 description = "Local-first Rust knowledge engine with indexing, hybrid search, OCR and a local API"
@@ -23,7 +23,7 @@ url = "2"
 toml = "0.8"
 walkdir = "2.5"
 zip = { version = "2.2", default-features = false, features = ["deflate"] }
-# CPU-only Rust OCR. Models are stored separately under HYDROGEN_MODELS_DIR.
+# CPU-only Rust OCR. Models are stored separately under GSEARCH_MODELS_DIR.
 pure-onnx-ocr = { version = "0.3.2", default-features = false }
 texo-ocr = { git = "https://github.com/studio-ransom/best-ocr-rust", default-features = false }
 # Optional-at-runtime local embeddings; models load only when semantic indexing/search is requested.
