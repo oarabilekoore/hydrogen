@@ -1,15 +1,15 @@
-# Hydrogen configuration
+# Good Search configuration
 
-Hydrogen uses one validated TOML configuration for its CLI, daemon, local HTTP service, web frontend and integrations.
+Good Search uses one validated TOML configuration for its CLI, daemon, local HTTP service, web frontend and integrations.
 
-The default file is `~/.config/hydrogen/config.toml`. Override the location with `HYDROGEN_CONFIG`, or set `XDG_CONFIG_HOME` to change the parent configuration directory. If the file does not exist, Hydrogen uses built-in defaults. It does not write a configuration file automatically.
+The default file is `~/.config/gsearch/config.toml`. Override the location with `GSEARCH_CONFIG`, or set `XDG_CONFIG_HOME` to change the parent configuration directory. If the file does not exist, Good Search uses built-in defaults. It does not write a configuration file automatically.
 
 Create a starter file and inspect effective settings:
 
 ~~~sh
-hydrogen config init
-hydrogen config show
-hydrogen config path
+gsearch config init
+gsearch config show
+gsearch config path
 ~~~
 
 ## Example
@@ -74,7 +74,7 @@ reconcile_interval_seconds = 60
 poll_interval_ms = 150
 ~~~
 
-Paths support normal TOML strings. Use absolute paths or paths relative to the home directory; Hydrogen expands a leading `~` in configured search roots, state directories and model directories.
+Paths support normal TOML strings. Use absolute paths or paths relative to the home directory; Good Search expands a leading `~` in configured search roots, state directories and model directories.
 
 ## Configuration groups
 
@@ -92,19 +92,19 @@ Paths support normal TOML strings. Use absolute paths or paths relative to the h
 - `conversations.*`: conversation indexing and browser conversation capture.
 - `calendar.*`: calendar globs and default event duration.
 
-Hydrogen does not claim to extract every arbitrary embedded image object from otherwise text-based PDFs. The PDF image setting controls OCR of scanned/image-only pages. Embedded-object extraction would be a separate feature.
+Good Search does not claim to extract every arbitrary embedded image object from otherwise text-based PDFs. The PDF image setting controls OCR of scanned/image-only pages. Embedded-object extraction would be a separate feature.
 
 ## Updating settings
 
 Edit TOML directly, or use the validated setter for common options:
 
 ~~~sh
-hydrogen config set answer.model qwen3.5:2b-q4_K_M
-hydrogen config set answer.retrieval_limit 8
-hydrogen config set indexing.pdf.ocr_scanned_pages true
-hydrogen config set indexing.images.enabled true
-hydrogen config set indexing.embeddings_enabled true
-hydrogen config set paths.roots '["/home/me/Documents", "/home/me/Notes"]'
+gsearch config set answer.model qwen3.5:2b-q4_K_M
+gsearch config set answer.retrieval_limit 8
+gsearch config set indexing.pdf.ocr_scanned_pages true
+gsearch config set indexing.images.enabled true
+gsearch config set indexing.embeddings_enabled true
+gsearch config set paths.roots '["/home/me/Documents", "/home/me/Notes"]'
 ~~~
 
 For list settings, pass a JSON array or a comma-separated list. `config set` writes the configuration file and refuses unknown keys. `config show` displays effective settings after validation and environment overrides.
@@ -113,14 +113,14 @@ Legacy environment overrides remain supported for state/model directories, seman
 
 ## Client and launcher integration
 
-All clients should use Hydrogen's own configuration rather than duplicating model names, RAG limits, search limits or indexing environment variables. For example:
+All clients should use Good Search's own configuration rather than duplicating model names, RAG limits, search limits or indexing environment variables. For example:
 
-- `hydrogen query QUESTION`
-- `hydrogen answer QUESTION`
-- `hydrogen index sync`
-- `hydrogen index sync-images`
+- `gsearch query QUESTION`
+- `gsearch answer QUESTION`
+- `gsearch index sync`
+- `gsearch index sync-images`
 
-A desktop launcher may read `hydrogen config show` to display effective settings and use `hydrogen config set` to change supported values. This is not specific to Quickshell; any shell, launcher or application can follow the same contract.
+A desktop launcher may read `gsearch config show` to display effective settings and use `gsearch config set` to change supported values. This is not specific to Quickshell; any shell, launcher or application can follow the same contract.
 
 ## Fixed implementation boundaries
 
