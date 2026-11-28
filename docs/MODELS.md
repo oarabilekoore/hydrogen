@@ -1,6 +1,6 @@
 # Local model setup
 
-Hydrogen reads model locations and resource settings from `~/.config/hydrogen/config.toml`. Set `paths.models_dir` to override the default `~/.local/share/hydrogen/models` directory. See [Configuration](CONFIGURATION.md).
+Good Search reads model locations and resource settings from `~/.config/gsearch/config.toml`. Set `paths.models_dir` to override the default `~/.local/share/gsearch/models` directory. See [Configuration](CONFIGURATION.md).
 
 Install the current Rust OCR models with:
 
@@ -30,7 +30,7 @@ models/
 
 The Rust PP-OCR adapter loads both stages from their directories. Texo loads
 only when a formula OCR request is made. The model files are not bundled into
-the Hydrogen binary and no network access is performed during inference.
+the Good Search binary and no network access is performed during inference.
 
 ## Current support boundary
 
@@ -47,45 +47,45 @@ the Hydrogen binary and no network access is performed during inference.
 - Hybrid search fuses lexical, document-vector, and visual-vector candidates with reciprocal-rank fusion.
 
 Model weights retain their upstream licences. PP-OCR is Apache-2.0; Texo is
-AGPL-3.0-only. Hydrogen itself is AGPL-3.0-only.
+AGPL-3.0-only. Good Search itself is AGPL-3.0-only.
 
 ## Optional semantic embeddings and image captions
 
-Semantic indexing is opt-in so a normal Hydrogen sync does not download models or
+Semantic indexing is opt-in so a normal Good Search sync does not download models or
 spend CPU time unexpectedly.
 
-Set `indexing.embeddings_enabled = true` in Hydrogen configuration, or run `hydrogen config set indexing.embeddings_enabled true`, to enable:
+Set `indexing.embeddings_enabled = true` in Good Search configuration, or run `gsearch config set indexing.embeddings_enabled true`, to enable:
 - Quantized all-MiniLM-L6-v2 for document text vectors (384 dimensions).
 - CLIP ViT-B/32 text and vision encoders for a shared image/text space (512 dimensions).
 
 Both run locally through FastEmbed/ONNX Runtime with a maximum of two inference
-threads. Models are cached below `$HYDROGEN_MODELS_DIR/embeddings/fastembed`.
-Run `hydrogen index embed` once to backfill an existing index. Future syncs automatically maintain vectors while the setting remains enabled. Use `hydrogen query "..." --semantic` to combine lexical, document-vector and
-cross-modal image retrieval with reciprocal-rank fusion. Use `hydrogen query --image ./query.png` for image-to-image retrieval. First use downloads the
+threads. Models are cached below `$GSEARCH_MODELS_DIR/embeddings/fastembed`.
+Run `gsearch index embed` once to backfill an existing index. Future syncs automatically maintain vectors while the setting remains enabled. Use `gsearch query "..." --semantic` to combine lexical, document-vector and
+cross-modal image retrieval with reciprocal-rank fusion. Use `gsearch query --image ./query.png` for image-to-image retrieval. First use downloads the
 selected model files; subsequent inference is offline.
 
 For free-form image descriptions, build with the optional Rust-native Candle SmolVLM
-backend and enable it explicitly with `indexing.images.captions = true` in Hydrogen configuration:
+backend and enable it explicitly with `indexing.images.captions = true` in Good Search configuration:
 
 ```sh
 cargo build --release --features image-captioning
-FFAI_CACHE="$HYDROGEN_MODELS_DIR/argus/cache" hydrogen index sync-images
+FFAI_CACHE="$GSEARCH_MODELS_DIR/argus/cache" gsearch index sync-images
 ```
 
-The manifest is included in Hydrogen and copied into
-`$HYDROGEN_MODELS_DIR/argus` on first use. Fetch the checkpoint into the same
+The manifest is included in Good Search and copied into
+`$GSEARCH_MODELS_DIR/argus` on first use. Fetch the checkpoint into the same
 local model tree before enabling captions:
 
 ```sh
 cargo install ffai-cli
-FFAI_CACHE="$HYDROGEN_MODELS_DIR/argus/cache" ffai models --fetch smolvlm-256m-instruct
+FFAI_CACHE="$GSEARCH_MODELS_DIR/argus/cache" ffai models --fetch smolvlm-256m-instruct
 ```
 
 Captioning is disabled by default because its working memory is substantially
 larger than OCR or embedding inference. The model is loaded only inside the
 image-sync process. CLIP vectors remain the primary visual retrieval signal;
 generated captions are optional searchable metadata, not a replacement for
-embeddings. `hydrogen doctor` reports model availability, SQLite integrity,
+embeddings. `gsearch doctor` reports model availability, SQLite integrity,
 queue state, embedding counts, recent worker latency/RSS, and active resource
 ceilings.
 
