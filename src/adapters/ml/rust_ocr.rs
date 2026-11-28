@@ -1,10 +1,10 @@
-//! On-device OCR engines. All inference stays in the Hydrogen process.
+//! On-device OCR engines. All inference stays in the Good Search process.
 //!
 //! PP-OCR is loaded lazily from models/ppocr/{det,rec}; Texo is loaded lazily
 //! from models/texo-distill-f16.gguf. No Python, subprocess, or network access
 //! is used at inference time.
 use crate::domain::ocr::layout::OcrBox;
-use crate::error::{HydrogenError, Result};
+use crate::error::{GoodSearchError, Result};
 use crate::ports::extractor::{CaptionProvider, OcrProvider};
 #[cfg(feature = "image-captioning")]
 use ffai_argus::SmolVlm;
@@ -75,7 +75,7 @@ impl RustOcrProvider {
                 .map(Arc::new)
                 .map_err(|e| e.to_string())
         });
-        result.clone().map_err(HydrogenError::ExternalTool)
+        result.clone().map_err(GoodSearchError::ExternalTool)
     }
 
     fn formula_engine(&self) -> Result<Arc<texo_ocr::Ocr>> {
@@ -88,21 +88,21 @@ impl RustOcrProvider {
                 .map(Arc::new)
                 .map_err(|e| e.to_string())
         });
-        result.clone().map_err(HydrogenError::ExternalTool)
+        result.clone().map_err(GoodSearchError::ExternalTool)
     }
 
     /// Recognise a cropped mathematical expression and return LaTeX.
     pub fn recognize_formula(&self, image_path: &Path) -> Result<String> {
         self.formula_engine()?
             .recognize_file(image_path)
-            .map_err(|e| HydrogenError::ExternalTool(e.to_string()))
+            .map_err(|e| GoodSearchError::ExternalTool(e.to_string()))
     }
 
     fn run_printed(&self, path: &Path) -> Result<Vec<OcrBox>> {
         let engine = self.printed_engine()?;
         let results = engine
             .run_from_path(path)
-            .map_err(|e| HydrogenError::ExternalTool(e.to_string()))?;
+            .map_err(|e| GoodSearchError::ExternalTool(e.to_string()))?;
         Ok(results
             .into_iter()
             .filter_map(|item| {
@@ -142,7 +142,7 @@ impl OcrProvider for RustOcrProvider {
                     out.insert(path.clone(), text);
                 }
                 Err(error) => {
-                    eprintln!("hydrogen: printed OCR failed for {}: {error}", p.display());
+                    eprintln!("gsearch: printed OCR failed for {}: {error}", p.display());
                 }
             }
         }
@@ -186,20 +186,20 @@ impl CaptionProvider for RustOcrProvider {
             });
             let Ok(engine) = engine else {
                 eprintln!(
-                    "hydrogen: SmolVLM initialisation failed: {}",
+                    "gsearch: SmolVLM initialisation failed: {}",
                     engine.as_ref().err().unwrap()
                 );
                 return out;
             };
             let Ok(mut engine) = engine.lock() else {
-                eprintln!("hydrogen: SmolVLM model lock poisoned");
+                eprintln!("gsearch: SmolVLM model lock poisoned");
                 return out;
             };
             for path in paths {
                 let image = match ffai_media::load_image(Path::new(path)) {
                     Ok(image) => image,
                     Err(error) => {
-                        eprintln!("hydrogen: image decode failed for {path}: {error}");
+                        eprintln!("gsearch: image decode failed for {path}: {error}");
                         continue;
                     }
                 };
@@ -214,7 +214,7 @@ impl CaptionProvider for RustOcrProvider {
                         out.insert(path.clone(), caption.trim().to_string());
                     }
                     Ok(_) => {}
-                    Err(error) => eprintln!("hydrogen: image caption failed for {path}: {error}"),
+                    Err(error) => eprintln!("gsearch: image caption failed for {path}: {error}"),
                 }
             }
         }
@@ -231,7 +231,7 @@ mod tests {
     #[test]
     fn model_paths_are_not_loaded_during_construction() {
         let provider = RustOcrProvider::new(
-            PathBuf::from("/nonexistent/hydrogen-models"),
+            PathBuf::from("/nonexistent/gsearch-models"),
             2,
             false,
             PathBuf::from("ppocr"),
