@@ -3,7 +3,7 @@ use crate::adapters::sqlite::knowledge::KnowledgeStore;
 use crate::adapters::sqlite::repo::SqliteIndexRepository;
 use crate::application::query_service::QueryService;
 use crate::config::AppConfig;
-use crate::error::{HydrogenError, Result};
+use crate::error::{GoodSearchError, Result};
 use clap::Args;
 use serde_json::{json, Value};
 
@@ -19,7 +19,7 @@ pub struct SearchArgs {
 pub fn run(args: SearchArgs, cfg: &AppConfig) -> Result<()> {
     let query = args.query.trim();
     if query.is_empty() {
-        return Err(HydrogenError::InvalidInput(
+        return Err(GoodSearchError::InvalidInput(
             "search query cannot be empty".into(),
         ));
     }
@@ -33,7 +33,7 @@ pub fn run(args: SearchArgs, cfg: &AppConfig) -> Result<()> {
         .unwrap_or(cfg.settings.search.default_limit)
         .clamp(1, 100);
     let knowledge = KnowledgeStore::open(&cfg.db_path).map_err(|error| {
-        HydrogenError::Config(format!("could not open saved knowledge: {error}"))
+        GoodSearchError::Config(format!("could not open saved knowledge: {error}"))
     })?;
     let mut results: Vec<Value> = knowledge
         .search_saved_knowledge(query, limit)?
