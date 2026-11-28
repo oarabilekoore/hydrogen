@@ -74,8 +74,8 @@ copy_extension_sources "$CHROME_STAGE"
 cp "$SOURCE_DIR/manifest.chromium.json" "$CHROME_STAGE/manifest.json"
 rm -f "$CHROME_STAGE/manifest.chromium.json"
 
-FIREFOX_ARCHIVE="$OUTPUT_DIR/hydrogen-capture-firefox.xpi"
-CHROME_ARCHIVE="$OUTPUT_DIR/hydrogen-capture-chrome.zip"
+FIREFOX_ARCHIVE="$OUTPUT_DIR/gsearch-capture-firefox.xpi"
+CHROME_ARCHIVE="$OUTPUT_DIR/gsearch-capture-chrome.zip"
 rm -f "$FIREFOX_ARCHIVE" "$CHROME_ARCHIVE"
 
 (
