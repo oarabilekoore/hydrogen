@@ -1,6 +1,6 @@
 # Indexing reliability and hybrid retrieval
 
-Hydrogen now has a complete local retrieval path for lexical, document-semantic,
+Good Search now has a complete local retrieval path for lexical, document-semantic,
 and cross-modal visual search. Model inference stays in the Rust process; no
 Python worker or PyTorch runtime is required.
 
@@ -29,7 +29,7 @@ Python worker or PyTorch runtime is required.
   reciprocal-rank fusion.
 - Optional SmolVLM-256M image captions are available behind the
   `image-captioning` build feature and an explicit runtime environment flag.
-- `hydrogen doctor` reports dependencies, model/cache presence, SQLite
+- `gsearch doctor` reports dependencies, model/cache presence, SQLite
   integrity, queue states, vector counts, recent worker latency/RSS, and
   configured resource ceilings.
 - End-to-end fixture tests exercise indexing, OCR retry, vector persistence,
@@ -51,7 +51,7 @@ Python worker or PyTorch runtime is required.
 
 - Captioning is optional and off by default because its working set is larger
   than OCR or embeddings. CLIP vectors remain the primary visual retrieval signal.
-- Existing PDF vectors can be backfilled with `hydrogen index embed`; enabling
+- Existing PDF vectors can be backfilled with `gsearch index embed`; enabling
   embeddings during later syncs automatically maintains vectors for changed files.
 - The default CI checks the normal build. The optional captioning feature has a
   separate compile check so it cannot silently rot.
