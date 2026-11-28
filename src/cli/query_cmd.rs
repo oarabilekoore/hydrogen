@@ -41,12 +41,12 @@ pub fn run(args: QueryArgs, cfg: &AppConfig) -> Result<()> {
         (Some(query), None) => service.search(query, limit, &args.mode, semantic)?,
         (None, Some(image)) => service.search_image(image, limit)?,
         (Some(_), Some(_)) => {
-            return Err(crate::error::HydrogenError::InvalidInput(
+            return Err(crate::error::GoodSearchError::InvalidInput(
                 "provide either a text query or --image, not both".into(),
             ));
         }
         (None, None) => {
-            return Err(crate::error::HydrogenError::InvalidInput(
+            return Err(crate::error::GoodSearchError::InvalidInput(
                 "provide a text query or --image PATH".into(),
             ));
         }
