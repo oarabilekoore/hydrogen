@@ -352,7 +352,7 @@ impl IndexRepository for SqliteIndexRepository {
         hash: &str,
     ) -> Result<()> {
         if vector.is_empty() || vector.iter().any(|value| !value.is_finite()) {
-            return Err(crate::error::HydrogenError::InvalidInput(
+            return Err(crate::error::GoodSearchError::InvalidInput(
                 "embedding vector is empty or contains non-finite values".into(),
             ));
         }
