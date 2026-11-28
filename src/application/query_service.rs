@@ -57,9 +57,9 @@ impl<'a> QueryService<'a> {
                 limit.saturating_mul(5).max(50),
             ) {
                 Ok(hits) => channels.push(hits),
-                Err(error) => eprintln!("hydrogen: text-vector search unavailable: {error}"),
+                Err(error) => eprintln!("gsearch: text-vector search unavailable: {error}"),
             },
-            Err(error) => eprintln!("hydrogen: text embeddings unavailable: {error}"),
+            Err(error) => eprintln!("gsearch: text embeddings unavailable: {error}"),
         }
 
         match self.embeddings.embed_clip_text(trimmed) {
@@ -70,9 +70,9 @@ impl<'a> QueryService<'a> {
                 limit.saturating_mul(5).max(50),
             ) {
                 Ok(hits) => channels.push(hits),
-                Err(error) => eprintln!("hydrogen: cross-modal search unavailable: {error}"),
+                Err(error) => eprintln!("gsearch: cross-modal search unavailable: {error}"),
             },
-            Err(error) => eprintln!("hydrogen: CLIP text encoder unavailable: {error}"),
+            Err(error) => eprintln!("gsearch: CLIP text encoder unavailable: {error}"),
         }
 
         Ok(reciprocal_rank_fusion(channels, limit))
