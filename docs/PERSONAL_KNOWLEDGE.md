@@ -1,15 +1,15 @@
 # Personal knowledge, web capture and frontend
 
-Hydrogen's personal knowledge features are local-first. The Rust application owns the SQLite database, retrieval, Ollama requests and configuration. The bundled frontend and browser extension are clients of the local service. These features are independent of Quickshell or any other desktop shell.
+Good Search's personal knowledge features are local-first. The Rust application owns the SQLite database, retrieval, Ollama requests and configuration. The bundled frontend and browser extension are clients of the local service. These features are independent of Quickshell or any other desktop shell.
 
 ## Start the local frontend
 
 ~~~sh
-hydrogen --frontend
-hydrogen --frontend --ask "What is a throttling device?"
-hydrogen --frontend --conversation CONVERSATION_ID
-hydrogen --frontend --page WEB_PAGE_ID
-hydrogen search "throttling device"
+gsearch --frontend
+gsearch --frontend --ask "What is a throttling device?"
+gsearch --frontend --conversation CONVERSATION_ID
+gsearch --frontend --page WEB_PAGE_ID
+gsearch search "throttling device"
 ~~~
 
 The frontend service binds to the loopback address configured by `frontend.bind_address` (default `127.0.0.1:17891`). When `frontend.auto_start` is enabled, the frontend command starts the service in the background if it is not already running, then opens the local web application.
@@ -17,23 +17,23 @@ The frontend service binds to the loopback address configured by `frontend.bind_
 Run the service in the foreground for debugging:
 
 ~~~sh
-hydrogen serve
+gsearch serve
 ~~~
 
 ## Answer from local sources
 
 ~~~sh
-hydrogen answer "What is a throttling device?"
-hydrogen answer --browser "What is a throttling device?"
+gsearch answer "What is a throttling device?"
+gsearch answer --browser "What is a throttling device?"
 ~~~
 
-Hydrogen retrieves passages from indexed files and captured web articles, sends bounded context to the configured Ollama model, and stores the answer with its source references. The browser option writes a local HTML answer and opens it. The frontend uses the same answer pipeline while keeping messages in the active conversation.
+Good Search retrieves passages from indexed files and captured web articles, sends bounded context to the configured Ollama model, and stores the answer with its source references. The browser option writes a local HTML answer and opens it. The frontend uses the same answer pipeline while keeping messages in the active conversation.
 
 Answer generation is explicit. Searching or browsing saved knowledge does not invoke Ollama automatically. The chat interface supports multi-turn conversations, regeneration, retrying failed answers, copying responses and incremental output updates. A per-message source-grounding control enables or disables the source-grounded answer mode. Disabling grounding is not a guarantee of factual accuracy.
 
 ## Browser extension
 
-Hydrogen Capture is a Manifest V3 WebExtension for Firefox and Chromium-based browsers. Its source is in `browser-extension/`.
+Good Search Capture is a Manifest V3 WebExtension for Firefox and Chromium-based browsers. Its source is in `browser-extension/`.
 
 Build both packages from the repository root:
 
@@ -44,12 +44,12 @@ make extension-package
 Or choose an output directory:
 
 ~~~sh
-bash scripts/package-browser-extension.sh ~/Downloads/hydrogen-extensions
+bash scripts/package-browser-extension.sh ~/Downloads/gsearch-extensions
 ~~~
 
 The script validates browser manifests and referenced files, stages isolated browser-specific copies, and creates:
-- `browser-extension/dist/hydrogen-capture-firefox.xpi`
-- `browser-extension/dist/hydrogen-capture-chrome.zip`
+- `browser-extension/dist/gsearch-capture-firefox.xpi`
+- `browser-extension/dist/gsearch-capture-chrome.zip`
 
 Source manifests are not modified. The Firefox XPI is suitable for temporary installation; normal Firefox distribution requires Mozilla signing. The Chrome ZIP is suitable for Web Store upload. For local Chromium testing, extract it and load the directory as an unpacked extension. See [the extension README](../browser-extension/README.md).
 
@@ -61,20 +61,20 @@ Capture features include:
 - Incremental conversation snapshots keyed by conversation URL.
 - Independent pause, article capture and AI chat capture controls.
 - Explicit recent browser-history import, limited to current content when each page is opened.
-- Domain exclusions and URL-pattern rules enforced by the Hydrogen service.
+- Domain exclusions and URL-pattern rules enforced by the Good Search service.
 - Incognito/private tabs are not captured.
 
-The extension sends captured content to the local Hydrogen API. It does not bypass site authentication or access hidden model reasoning, private API data or content absent from the rendered page. Website DOM changes can break individual adapters, so provider coverage is best-effort.
+The extension sends captured content to the local Good Search API. It does not bypass site authentication or access hidden model reasoning, private API data or content absent from the rendered page. Website DOM changes can break individual adapters, so provider coverage is best-effort.
 
 ## Pairing and API security
 
-The extension must be paired with the local Hydrogen service using its API token. Treat the token as a password: anyone who obtains it can access protected API routes.
+The extension must be paired with the local Good Search service using its API token. Treat the token as a password: anyone who obtains it can access protected API routes.
 
 The service binds to loopback by default. The health endpoint is available for basic service checks; protected API routes require bearer authentication. Do not expose the service to a LAN or public network without reviewing the bind address, authentication and network security implications.
 
 ## Configuration
 
-The TOML file remains the shared source of truth: `~/.config/hydrogen/config.toml`.
+The TOML file remains the shared source of truth: `~/.config/gsearch/config.toml`.
 
 Relevant groups:
 - `[frontend]`: local bind address and automatic service startup.
