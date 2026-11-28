@@ -31,10 +31,10 @@ async function importRecentHistory(days = 30, limit = 25) {
   const prefs = await settings();
   if (!prefs.enabled || !prefs.captureArticles) throw new Error("Enable automatic article capture before importing history.");
   const configResponse = await fetch((await apiBase()) + "/api/settings", { cache: "no-store", headers: await apiHeaders() });
-  if (!configResponse.ok) throw new Error("Hydrogen service is unavailable.");
+  if (!configResponse.ok) throw new Error("Good Search service is unavailable.");
   const appConfig = await configResponse.json();
   const web = appConfig.settings?.web || {};
-  if (!web.enabled || !web.auto_index) throw new Error("Enable web.enabled and web.auto_index in Hydrogen settings before importing history.");
+  if (!web.enabled || !web.auto_index) throw new Error("Enable web.enabled and web.auto_index in Good Search settings before importing history.");
   historyImportBusy = true;
   const summary = { examined: 0, captured: 0, skipped: 0, failed: 0 };
   try {
@@ -73,7 +73,7 @@ async function settings() {
 
 async function apiHeaders() {
   const { apiToken = "" } = await chrome.storage.local.get({ apiToken: "" });
-  if (!apiToken) throw new Error("Pair the extension with Hydrogen first.");
+  if (!apiToken) throw new Error("Pair the extension with Good Search first.");
   return { "Content-Type": "application/json", "Authorization": "Bearer " + apiToken };
 }
 
@@ -84,7 +84,7 @@ async function post(path, payload) {
     body: JSON.stringify(payload)
   });
   const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body.error || `Hydrogen returned HTTP ${response.status}`);
+  if (!response.ok) throw new Error(body.error || `Good Search returned HTTP ${response.status}`);
   return body;
 }
 
@@ -95,7 +95,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
   (async () => {
     const prefs = await settings();
-    if (sender.tab?.incognito || chrome.extension?.inIncognitoContext) throw new Error("Hydrogen does not capture private/incognito browsing.");
+    if (sender.tab?.incognito || chrome.extension?.inIncognitoContext) throw new Error("Good Search does not capture private/incognito browsing.");
     if (!prefs.enabled) throw new Error("Capture is paused");
     const host = new URL(sender.url || message.url || "https://invalid.local").hostname;
     if (prefs.excludedHosts.some(item => host === item || host.endsWith("." + item))) {
