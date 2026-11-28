@@ -20,12 +20,12 @@ pub struct AppConfig {
     pub inference_threads: usize,
     pub image_batch_size: usize,
     pub pdf_page_limit: usize,
-    pub settings: HydrogenSettings,
+    pub settings: GoodSearchSettings,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
-pub struct HydrogenSettings {
+pub struct GoodSearchSettings {
     pub paths: PathsConfig,
     pub search: SearchConfig,
     pub indexing: IndexingConfig,
@@ -206,7 +206,7 @@ fn default_evolution_globs(home: &Path) -> Vec<String> {
     )]
 }
 
-impl Default for HydrogenSettings {
+impl Default for GoodSearchSettings {
     fn default() -> Self {
         let home = env::var_os("HOME")
             .map(PathBuf::from)
@@ -425,41 +425,41 @@ impl AppConfig {
         let home = env::var_os("HOME")
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from("/tmp"));
-        let config_path = env::var_os("HYDROGEN_CONFIG")
+        let config_path = env::var_os("GSEARCH_CONFIG")
             .map(PathBuf::from)
             .or_else(|| {
                 env::var_os("XDG_CONFIG_HOME")
                     .map(PathBuf::from)
-                    .map(|p| p.join("hydrogen/config.toml"))
+                    .map(|p| p.join("gsearch/config.toml"))
             })
-            .unwrap_or_else(|| home.join(".config/hydrogen/config.toml"));
+            .unwrap_or_else(|| home.join(".config/gsearch/config.toml"));
 
         let mut settings = if config_path.is_file() {
             let raw = fs::read_to_string(&config_path)
                 .map_err(|e| format!("cannot read {}: {e}", config_path.display()))?;
-            toml::from_str::<HydrogenSettings>(&raw)
+            toml::from_str::<GoodSearchSettings>(&raw)
                 .map_err(|e| format!("invalid {}: {e}", config_path.display()))?
         } else {
-            HydrogenSettings::default()
+            GoodSearchSettings::default()
         };
 
         // Environment variables remain supported as explicit, temporary overrides.
-        if let Some(value) = env::var_os("HYDROGEN_STATE_DIR") {
+        if let Some(value) = env::var_os("GSEARCH_STATE_DIR") {
             settings.paths.state_dir = Some(value.into());
         }
-        if let Some(value) = env::var_os("HYDROGEN_MODELS_DIR") {
+        if let Some(value) = env::var_os("GSEARCH_MODELS_DIR") {
             settings.paths.models_dir = Some(value.into());
         }
-        if let Ok(value) = env::var("HYDROGEN_EMBEDDINGS") {
+        if let Ok(value) = env::var("GSEARCH_EMBEDDINGS") {
             settings.indexing.embeddings_enabled =
                 matches!(value.as_str(), "1") || value.eq_ignore_ascii_case("true");
         }
-        if let Ok(raw) = env::var("HYDROGEN_INFERENCE_THREADS") {
+        if let Ok(raw) = env::var("GSEARCH_INFERENCE_THREADS") {
             if let Ok(value) = raw.parse::<usize>() {
                 settings.models.inference_threads = value;
             }
         }
-        if let Ok(raw) = env::var("HYDROGEN_IMAGE_BATCH_SIZE") {
+        if let Ok(raw) = env::var("GSEARCH_IMAGE_BATCH_SIZE") {
             if let Ok(value) = raw.parse::<usize>() {
                 settings.indexing.images.batch_size = value;
             }
@@ -469,10 +469,10 @@ impl AppConfig {
                 settings.calendar.default_event_duration_mins = value;
             }
         }
-        if let Ok(raw) = env::var("HYDROGEN_CAPTIONS") {
+        if let Ok(raw) = env::var("GSEARCH_CAPTIONS") {
             settings.indexing.images.captions = raw == "1" || raw.eq_ignore_ascii_case("true");
         }
-        if let Ok(raw) = env::var("HYDROGEN_PDF_PAGE_LIMIT") {
+        if let Ok(raw) = env::var("GSEARCH_PDF_PAGE_LIMIT") {
             if let Ok(value) = raw.parse::<usize>() {
                 settings.indexing.pdf.page_limit = value;
             }
@@ -535,7 +535,7 @@ impl AppConfig {
             .models_dir
             .as_deref()
             .map(|path| expand_home(path, &home))
-            .unwrap_or_else(|| home.join(".local/share/hydrogen/models"));
+            .unwrap_or_else(|| home.join(".local/share/gsearch/models"));
         let default_event_duration_mins = settings.calendar.default_event_duration_mins.max(1);
         let ics_globs = settings.calendar.ics_globs.clone();
         let evolution_db_globs = settings.calendar.evolution_db_globs.clone();
@@ -561,10 +561,10 @@ impl AppConfig {
     }
 
     pub fn default_toml() -> std::result::Result<String, String> {
-        toml::to_string_pretty(&HydrogenSettings::default()).map_err(|e| e.to_string())
+        toml::to_string_pretty(&GoodSearchSettings::default()).map_err(|e| e.to_string())
     }
 
-    pub fn write_settings(&self, settings: &HydrogenSettings) -> std::result::Result<(), String> {
+    pub fn write_settings(&self, settings: &GoodSearchSettings) -> std::result::Result<(), String> {
         if let Some(parent) = self.config_path.parent() {
             fs::create_dir_all(parent).map_err(|e| e.to_string())?;
         }
@@ -579,7 +579,7 @@ mod tests {
 
     #[test]
     fn partial_toml_preserves_unmentioned_defaults() {
-        let settings: HydrogenSettings =
+        let settings: GoodSearchSettings =
             toml::from_str("[answer]\nmodel = \"qwen3.5:2b-q4_K_M\"\n").unwrap();
         assert_eq!(settings.answer.model, "qwen3.5:2b-q4_K_M");
         assert!(settings.indexing.pdf.enabled);
@@ -592,7 +592,7 @@ mod tests {
 
     #[test]
     fn default_configuration_is_local_and_resource_bounded() {
-        let settings = HydrogenSettings::default();
+        let settings = GoodSearchSettings::default();
         assert_eq!(settings.answer.provider, "ollama");
         assert_eq!(settings.answer.endpoint, "http://127.0.0.1:11434");
         assert_eq!(settings.models.inference_threads, 2);
